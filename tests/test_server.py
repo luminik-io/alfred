@@ -2607,6 +2607,7 @@ def test_compose_converse_uses_checkout_map_saved_after_runtime_import(
     _use_interrogator_prompt(monkeypatch)
     checkout = tmp_path / "new checkout"
     checkout.mkdir()
+    (checkout / ".git").mkdir()
     (checkout / "CLAUDE.md").write_text("Live checkout instructions", encoding="utf-8")
     runtime = tmp_path / "runtime"
     runtime.mkdir()
@@ -2617,6 +2618,12 @@ def test_compose_converse_uses_checkout_map_saved_after_runtime_import(
     )
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "stale/frontend=/tmp/stale-frontend")
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: ["acme/frontend"])
+    monkeypatch.setattr(
+        server_setup,
+        "local_repo_matches_github_slug",
+        lambda path, slug: path == checkout.resolve() and slug == "acme/frontend",
+    )
     capture: dict = {}
     _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
 
@@ -2635,6 +2642,68 @@ def test_compose_converse_uses_checkout_map_saved_after_runtime_import(
 
     assert response.status_code == 200
     assert "Live checkout instructions" in capture["repo_grounding"]
+
+
+@pytest.mark.parametrize("path", ["/api/compose/converse", "/api/compose/converse/stream"])
+@pytest.mark.parametrize(
+    ("mapping_key", "remote_matches", "sentinel", "expect_grounding"),
+    [
+        ("acme/frontend", True, "Verified checkout instructions", True),
+        ("acme/frontend", False, "Wrong remote instructions", False),
+        ("frontend", True, "wrong-repo-only.txt", False),
+    ],
+)
+def test_compose_converse_grounding_matches_verified_workdir_for_every_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    mapping_key: str,
+    remote_matches: bool,
+    sentinel: str,
+    expect_grounding: bool,
+) -> None:
+    monkeypatch.setenv("ALFRED_COMPOSE_CONVERSE_ENGINE", "claude")
+    _use_interrogator_prompt(monkeypatch)
+    checkout = tmp_path / "frontend"
+    (checkout / ".git").mkdir(parents=True)
+    if sentinel.endswith(".txt"):
+        (checkout / sentinel).write_text("belongs to another repo", encoding="utf-8")
+    else:
+        (checkout / "CLAUDE.md").write_text(sentinel, encoding="utf-8")
+    monkeypatch.setattr(server_views, "_compose_workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(server_views, "_selected_setup_repos", lambda: ["acme/frontend"])
+    monkeypatch.setattr(
+        server_views.runtime_facade,
+        "repo_to_local",
+        lambda: {mapping_key: str(checkout)},
+    )
+    monkeypatch.setattr(
+        server_setup,
+        "local_repo_matches_github_slug",
+        lambda candidate, slug: (
+            remote_matches and candidate == checkout.resolve() and slug == "acme/frontend"
+        ),
+    )
+    capture: dict = {}
+    _stub_converse_turn(monkeypatch, reply="Grounded.", capture=capture)
+
+    state = tmp_path / "state"
+    state.mkdir()
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    response = client.post(
+        path,
+        json={
+            "repos": ["acme/frontend"],
+            "messages": [{"role": "user", "content": "How does login work?"}],
+        },
+        headers=_auth_headers(state),
+    )
+
+    assert response.status_code == 200
+    assert (sentinel in capture["repo_grounding"]) is expect_grounding
+    assert (capture["workdir"] == checkout.resolve()) is expect_grounding
+    if not expect_grounding:
+        assert "No local checkout or CLAUDE.md available" in capture["repo_grounding"]
 
 
 def test_compose_converse_runs_from_single_selected_mapped_checkout(

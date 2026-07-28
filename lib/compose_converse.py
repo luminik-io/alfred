@@ -387,6 +387,7 @@ def build_repo_grounding(
     *,
     workspace_root: Path,
     repo_to_local: dict[str, str] | None = None,
+    allow_workspace_fallback: bool = True,
 ) -> str:
     """Assemble each target repo's CLAUDE.md (multi-repo aware).
 
@@ -397,11 +398,12 @@ def build_repo_grounding(
 
     Two path sources, treated differently. A ``repo_to_local`` (GH_REPO_TO_LOCAL)
     hit is TRUSTED operator config: the operator may legitimately point a repo at
-    an absolute checkout outside ``workspace_root``, so it is used as-is. With no
-    mapping we fall back to the raw request slug's bare name as a directory under
-    ``workspace_root`` - that name is UNTRUSTED, so it is contained: a traversal
-    slug is dropped and degrades to the "no local checkout" block rather than
-    becoming an arbitrary-file-read sink (py/path-injection).
+    an absolute checkout outside ``workspace_root``, so it is used as-is. Unless
+    ``allow_workspace_fallback`` is false, an unmapped repo falls back to the raw
+    request slug's bare name as a directory under ``workspace_root``. That name
+    is UNTRUSTED, so it is contained: a traversal slug is dropped and degrades
+    to the "no local checkout" block rather than becoming an arbitrary-file-read
+    sink (py/path-injection).
     """
     repo_to_local = repo_to_local or {}
     repos = [repo for repo in repos if repo]
@@ -425,11 +427,13 @@ def build_repo_grounding(
             # be an absolute path outside workspace_root, so honor it as-is
             # (an absolute ``mapped`` wins the join, mirroring the original).
             repo_dir: Path | None = Path(workspace_root) / mapped
-        else:
+        elif allow_workspace_fallback:
             # UNTRUSTED: the request slug's bare name as a directory under the
             # workspace. Contain it so a traversal slug cannot escape; an escape
             # degrades to the same safe fallback a missing checkout gets.
             repo_dir = _contained_repo_dir(workspace_root, bare)
+        else:
+            repo_dir = None
         if repo_dir is None:
             blocks.append(
                 f"{header}\n\nNo local checkout or CLAUDE.md available for this "

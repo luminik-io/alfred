@@ -167,6 +167,7 @@ def test_graphify_readiness_requires_selected_repo_coverage() -> None:
                 "installed": True,
                 "detail": "Graphify is installed.",
                 "detected": {"engine": "graphify"},
+                "install_hint": "stale repair action",
             }
         ]
     }
@@ -181,6 +182,205 @@ def test_graphify_readiness_requires_selected_repo_coverage() -> None:
     assert readiness["state"] == "actionable"
     assert readiness["detected"]["coverage_ready"] is False
     assert readiness["detected"]["missing"] == ["acme/web"]
+
+
+@pytest.mark.parametrize(
+    ("coverage", "expected_state", "expected_ready", "expected_actionable"),
+    [
+        (
+            {"ready": True, "covered": ["acme/web"], "missing": []},
+            "ready",
+            2,
+            0,
+        ),
+        (
+            {"ready": False, "covered": [], "missing": ["acme/web"]},
+            "needs_index",
+            1,
+            1,
+        ),
+    ],
+)
+def test_graphify_capability_plane_reconciles_verified_coverage(
+    coverage: dict[str, object],
+    expected_state: str,
+    expected_ready: int,
+    expected_actionable: int,
+) -> None:
+    capability_plane = {
+        "version": 1,
+        "summary": {"ready": 1, "actionable": 1, "disabled": 0, "total": 2},
+        "capabilities": [
+            {
+                "key": "code_graph",
+                "state": "needs_index",
+                "enabled": True,
+                "installed": True,
+                "detail": "Graphify is installed.",
+                "detected": {"engine": "graphify"},
+            },
+            {"key": "engineering_skills", "state": "ready"},
+        ],
+    }
+
+    setup_mod._reconcile_code_graph_coverage(capability_plane, coverage)
+
+    code_graph = setup_mod._capability_by_key(capability_plane, "code_graph")
+    assert code_graph["state"] == expected_state
+    assert code_graph["detected"]["coverage_ready"] is coverage["ready"]
+    assert code_graph["detected"]["covered"] == coverage["covered"]
+    assert code_graph["detected"]["missing"] == coverage["missing"]
+    assert code_graph["detected"]["graphify_covered"] == coverage["covered"]
+    assert code_graph["detected"]["fallback_covered"] == []
+    assert capability_plane["summary"] == {
+        "ready": expected_ready,
+        "actionable": expected_actionable,
+        "disabled": 0,
+        "total": 2,
+    }
+    if expected_state == "needs_index":
+        assert "`graphify <repo>`" in code_graph["install_hint"]
+    else:
+        assert code_graph["install_hint"] == ""
+
+
+def test_graphify_reconciliation_reports_code_memory_fallback_as_provider(
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "web"
+    _git_repo_with_origin(checkout, "acme/web")
+    resolved = [setup_mod._inspect_repo_checkout("acme/web", checkout, "map")]
+    capability_plane = {
+        "version": 1,
+        "summary": {"ready": 1, "actionable": 1, "disabled": 0, "total": 2},
+        "capabilities": [
+            {
+                "key": "code_graph",
+                "state": "needs_index",
+                "enabled": True,
+                "installed": True,
+                "detail": "Graphify is installed.",
+                "detected": {"engine": "graphify", "fallback": "code-memory"},
+            },
+            {"key": "engineering_skills", "state": "ready"},
+        ],
+    }
+    code_graph = setup_mod._capability_by_key(capability_plane, "code_graph")
+    coverage = setup_mod._selected_code_graph_coverage(
+        ["acme/web"],
+        {"ALFRED_GRAPHIFY_GRAPH": "graphify-out/graph.json"},
+        code_memory={
+            "enabled": False,
+            "binary": {"resolved": True},
+            "index_present": True,
+            "repos": {"selected": ["acme/web"]},
+        },
+        code_graph=code_graph,
+        resolved=resolved,
+    )
+
+    setup_mod._reconcile_code_graph_coverage(capability_plane, coverage)
+
+    assert code_graph["state"] == "ready"
+    assert code_graph["detected"]["graphify_covered"] == []
+    assert code_graph["detected"]["fallback_covered"] == ["acme/web"]
+    assert code_graph["detail"] == (
+        "Selected repositories have verified code-graph coverage through the "
+        "code-memory fallback; Graphify graphs are not ready."
+    )
+    assert "Graphify covers all" not in code_graph["detail"]
+
+
+def test_bootstrap_status_absolute_graph_downgrade_uses_graphify_repair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "web"
+    _git_repo_with_origin(checkout, "octocat/web")
+    graph = checkout / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", str(graph))
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "configured": True,
+                    "enabled": True,
+                    "installed": True,
+                    "status": "enabled",
+                }
+            ]
+        },
+    )
+
+    payload = setup_mod.bootstrap_status()
+
+    code_graph = setup_mod._capability_by_key(payload["capability_plane"], "code_graph")
+    first_run = {check["key"]: check for check in payload["first_run"]["checks"]}["code_graph"]
+    assert code_graph["state"] == "needs_index"
+    assert code_graph["detected"]["coverage_ready"] is False
+    assert code_graph["detected"]["missing"] == ["octocat/web"]
+    assert "`graphify <repo>`" in code_graph["install_hint"]
+    assert first_run["ready"] is False
+    assert first_run["action"] == code_graph["install_hint"]
+    assert "code-memory doctor" not in first_run["action"]
+
+
+def test_bootstrap_status_reconciles_verified_graphify_coverage(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    checkout = workspace / "web"
+    _git_repo_with_origin(checkout, "octocat/web")
+    graph = checkout / "graphify-out" / "graph.json"
+    graph.parent.mkdir()
+    graph.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "graphify-out/graph.json")
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "configured": True,
+                    "enabled": True,
+                    "installed": True,
+                    "status": "enabled",
+                }
+            ]
+        },
+    )
+
+    payload = setup_mod.bootstrap_status()
+
+    code_graph = setup_mod._capability_by_key(payload["capability_plane"], "code_graph")
+    first_run = {check["key"]: check for check in payload["first_run"]["checks"]}["code_graph"]
+    states = [item["state"] for item in payload["capability_plane"]["capabilities"]]
+    assert code_graph["state"] == "ready"
+    assert code_graph["detected"]["coverage_ready"] is True
+    assert first_run["ready"] is True
+    assert first_run["detected"]["capability_state"] == "ready"
+    assert payload["capability_plane"]["summary"]["ready"] == states.count("ready")
+    assert payload["capability_plane"]["summary"]["actionable"] == sum(
+        state in {"installable", "missing", "needs_index", "available"} for state in states
+    )
 
 
 def test_bootstrap_status_reports_code_memory_defaults(

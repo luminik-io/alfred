@@ -858,7 +858,16 @@ def capability_status(
         _context_compression_capability(runtime_env),
         _engineering_skills_capability(runtime_env),
     ]
-    counts = {
+    counts = _capability_summary(capabilities)
+    return {
+        "version": 1,
+        "summary": counts | {"total": len(capabilities)},
+        "capabilities": capabilities,
+    }
+
+
+def _capability_summary(capabilities: list[dict[str, Any]]) -> dict[str, int]:
+    return {
         "ready": sum(1 for item in capabilities if item["state"] == "ready"),
         "actionable": sum(
             1
@@ -867,11 +876,85 @@ def capability_status(
         ),
         "disabled": sum(1 for item in capabilities if item["state"] == "disabled"),
     }
-    return {
-        "version": 1,
-        "summary": counts | {"total": len(capabilities)},
-        "capabilities": capabilities,
+
+
+def _reconcile_code_graph_coverage(
+    capability_plane: dict[str, Any],
+    coverage: dict[str, Any],
+) -> None:
+    """Reconcile Graphify readiness from verified selected-checkout coverage."""
+
+    capability = _capability_by_key(capability_plane, "code_graph")
+    detected = capability.get("detected") or {}
+    if str(detected.get("engine") or "") != "graphify" or not capability.get("installed"):
+        return
+
+    covered = [str(repo) for repo in coverage.get("covered", []) if str(repo)]
+    missing = [str(repo) for repo in coverage.get("missing", []) if str(repo)]
+    graphify_covered, fallback_covered = _graphify_provider_coverage(coverage, covered)
+    coverage_ready = bool(coverage.get("ready"))
+    capability["state"] = "ready" if coverage_ready else "needs_index"
+    capability["detected"] = dict(detected) | {
+        "coverage_ready": coverage_ready,
+        "covered": covered,
+        "missing": missing,
+        "graphify_covered": graphify_covered,
+        "fallback_covered": fallback_covered,
     }
+    if coverage_ready:
+        if fallback_covered and graphify_covered:
+            capability["detail"] = (
+                f"Verified code-graph coverage uses Graphify for {', '.join(graphify_covered)} "
+                f"and the code-memory fallback for {', '.join(fallback_covered)}."
+            )
+        elif fallback_covered:
+            capability["detail"] = (
+                "Selected repositories have verified code-graph coverage through the "
+                "code-memory fallback; Graphify graphs are not ready."
+            )
+        else:
+            capability["detail"] = "Graphify covers all verified selected repositories."
+    elif missing:
+        capability["detail"] = (
+            "Graphify is installed, but verified graphs are missing for selected "
+            f"repositories: {', '.join(missing)}."
+        )
+    else:
+        capability["detail"] = (
+            "Graphify is installed, but selected repository coverage is not verified."
+        )
+    capability["install_hint"] = "" if coverage_ready else _graphify_index_install_hint()
+
+    capabilities = capability_plane.get("capabilities") or []
+    capability_plane["summary"] = _capability_summary(capabilities) | {"total": len(capabilities)}
+
+
+def _graphify_provider_coverage(
+    coverage: dict[str, Any],
+    covered: list[str],
+) -> tuple[list[str], list[str]]:
+    detected = coverage.get("detected") or []
+    provider_rows = [row for row in detected if isinstance(row, dict) and "provider" in row]
+    if not provider_rows:
+        return covered, []
+    graphify_covered = [
+        str(row.get("repo") or "")
+        for row in provider_rows
+        if row.get("provider") == "graphify" and str(row.get("repo") or "")
+    ]
+    fallback_covered = [
+        str(row.get("repo") or "")
+        for row in provider_rows
+        if row.get("provider") == "code-memory" and str(row.get("repo") or "")
+    ]
+    return graphify_covered, fallback_covered
+
+
+def _graphify_index_install_hint() -> str:
+    battery = batteries.battery_by_id("graphify")
+    if battery is not None and battery.install_hint:
+        return battery.install_hint
+    return "Build a graph for each selected repository with `graphify <repo>`."
 
 
 # --------------------------------------------------------------------------- #
@@ -1716,6 +1799,7 @@ def bootstrap_status() -> dict[str, Any]:
         code_graph=code_graph,
         resolved=repo_checkouts,
     )
+    _reconcile_code_graph_coverage(capability_plane, code_memory_coverage)
     install = install_inventory(repos=repos, env=runtime_env)
     first_run = first_run_readiness_status(
         gh=gh,

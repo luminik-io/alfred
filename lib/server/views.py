@@ -1079,10 +1079,12 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
     repos = _compose_context_repos(body, base_draft=base_draft)
     explicit_repo = _explicit_conversation_repo(repos, messages)
     grounding_repos = [explicit_repo] if explicit_repo else repos
+    verified_repo_to_local = _compose_verified_repo_to_local(grounding_repos)
     repo_grounding = cc.build_repo_grounding(
         grounding_repos,
         workspace_root=_compose_workspace_root(),
-        repo_to_local=_compose_repo_to_local(),
+        repo_to_local=verified_repo_to_local,
+        allow_workspace_fallback=False,
     )
     # Recall fleet lessons only when this turn looks like real work (gated, not
     # always-on), and append them to the grounding as advisory context.
@@ -1138,7 +1140,12 @@ def _run_compose_converse(request: Request, body: dict[str, Any]) -> JSONRespons
         intake_guidance=intake_guidance,
         base_draft=base_draft,
         engine=engine,
-        workdir=_compose_read_only_workdir(request, repos=repos, messages=messages),
+        workdir=_compose_read_only_workdir(
+            request,
+            repos=repos,
+            messages=messages,
+            verified_repo_to_local=verified_repo_to_local,
+        ),
         on_condense=_converse_condense_recorder(request, draft_id=draft_id),
     )
     if turn is None:
@@ -1259,10 +1266,12 @@ def _run_stream_compose_converse(
         repos = _compose_context_repos(body, base_draft=base_draft)
         explicit_repo = _explicit_conversation_repo(repos, messages)
         grounding_repos = [explicit_repo] if explicit_repo else repos
+        verified_repo_to_local = _compose_verified_repo_to_local(grounding_repos)
         repo_grounding = cc.build_repo_grounding(
             grounding_repos,
             workspace_root=_compose_workspace_root(),
-            repo_to_local=_compose_repo_to_local(),
+            repo_to_local=verified_repo_to_local,
+            allow_workspace_fallback=False,
         )
         repo_grounding += _converse_memory_grounding(
             request,
@@ -1295,7 +1304,12 @@ def _run_stream_compose_converse(
             intake_guidance=intake_guidance,
             base_draft=base_draft,
             engine=engine,
-            workdir=_compose_read_only_workdir(request, repos=repos, messages=messages),
+            workdir=_compose_read_only_workdir(
+                request,
+                repos=repos,
+                messages=messages,
+                verified_repo_to_local=verified_repo_to_local,
+            ),
             firing_id=firing_id,
             on_condense=_converse_condense_recorder(request, draft_id=draft_id),
         )
@@ -2749,6 +2763,7 @@ def _compose_read_only_workdir(
     *,
     repos: list[str],
     messages: Iterable[Any] = (),
+    verified_repo_to_local: dict[str, str] | None = None,
 ) -> Path:
     """Use one selected, explicitly mapped Git checkout for read-only Ask turns."""
 
@@ -2757,11 +2772,35 @@ def _compose_read_only_workdir(
     if not repo:
         return fallback
 
+    verified = verified_repo_to_local
+    candidate = (
+        _mapped_verified_checkout(repo, verified)
+        if verified is not None
+        else _compose_verified_checkout(repo)
+    )
+    return candidate if candidate is not None else fallback
+
+
+def _compose_verified_repo_to_local(repos: Iterable[str]) -> dict[str, str]:
+    """Return only exact selected-repo mappings with verified GitHub identity."""
+
+    verified: dict[str, str] = {}
+    for repo in repos:
+        candidate = _compose_verified_checkout(repo)
+        if candidate is not None:
+            verified[repo] = str(candidate)
+    return verified
+
+
+def _compose_verified_checkout(repo: str) -> Path | None:
+    """Resolve one exact-slug mapping after checkout and remote verification."""
+
+    repo = repo.strip()
     if "/" not in repo:
-        return fallback
+        return None
     selected = {item.casefold() for item in _selected_setup_repos()}
     if repo.casefold() not in selected:
-        return fallback
+        return None
 
     mapped = next(
         (
@@ -2772,7 +2811,7 @@ def _compose_read_only_workdir(
         None,
     )
     if not mapped:
-        return fallback
+        return None
 
     candidate = Path(mapped).expanduser()
     if not candidate.is_absolute():
@@ -2780,14 +2819,26 @@ def _compose_read_only_workdir(
     try:
         candidate = candidate.resolve(strict=True)
         if not candidate.is_dir() or not (candidate / ".git").exists():
-            return fallback
+            return None
     except (OSError, RuntimeError):
-        return fallback
+        return None
     from server import setup as setup_mod
 
     if not setup_mod.local_repo_matches_github_slug(candidate, repo):
-        return fallback
+        return None
     return candidate
+
+
+def _mapped_verified_checkout(repo: str, verified_repo_to_local: dict[str, str]) -> Path | None:
+    mapped = next(
+        (
+            path
+            for slug, path in verified_repo_to_local.items()
+            if slug.casefold() == repo.casefold() and path
+        ),
+        None,
+    )
+    return Path(mapped) if mapped else None
 
 
 def _repo_from_github_url(url: str) -> str:

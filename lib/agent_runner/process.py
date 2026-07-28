@@ -1017,7 +1017,8 @@ def claude_invoke_streaming(
                 "--no-session-persistence",
             ]
         )
-    cmd.extend(_agent_settings_args())
+    if not read_only_isolation:
+        cmd.extend(_agent_settings_args())
     if memory_script is not None:
         cmd.extend(_memory_mcp_args(memory_script, workdir))
     if model:

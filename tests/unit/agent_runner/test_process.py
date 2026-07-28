@@ -119,6 +119,7 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
     import agent_runner.process as proc
 
     monkeypatch.setenv("ALFRED_CLAUDE_PROXY_SOCKET", "/tmp/socket-that-should-be-ignored")
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "1")
 
     captured: dict[str, object] = {}
     assistant = {
@@ -176,6 +177,7 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
     assert cmd[cmd.index("--output-format") + 1] == "stream-json"
     assert "--allowedTools" in cmd
     assert cmd[cmd.index("--allowedTools") + 1].startswith("Read,Bash")
+    assert "--settings" in cmd
     assert captured["timeout"] == 42
     assert captured["kwargs"]["cwd"] == "/tmp"
     assert captured["kwargs"]["env"]["CLAUDE_CONFIG_DIR"]
@@ -188,6 +190,8 @@ def test_claude_invoke_streaming_can_enforce_read_only_isolation(fresh_agent_run
     ar = fresh_agent_runner
     import agent_runner.process as proc
 
+    monkeypatch.setenv("ALFRED_AGENT_HOOKS", "1")
+    monkeypatch.delenv("ALFRED_AGENT_NOTIFICATIONS", raising=False)
     captured: dict[str, object] = {}
     final = {
         "type": "result",
@@ -239,6 +243,8 @@ def test_claude_invoke_streaming_can_enforce_read_only_isolation(fresh_agent_run
     assert "--strict-mcp-config" in cmd
     assert cmd[cmd.index("--mcp-config") + 1] == '{"mcpServers":{}}'
     assert "--no-session-persistence" in cmd
+    assert "--settings" not in cmd
+    assert "alfred_hooks.py" not in " ".join(cmd)
     assert "--dangerously-skip-permissions" not in cmd
     assert "mcp__alfred_memory" not in " ".join(cmd)
 
