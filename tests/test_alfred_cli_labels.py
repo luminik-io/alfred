@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import plistlib
 import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
@@ -564,6 +565,247 @@ def test_doctor_command_forwards_to_doctor_script(
 
     assert cli_module.main(["doctor", "--dev", "--lifecycle"]) == 0
     assert calls == [["bash", str(REPO_ROOT / "bin" / "doctor.sh"), "--dev", "--lifecycle"]]
+
+
+def _engine_readiness(
+    cli_module,
+    engine: str,
+    *,
+    ready: bool,
+    state: str,
+    detail: str,
+    version: str | None = None,
+    failures: tuple[str, ...] | None = None,
+):
+    descriptor = cli_module.agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
+    return cli_module.agent_runner.EngineProbeResult(
+        descriptor=descriptor,
+        installed=True,
+        protocol_compatible=state not in {"missing", "incompatible"},
+        ready=ready,
+        state=state,
+        detail=detail,
+        binary=engine,
+        version=version or f"{engine} 9.9.9",
+        failures=failures if failures is not None else (() if ready else (state,)),
+    )
+
+
+def test_engine_doctor_discovers_systemd_roster_without_agents_conf(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    systemd_dir = tmp_path / "systemd-user"
+    systemd_dir.mkdir()
+    (systemd_dir / "alfred.reviewer.service").write_text(
+        "[Service]\nExecStart=/opt/alfred/bin/agent-launch /opt/alfred/bin/reviewer.py\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_LAUNCH_DIR", str(tmp_path / "missing-launchd"))
+    monkeypatch.setenv("ALFRED_SYSTEMD_USER_DIR", str(systemd_dir))
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "agent_engine",
+        lambda _agent, *, default: "codex",
+    )
+
+    assert cli_module._configured_engine_selections() == {"codex": ("reviewer",)}
+
+
+def test_engine_doctor_discovers_launchd_roster_without_agents_conf(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    launch_dir = tmp_path / "launch-agents"
+    launch_dir.mkdir()
+    (launch_dir / "alfred.reviewer.plist").write_bytes(
+        plistlib.dumps(
+            {
+                "Label": "alfred.reviewer",
+                "ProgramArguments": [
+                    "/opt/alfred/bin/agent-launch",
+                    "/opt/alfred/bin/reviewer.py",
+                ],
+            }
+        )
+    )
+    monkeypatch.setenv("ALFRED_LAUNCH_DIR", str(launch_dir))
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "agent_engine",
+        lambda _agent, *, default: "codex",
+    )
+
+    assert cli_module._configured_engine_selections() == {"codex": ("reviewer",)}
+
+
+def test_engine_doctor_excludes_runtime_disabled_opt_in_agents(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = [
+        {
+            "label": "alfred.architect",
+            "script": "architect.py",
+            "disabled": "no",
+        },
+        {
+            "label": "alfred.reviewer",
+            "script": "reviewer.py",
+            "disabled": "no",
+        },
+    ]
+    enabled_calls: list[tuple[str, bool]] = []
+
+    def is_enabled(codename: str, *, default: bool) -> bool:
+        enabled_calls.append((codename, default))
+        return default
+
+    monkeypatch.setattr(cli_module, "_configured_agent_records", lambda: records)
+    monkeypatch.setattr(cli_module.agent_runner, "is_agent_enabled", is_enabled)
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "agent_engine",
+        lambda _agent, *, default: default,
+    )
+
+    assert cli_module._configured_engine_selections() == {"hybrid": ("reviewer",)}
+    assert enabled_calls == [("architect", False), ("reviewer", True)]
+
+
+def test_engine_doctor_fails_when_selected_engine_is_not_registry_ready(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    signed_out = _engine_readiness(
+        cli_module,
+        "codex",
+        ready=False,
+        state="auth_required",
+        detail="Codex is installed but is not signed in.",
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"codex": ("reviewer",)},
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "probe_engine",
+        lambda *_args, **_kwargs: signed_out,
+    )
+
+    assert cli_module.main(["engine", "doctor"]) == 1
+    output = capsys.readouterr().out
+    assert "doctor: checking configured engine readiness" in output
+    assert "codex    [reviewer] FAIL (auth_required)" in output
+    assert "Codex is installed but is not signed in." in output
+
+
+def test_engine_doctor_uses_ready_codex_for_hybrid_capability_gap(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = {
+        "claude": _engine_readiness(
+            cli_module,
+            "claude",
+            ready=False,
+            state="incompatible",
+            detail="Claude Code does not expose Alfred's required CLI protocol.",
+        ),
+        "codex": _engine_readiness(
+            cli_module,
+            "codex",
+            ready=True,
+            state="ready",
+            detail="Codex is compatible and signed in.",
+        ),
+    }
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"hybrid": ("planner", "senior-dev")},
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "probe_engine",
+        lambda descriptor, **_kwargs: results[descriptor.id],
+    )
+
+    assert cli_module.main(["engine", "doctor"]) == 0
+    output = capsys.readouterr().out
+    assert "hybrid   [planner, senior-dev] OK (ready_via_codex)" in output
+    assert "Codex fallback is compatible and signed in." in output
+
+
+def test_engine_doctor_does_not_hide_hybrid_claude_auth_failure(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probes: list[str] = []
+    signed_out = _engine_readiness(
+        cli_module,
+        "claude",
+        ready=False,
+        state="auth_required",
+        detail="Claude Code is installed but is not signed in.",
+    )
+
+    def probe(descriptor, **_kwargs):
+        probes.append(descriptor.id)
+        if descriptor.id != "claude":
+            raise AssertionError("scheduled hybrid dispatch does not fall back on auth failure")
+        return signed_out
+
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"hybrid": ("senior-dev",)},
+    )
+    monkeypatch.setattr(cli_module.agent_runner, "probe_engine", probe)
+
+    assert cli_module.main(["engine", "doctor"]) == 1
+    output = capsys.readouterr().out
+    assert "hybrid   [senior-dev] FAIL (auth_required)" in output
+    assert probes == ["claude"]
+
+
+def test_engine_doctor_renders_unsupported_version_remediation(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unsupported = _engine_readiness(
+        cli_module,
+        "claude",
+        ready=False,
+        state="incompatible",
+        detail="Claude Code does not expose Alfred's required CLI protocol.",
+        version="Claude Code 2.1.40",
+        failures=("unsupported_version",),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"claude": ("reviewer",)},
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "probe_engine",
+        lambda *_args, **_kwargs: unsupported,
+    )
+
+    assert cli_module.main(["engine", "doctor"]) == 1
+    output = capsys.readouterr().out
+    assert "Installed version: Claude Code 2.1.40." in output
+    assert "Minimum supported version: 2.1.41." in output
+    assert "Upgrade Claude Code, then rerun `alfred engine doctor`." in output
 
 
 def test_launchctl_timeout_returns_controlled_status(cli_module, monkeypatch):
