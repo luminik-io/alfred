@@ -1,378 +1,299 @@
-/* Theme token architecture: color themes (Alfred Dark/Light, Linear Crisp), @custom-variant, and @theme inline mapping. */
+/* Desktop theme tokens: Mineral and Carbon, each with dark and light modes. */
 
 @custom-variant dark (&:is(.dark *));
 
-/* ===========================================================================
- * THEME TOKEN ARCHITECTURE (docs/THEME_SYSTEM.md)
- *
- * Every color in the app resolves from a CSS custom property. Two dimensions
- * select the active set:
- *   1. data-theme on :root  -> "alfred" (default) or "linear"
- *   2. .dark / .light class on :root -> mode within the theme
- *
- * The base :root block below is the canonical full token set; it doubles as
- * Alfred Dark, the default theme, so the app is fully themed before any JS runs
- * (no undefined var() fallbacks). Theme + mode blocks below override it.
- *
- * Glass vs flat (the core aesthetic rule, see THEME_SYSTEM.md):
- *   --glass / --glass-strong / --glass-highlight / --glass-shadow drive the
- *   floating chrome (sidebar, palette, dialogs, hero). --surface / --surface-2
- *   / --hairline drive the flat, dense DATA surfaces (board, lists, tables).
- *   The per-theme --glass-blur token lets a theme dial glass down to near-flat
- *   (Linear Crisp) without touching component CSS.
- *
- * Each theme MUST define the complete token set. A vitest guard
- * (src/test/theme-tokens.test.ts) fails CI if any theme drops a token.
- * ========================================================================= */
-
+/*
+ * Components consume semantic tokens only. Mineral dark is the boot-time
+ * default so the first paint is complete before React restores a preference.
+ * Glass belongs to navigation and transient chrome; dense work surfaces use
+ * the opaque surface ladder.
+ */
 :root {
   color-scheme: dark;
 
-  /* --- Alfred Dark (default) = STEEL-VIOLET NOIR (Giga-grade). A near-black cool
-   * indigo FLOOR (L 0.115) sits well below the first surface rung so glass panels
-   * visibly float and the painted accent bloom (see .alfred-app-atmosphere) can
-   * actually be seen. Chroma is lifted off "gray with a rumor of blue" into deep
-   * cool ink, hairlines run a hair brighter/cooler so glass edges read crisp on
-   * near-black, and the accent EMITS light via the glow primitives below. The
-   * filled --primary (L 0.58) keeps white button text at WCAG AA; --accent/--ring
-   * run brighter for glow + focus. Elevation ladder: floor 0.115 -> surface 0.16
-   * -> surface-2 0.205 -> surface-3 0.25 -> card 0.175 (floats via blur+shadow). */
-  --background: oklch(0.115 0.018 270);
-  --foreground: oklch(0.975 0.010 275);
-  --card: oklch(0.175 0.021 271 / 92%);
-  --card-foreground: oklch(0.975 0.010 275);
-  --popover: oklch(0.185 0.021 271 / 97%);
-  --popover-foreground: oklch(0.975 0.010 275);
-  /* L 0.57 keeps white --primary-foreground at 4.69:1 (clears WCAG AA 4.5). */
-  --primary: oklch(0.57 0.205 285);
-  --primary-foreground: oklch(0.99 0.006 275);
-  --secondary: oklch(0.235 0.024 271 / 82%);
-  --secondary-foreground: oklch(0.94 0.012 275);
-  --muted: oklch(0.235 0.022 271 / 72%);
-  --muted-foreground: oklch(0.74 0.024 275);
-  --accent: oklch(0.68 0.21 286);
-  --accent-foreground: oklch(0.99 0.006 275);
-  --destructive: oklch(0.64 0.21 25);
-  --border: oklch(0.90 0.03 275 / 0.12);
-  --input: oklch(0.90 0.03 275 / 0.15);
-  --ring: oklch(0.68 0.21 286);
-  --chart-1: oklch(0.66 0.19 284);
-  --chart-2: oklch(0.68 0.16 228);
-  --chart-3: oklch(0.72 0.17 320);
-  --chart-4: oklch(0.74 0.16 152);
-  --chart-5: oklch(0.80 0.14 76);
+  --background: oklch(0.145 0.008 235);
+  --foreground: oklch(0.955 0.008 220);
+  --card: oklch(0.205 0.012 235 / 88%);
+  --card-foreground: oklch(0.955 0.008 220);
+  --popover: oklch(0.205 0.012 235 / 96%);
+  --popover-foreground: oklch(0.955 0.008 220);
+  --primary: oklch(0.54 0.145 232);
+  --primary-foreground: oklch(0.99 0.004 220);
+  --secondary: oklch(0.245 0.012 235 / 82%);
+  --secondary-foreground: oklch(0.92 0.008 220);
+  --muted: oklch(0.235 0.010 235 / 78%);
+  --muted-foreground: oklch(0.73 0.015 225);
+  --accent: oklch(0.76 0.105 210);
+  --accent-foreground: oklch(0.16 0.025 230);
+  --destructive: oklch(0.64 0.20 25);
+  --border: oklch(0.92 0.016 220 / 0.11);
+  --input: oklch(0.92 0.016 220 / 0.15);
+  --ring: oklch(0.70 0.12 215);
+  --chart-1: oklch(0.68 0.14 225);
+  --chart-2: oklch(0.72 0.14 158);
+  --chart-3: oklch(0.78 0.14 80);
+  --chart-4: oklch(0.70 0.16 350);
+  --chart-5: oklch(0.70 0.14 285);
 
-  /* Deep ink used behind code blocks and live-tail rows: the true black. */
-  --black: oklch(0.085 0.012 270);
+  --black: oklch(0.10 0.006 235);
+  --surface: oklch(0.180 0.010 235);
+  --surface-2: oklch(0.220 0.011 235);
+  --surface-3: oklch(0.265 0.012 235);
+  --hairline: oklch(0.92 0.016 220 / 0.08);
+  --border-strong: oklch(0.92 0.016 220 / 0.18);
 
-  /* Flat DATA surfaces: opaque, hairline-separated, no blur. Wider elevation
-     steps (0.16 / 0.205 / 0.25) so panels read as clearly lifted, not stacked. */
-  --surface: oklch(0.160 0.020 271);
-  --surface-2: oklch(0.205 0.022 271);
-  --surface-3: oklch(0.250 0.023 271);
-  --hairline: oklch(0.92 0.03 275 / 0.09);
-  --border-strong: oklch(0.90 0.03 275 / 0.20);
+  --glass: oklch(0.205 0.014 235 / 0.68);
+  --glass-strong: oklch(0.225 0.014 235 / 0.82);
+  --glass-highlight: rgba(220, 244, 250, 0.10);
+  --glass-shadow: rgba(3, 12, 18, 0.44);
+  --glass-blur: 18px;
+  --glass-saturate: 125%;
 
-  /* AGGRESSIVE GIGA-LEVEL GLASS: heavy blur, very translucent fills so the
-     ambient bloom shows through the sidebar, a cool specular highlight, and deep
-     layered shadows. --glass-blur is dialed high on prominent chrome. */
-  --glass: oklch(0.185 0.022 271 / 0.62);
-  --glass-strong: oklch(0.215 0.023 271 / 0.78);
-  --glass-highlight: rgba(202, 212, 255, 0.12);
-  --glass-shadow: rgba(0, 0, 0, 0.52);
-  --glass-blur: 28px;
-  --glass-saturate: 150%;
+  --accent-2: oklch(0.73 0.12 165);
+  --accent-ink: oklch(0.15 0.025 230);
+  --accent-soft: oklch(0.70 0.12 215 / 16%);
+  --accent-glow: oklch(0.70 0.12 215 / 0.34);
+  --accent-glow-soft: oklch(0.70 0.12 215 / 0.15);
 
-  /* Steel-violet signature, soft + ink variants for fills/labels. */
-  --accent-2: oklch(0.70 0.16 250);
-  --accent-ink: oklch(0.98 0.008 275);
-  --accent-soft: oklch(0.68 0.21 286 / 20%);
+  --ok: oklch(0.72 0.14 158);
+  --warn: oklch(0.78 0.14 80);
+  --error: oklch(0.64 0.20 25);
 
-  /* Accent glow primitives (see .btn-primary-glow / .nav-item-active below). Not
-     a color swap: an emission layer. Radial bloom, accent-tinted hover shadow. */
-  --accent-glow: oklch(0.68 0.21 286 / 0.55);
-  --accent-glow-soft: oklch(0.68 0.21 286 / 0.22);
+  --bright: oklch(0.98 0.006 220);
+  --text: oklch(0.955 0.008 220);
+  --blue: oklch(0.68 0.14 235);
+  --cobalt: oklch(0.60 0.15 255);
+  --cyan: oklch(0.76 0.11 205);
+  --rose: oklch(0.70 0.16 350);
+  --violet: oklch(0.68 0.14 295);
+  --brand-teal: oklch(0.72 0.12 175);
 
-  /* Status palette (STATUS ONLY: never decorative). ok/warn shift off the accent
-     hue so status never reads as brand accent. */
-  --ok: oklch(0.74 0.16 152);
-  --warn: oklch(0.80 0.14 76);
-  --error: oklch(0.64 0.21 25);
+  /* Broad linear light fields sit behind glass without decorative orbs. */
+  --ambient: oklch(0.48 0.10 225 / 0.16);
+  --ambient-2: oklch(0.48 0.08 165 / 0.09);
+  --ambient-center: oklch(0.22 0.012 235 / 0.24);
 
-  /* Supporting hues for agent accents + chips (kept wide so per-agent accents
-     stay distinct against the steel-violet brand). */
-  --bright: oklch(0.98 0.008 275);
-  --text: oklch(0.965 0.010 275);
-  --blue: oklch(0.68 0.16 250);
-  --cobalt: oklch(0.60 0.17 270);
-  --cyan: oklch(0.76 0.14 220);
-  --rose: oklch(0.72 0.17 354);
-  --violet: oklch(0.68 0.18 302);
-  /* The second brand accent, paired with --accent for the luminous prismatic
-     glass edges (violet -> cool-blue shimmer). Kept under the --brand-teal name
-     so every glass-edge rule that references it stays intact. */
-  --brand-teal: oklch(0.72 0.14 232);
-
-  /* Ambient radial depth: a steel-violet bloom PAINTED behind the content plane
-     by .alfred-app-atmosphere. --ambient is the main off-center bloom; --ambient-2
-     a fainter cool-blue counter-leak lower-left. */
-  --ambient: oklch(0.64 0.21 286 / 0.18);
-  --ambient-2: oklch(0.60 0.17 250 / 0.10);
-  /* Soft center lift: a raised dark indigo so the middle of the near-black floor
-     reads as gently lit, not a dead void. Tuned per mode via this token. */
-  --ambient-center: oklch(0.20 0.02 271 / 0.40);
-
-  --radius: 0;
-
-  /* Chat bubble max inline size, shared by every conversational surface (Ask,
-     the theme builder, onboarding) so a long turn wraps at the same width in all
-     of them instead of one surface capping earlier. Not a color token, so the
-     theme-token guard does not require per-theme copies; the narrower theme and
-     onboarding containers cap it naturally. */
+  --radius: 0.35rem;
   --chat-bubble-max: min(42rem, 92%);
 
-  --sidebar: oklch(0.145 0.020 270 / 0.68);
-  --sidebar-foreground: oklch(0.94 0.012 275);
-  --sidebar-primary: oklch(0.68 0.21 286);
-  --sidebar-primary-foreground: oklch(0.99 0.006 275);
-  --sidebar-accent: oklch(0.235 0.024 271 / 72%);
-  --sidebar-accent-foreground: oklch(0.965 0.010 275);
-  --sidebar-border: oklch(0.90 0.03 275 / 0.11);
-  --sidebar-ring: oklch(0.68 0.21 286);
+  --sidebar: oklch(0.165 0.010 235 / 0.74);
+  --sidebar-foreground: oklch(0.92 0.008 220);
+  --sidebar-primary: oklch(0.70 0.12 215);
+  --sidebar-primary-foreground: oklch(0.15 0.025 230);
+  --sidebar-accent: oklch(0.245 0.012 235 / 76%);
+  --sidebar-accent-foreground: oklch(0.955 0.008 220);
+  --sidebar-border: oklch(0.92 0.016 220 / 0.10);
+  --sidebar-ring: oklch(0.70 0.12 215);
 }
 
-/* Alfred Dark is also the explicit named selection. */
-:root[data-theme="alfred"].dark,
-:root[data-theme="alfred"]:not(.light) {
+:root[data-theme="mineral"].dark,
+:root[data-theme="mineral"]:not(.light) {
   color-scheme: dark;
 }
 
-/* --- Alfred Light: the same steel-violet identity, near-white base.
- * Text and accent hold WCAG AA. The accent darkens to oklch(0.52) so white
- * --primary-foreground text on it clears 4.5:1, and to keep links/active legible
- * on the light surface. --- */
-:root[data-theme="alfred"].light {
+:root[data-theme="mineral"].light {
   color-scheme: light;
-  /* Warm-paper light mode: soft off-white/cream surfaces (warm hue ~88, low
-     chroma) and warm-tinted ink + shadows, with the steel-violet accent kept
-     for brand contrast. Calmer and more eye-pleasant than the cool pure-white. */
-  --background: oklch(0.978 0.007 65);
-  --foreground: oklch(0.23 0.012 45);
-  --card: oklch(0.996 0.005 65 / 0.86);
-  --card-foreground: oklch(0.23 0.012 45);
-  --popover: oklch(0.995 0.005 65 / 0.98);
-  --popover-foreground: oklch(0.23 0.012 45);
-  /* Accent pulled one notch more saturated (steel-violet, hue 283) to match the
-     darker mode's new vividness, so the two modes read as one product. */
-  --primary: oklch(0.53 0.205 283);
-  --primary-foreground: oklch(0.99 0.005 65);
-  --secondary: oklch(0.945 0.010 62 / 80%);
-  --secondary-foreground: oklch(0.29 0.014 48);
-  --muted: oklch(0.938 0.009 62 / 78%);
-  --muted-foreground: oklch(0.47 0.016 50);
-  --accent: oklch(0.53 0.205 283);
-  --accent-foreground: oklch(0.99 0.005 65);
-  --destructive: oklch(0.55 0.22 25);
-  --border: oklch(0.30 0.014 45 / 0.12);
-  --input: oklch(0.30 0.014 45 / 0.14);
-  --ring: oklch(0.53 0.205 283);
-  --chart-1: oklch(0.53 0.205 283);
-  --chart-2: oklch(0.62 0.14 62);
-  --chart-3: oklch(0.55 0.12 200);
-  --chart-4: oklch(0.55 0.15 150);
-  --chart-5: oklch(0.56 0.16 320);
-  --black: oklch(0.965 0.007 65);
-  --surface: oklch(0.996 0.005 65);
-  --surface-2: oklch(0.976 0.008 63);
-  --surface-3: oklch(0.951 0.010 62);
-  --hairline: oklch(0.30 0.014 45 / 0.10);
-  --border-strong: oklch(0.30 0.014 45 / 0.20);
-  --glass: oklch(0.996 0.005 65 / 0.62);
-  --glass-strong: oklch(0.996 0.005 65 / 0.84);
-  --glass-highlight: rgba(255, 250, 244, 0.60);
-  --glass-shadow: rgba(74, 44, 28, 0.12);
-  /* Paper needs a touch less blur than the dark glass. */
-  --glass-blur: 22px;
-  --glass-saturate: 130%;
-  --accent-2: oklch(0.55 0.14 250);
-  --accent-ink: oklch(0.99 0.005 65);
-  --accent-soft: oklch(0.53 0.205 283 / 12%);
-  --accent-glow: oklch(0.53 0.205 283 / 0.30);
-  --accent-glow-soft: oklch(0.53 0.205 283 / 0.12);
-  --ok: oklch(0.55 0.15 158);
-  --warn: oklch(0.62 0.14 80);
-  --error: oklch(0.55 0.22 25);
-  --bright: oklch(0.20 0.012 45);
-  --text: oklch(0.23 0.012 45);
+  --background: oklch(0.975 0.004 225);
+  --foreground: oklch(0.225 0.012 235);
+  --card: oklch(0.995 0.003 225 / 88%);
+  --card-foreground: oklch(0.225 0.012 235);
+  --popover: oklch(0.995 0.003 225 / 97%);
+  --popover-foreground: oklch(0.225 0.012 235);
+  --primary: oklch(0.48 0.15 235);
+  --primary-foreground: oklch(0.99 0.003 225);
+  --secondary: oklch(0.935 0.008 225 / 86%);
+  --secondary-foreground: oklch(0.29 0.014 235);
+  --muted: oklch(0.935 0.007 225 / 82%);
+  --muted-foreground: oklch(0.47 0.018 235);
+  --accent: oklch(0.90 0.045 210);
+  --accent-foreground: oklch(0.22 0.035 235);
+  --destructive: oklch(0.55 0.21 25);
+  --border: oklch(0.28 0.014 235 / 0.12);
+  --input: oklch(0.28 0.014 235 / 0.15);
+  --ring: oklch(0.50 0.14 235);
+  --chart-1: oklch(0.50 0.15 235);
+  --chart-2: oklch(0.53 0.13 158);
+  --chart-3: oklch(0.60 0.14 80);
+  --chart-4: oklch(0.56 0.17 350);
+  --chart-5: oklch(0.54 0.15 295);
+  --black: oklch(0.94 0.005 225);
+  --surface: oklch(0.995 0.003 225);
+  --surface-2: oklch(0.965 0.006 225);
+  --surface-3: oklch(0.925 0.009 225);
+  --hairline: oklch(0.28 0.014 235 / 0.09);
+  --border-strong: oklch(0.28 0.014 235 / 0.20);
+  --glass: oklch(0.995 0.004 225 / 0.68);
+  --glass-strong: oklch(0.995 0.004 225 / 0.84);
+  --glass-highlight: rgba(255, 255, 255, 0.66);
+  --glass-shadow: rgba(32, 52, 60, 0.12);
+  --glass-blur: 16px;
+  --glass-saturate: 115%;
+  --accent-2: oklch(0.55 0.11 165);
+  --accent-ink: oklch(0.20 0.035 235);
+  --accent-soft: oklch(0.50 0.14 235 / 10%);
+  --accent-glow: oklch(0.50 0.14 235 / 0.22);
+  --accent-glow-soft: oklch(0.50 0.14 235 / 0.10);
+  --ok: oklch(0.52 0.14 158);
+  --warn: oklch(0.60 0.14 80);
+  --error: oklch(0.55 0.21 25);
+  --bright: oklch(0.20 0.012 235);
+  --text: oklch(0.225 0.012 235);
   --blue: oklch(0.50 0.15 235);
-  --cobalt: oklch(0.46 0.16 258);
+  --cobalt: oklch(0.46 0.16 255);
   --cyan: oklch(0.50 0.12 205);
-  --rose: oklch(0.55 0.18 3);
-  --violet: oklch(0.52 0.19 300);
-  --brand-teal: oklch(0.55 0.13 232);
-  /* A whisper of warm atmosphere so light mode still feels lit, not flat. */
-  --ambient: oklch(0.60 0.16 90 / 0.10);
-  --ambient-2: oklch(0.55 0.14 60 / 0.06);
-  /* Warm-paper center lift: a faint warm near-white glow so the middle reads as
-     softly lit paper. Never the dark indigo of the dark theme (that painted a
-     dark blotch across the light canvas). */
-  --ambient-center: oklch(0.97 0.02 85 / 0.30);
-  --sidebar: oklch(0.986 0.008 65 / 0.72);
-  --sidebar-foreground: oklch(0.29 0.014 48);
-  --sidebar-primary: oklch(0.545 0.205 33);
-  --sidebar-primary-foreground: oklch(0.99 0.005 65);
-  --sidebar-accent: oklch(0.94 0.008 62 / 72%);
-  --sidebar-accent-foreground: oklch(0.28 0.014 48);
-  --sidebar-border: oklch(0.22 0.014 45 / 0.12);
-  --sidebar-ring: oklch(0.545 0.205 33);
+  --rose: oklch(0.55 0.18 350);
+  --violet: oklch(0.52 0.17 295);
+  --brand-teal: oklch(0.52 0.12 175);
+  --ambient: oklch(0.58 0.08 220 / 0.10);
+  --ambient-2: oklch(0.62 0.07 165 / 0.07);
+  --ambient-center: oklch(0.99 0.004 225 / 0.24);
+  --sidebar: oklch(0.985 0.005 225 / 0.76);
+  --sidebar-foreground: oklch(0.29 0.014 235);
+  --sidebar-primary: oklch(0.48 0.15 235);
+  --sidebar-primary-foreground: oklch(0.99 0.003 225);
+  --sidebar-accent: oklch(0.93 0.008 225 / 78%);
+  --sidebar-accent-foreground: oklch(0.25 0.014 235);
+  --sidebar-border: oklch(0.28 0.014 235 / 0.11);
+  --sidebar-ring: oklch(0.50 0.14 235);
 }
 
-/* --- Linear Crisp: flatter and denser. Glass is dialed to near-flat
- * (--glass-blur drops to 4px, glass layers become nearly opaque), the radius
- * tightens, and the violet cools toward Linear's neutral indigo-gray without
- * copying Linear's exact indigo. Dark mode by default. --- */
-:root[data-theme="linear"],
-:root[data-theme="linear"].dark {
+/* Carbon keeps the same information hierarchy with denser, warmer graphite. */
+:root[data-theme="carbon"],
+:root[data-theme="carbon"].dark {
   color-scheme: dark;
-  --background: oklch(0.155 0.005 40);
-  --foreground: oklch(0.95 0.005 55);
-  --card: oklch(0.185 0.006 40);
-  --card-foreground: oklch(0.95 0.005 55);
-  --popover: oklch(0.19 0.006 40 / 98%);
-  --popover-foreground: oklch(0.95 0.005 55);
-  --primary: oklch(0.575 0.19 285);
-  --primary-foreground: oklch(0.99 0.005 55);
-  --secondary: oklch(0.22 0.006 42);
-  --secondary-foreground: oklch(0.92 0.005 55);
-  --muted: oklch(0.22 0.006 42);
-  --muted-foreground: oklch(0.68 0.010 50);
-  --accent: oklch(0.64 0.19 286);
-  --accent-foreground: oklch(0.99 0.005 55);
+  --background: oklch(0.135 0.003 245);
+  --foreground: oklch(0.95 0.004 220);
+  --card: oklch(0.185 0.004 245 / 91%);
+  --card-foreground: oklch(0.95 0.004 220);
+  --popover: oklch(0.19 0.004 245 / 97%);
+  --popover-foreground: oklch(0.95 0.004 220);
+  --primary: oklch(0.52 0.14 55);
+  --primary-foreground: oklch(0.99 0.003 220);
+  --secondary: oklch(0.225 0.005 245);
+  --secondary-foreground: oklch(0.91 0.004 220);
+  --muted: oklch(0.22 0.004 245);
+  --muted-foreground: oklch(0.69 0.009 225);
+  --accent: oklch(0.78 0.13 75);
+  --accent-foreground: oklch(0.18 0.025 55);
   --destructive: oklch(0.64 0.20 25);
-  --border: oklch(1 0 0 / 0.08);
-  --input: oklch(1 0 0 / 0.10);
-  --ring: oklch(0.64 0.19 286);
-  --chart-1: oklch(0.64 0.15 278);
-  --chart-2: oklch(0.66 0.14 225);
-  --chart-3: oklch(0.70 0.15 320);
-  --chart-4: oklch(0.72 0.15 150);
-  --chart-5: oklch(0.78 0.13 75);
-  --black: oklch(0.12 0.006 275);
-  --surface: oklch(0.185 0.009 275);
-  --surface-2: oklch(0.205 0.009 275);
-  --surface-3: oklch(0.235 0.01 275);
-  --hairline: oklch(1 0 0 / 0.07);
-  --border-strong: oklch(1 0 0 / 0.14);
-  --glass: oklch(0.185 0.009 275 / 0.94);
-  --glass-strong: oklch(0.20 0.009 275 / 0.97);
-  --glass-highlight: rgba(255, 255, 255, 0.05);
-  --glass-shadow: rgba(0, 0, 0, 0.30);
-  --glass-blur: 4px;
-  --glass-saturate: 110%;
-  --accent-2: oklch(0.70 0.15 250);
-  --accent-ink: oklch(0.99 0.005 55);
-  --accent-soft: oklch(0.64 0.19 286 / 14%);
-  --accent-glow: oklch(0.64 0.19 286 / 0.32);
-  --accent-glow-soft: oklch(0.64 0.19 286 / 0.14);
-  --ok: oklch(0.72 0.15 158);
-  --warn: oklch(0.80 0.13 85);
+  --border: oklch(0.96 0.008 220 / 0.09);
+  --input: oklch(0.96 0.008 220 / 0.13);
+  --ring: oklch(0.72 0.13 70);
+  --chart-1: oklch(0.72 0.14 70);
+  --chart-2: oklch(0.68 0.13 190);
+  --chart-3: oklch(0.70 0.14 150);
+  --chart-4: oklch(0.70 0.16 350);
+  --chart-5: oklch(0.67 0.14 285);
+  --black: oklch(0.095 0.002 245);
+  --surface: oklch(0.165 0.004 245);
+  --surface-2: oklch(0.200 0.005 245);
+  --surface-3: oklch(0.240 0.006 245);
+  --hairline: oklch(0.96 0.008 220 / 0.07);
+  --border-strong: oklch(0.96 0.008 220 / 0.16);
+  --glass: oklch(0.18 0.004 245 / 0.82);
+  --glass-strong: oklch(0.20 0.005 245 / 0.90);
+  --glass-highlight: rgba(235, 244, 248, 0.08);
+  --glass-shadow: rgba(4, 8, 12, 0.42);
+  --glass-blur: 12px;
+  --glass-saturate: 112%;
+  --accent-2: oklch(0.67 0.12 190);
+  --accent-ink: oklch(0.18 0.025 55);
+  --accent-soft: oklch(0.72 0.13 70 / 13%);
+  --accent-glow: oklch(0.72 0.13 70 / 0.27);
+  --accent-glow-soft: oklch(0.72 0.13 70 / 0.12);
+  --ok: oklch(0.70 0.14 150);
+  --warn: oklch(0.78 0.13 75);
   --error: oklch(0.64 0.20 25);
-  --bright: oklch(0.96 0.005 55);
-  --text: oklch(0.95 0.005 55);
-  --blue: oklch(0.68 0.14 235);
-  --cobalt: oklch(0.60 0.15 258);
-  --cyan: oklch(0.74 0.12 205);
-  --rose: oklch(0.70 0.16 3);
-  --violet: oklch(0.66 0.15 300);
-  --brand-teal: oklch(0.72 0.13 232);
-  --ambient: oklch(0.64 0.18 286 / 0.06);
-  --ambient-2: oklch(0.60 0.15 250 / 0.04);
-  /* Linear Crisp is deliberately flat: no center lift. */
-  --ambient-center: transparent;
-  --radius: 0;
-  --sidebar: oklch(0.165 0.005 40 / 0.96);
-  --sidebar-foreground: oklch(0.92 0.005 55);
-  --sidebar-primary: oklch(0.64 0.19 286);
-  --sidebar-primary-foreground: oklch(0.99 0.005 55);
-  --sidebar-accent: oklch(0.22 0.006 42);
-  --sidebar-accent-foreground: oklch(0.95 0.005 55);
-  --sidebar-border: oklch(1 0 0 / 0.08);
-  --sidebar-ring: oklch(0.64 0.19 286);
+  --bright: oklch(0.97 0.004 220);
+  --text: oklch(0.95 0.004 220);
+  --blue: oklch(0.66 0.13 235);
+  --cobalt: oklch(0.59 0.14 255);
+  --cyan: oklch(0.69 0.11 195);
+  --rose: oklch(0.70 0.16 350);
+  --violet: oklch(0.67 0.14 295);
+  --brand-teal: oklch(0.67 0.12 190);
+  --ambient: oklch(0.48 0.09 65 / 0.04);
+  --ambient-2: oklch(0.43 0.07 190 / 0.04);
+  --ambient-center: oklch(0.19 0.005 245 / 0.18);
+  --radius: 0.25rem;
+  --sidebar: oklch(0.15 0.004 245 / 0.91);
+  --sidebar-foreground: oklch(0.91 0.004 220);
+  --sidebar-primary: oklch(0.72 0.13 70);
+  --sidebar-primary-foreground: oklch(0.18 0.025 55);
+  --sidebar-accent: oklch(0.225 0.005 245);
+  --sidebar-accent-foreground: oklch(0.95 0.004 220);
+  --sidebar-border: oklch(0.96 0.008 220 / 0.08);
+  --sidebar-ring: oklch(0.72 0.13 70);
 }
 
-/* Linear Crisp light: dense, flat, near-white. */
-:root[data-theme="linear"].light {
+:root[data-theme="carbon"].light {
   color-scheme: light;
-  --background: oklch(0.985 0.002 55);
-  --foreground: oklch(0.24 0.008 45);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.008 45);
-  --popover: oklch(1 0 0 / 0.99);
-  --popover-foreground: oklch(0.24 0.008 45);
-  --primary: oklch(0.52 0.20 283);
-  --primary-foreground: oklch(0.99 0.004 55);
-  --secondary: oklch(0.95 0.004 55);
-  --secondary-foreground: oklch(0.28 0.010 48);
-  --muted: oklch(0.95 0.003 55);
-  --muted-foreground: oklch(0.46 0.012 50);
-  --accent: oklch(0.52 0.20 283);
-  --accent-foreground: oklch(0.99 0.004 55);
-  --destructive: oklch(0.55 0.22 25);
-  --border: oklch(0.24 0.010 45 / 0.12);
-  --input: oklch(0.24 0.010 45 / 0.14);
-  --ring: oklch(0.52 0.20 283);
-  --chart-1: oklch(0.54 0.18 278);
-  --chart-2: oklch(0.55 0.14 225);
-  --chart-3: oklch(0.56 0.16 320);
-  --chart-4: oklch(0.55 0.15 150);
-  --chart-5: oklch(0.62 0.13 75);
-  --black: oklch(0.965 0.002 275);
-  --surface: oklch(1 0 0);
-  --surface-2: oklch(0.98 0.002 275);
-  --surface-3: oklch(0.955 0.004 275);
-  --hairline: oklch(0.24 0.012 275 / 0.10);
-  --border-strong: oklch(0.24 0.012 275 / 0.20);
-  --glass: oklch(1 0 0 / 0.92);
-  --glass-strong: oklch(1 0 0 / 0.97);
-  --glass-highlight: rgba(255, 255, 255, 0.5);
-  --glass-shadow: rgba(36, 34, 60, 0.10);
-  --glass-blur: 4px;
-  --glass-saturate: 110%;
-  --accent-2: oklch(0.55 0.13 250);
-  --accent-ink: oklch(0.99 0.004 55);
-  --accent-soft: oklch(0.52 0.20 283 / 12%);
-  --accent-glow: oklch(0.52 0.20 283 / 0.28);
-  --accent-glow-soft: oklch(0.52 0.20 283 / 0.12);
-  --ok: oklch(0.55 0.15 158);
-  --warn: oklch(0.62 0.14 80);
-  --error: oklch(0.55 0.22 25);
-  --bright: oklch(0.2 0.008 45);
-  --text: oklch(0.24 0.008 45);
-  --blue: oklch(0.50 0.15 235);
-  --cobalt: oklch(0.46 0.16 258);
-  --cyan: oklch(0.50 0.12 205);
-  --rose: oklch(0.55 0.18 3);
-  --violet: oklch(0.52 0.18 300);
-  --brand-teal: oklch(0.55 0.12 232);
-  --ambient: oklch(0.52 0.19 283 / 0.07);
-  --ambient-2: oklch(0.50 0.15 250 / 0.04);
-  /* Linear Crisp is deliberately flat: no center lift. */
-  --ambient-center: transparent;
-  --radius: 0;
-  --sidebar: oklch(0.99 0.002 55 / 0.96);
-  --sidebar-foreground: oklch(0.28 0.010 48);
-  --sidebar-primary: oklch(0.52 0.20 283);
-  --sidebar-primary-foreground: oklch(0.99 0.004 55);
-  --sidebar-accent: oklch(0.95 0.004 55);
-  --sidebar-accent-foreground: oklch(0.28 0.010 48);
-  --sidebar-border: oklch(0.24 0.010 45 / 0.12);
-  --sidebar-ring: oklch(0.52 0.20 283);
+  --background: oklch(0.978 0.002 225);
+  --foreground: oklch(0.225 0.008 245);
+  --card: oklch(0.998 0.002 225 / 92%);
+  --card-foreground: oklch(0.225 0.008 245);
+  --popover: oklch(0.998 0.002 225 / 98%);
+  --popover-foreground: oklch(0.225 0.008 245);
+  --primary: oklch(0.49 0.15 48);
+  --primary-foreground: oklch(0.99 0.003 225);
+  --secondary: oklch(0.945 0.005 225);
+  --secondary-foreground: oklch(0.28 0.010 245);
+  --muted: oklch(0.945 0.004 225);
+  --muted-foreground: oklch(0.46 0.012 245);
+  --accent: oklch(0.91 0.045 75);
+  --accent-foreground: oklch(0.24 0.03 55);
+  --destructive: oklch(0.55 0.21 25);
+  --border: oklch(0.25 0.010 245 / 0.11);
+  --input: oklch(0.25 0.010 245 / 0.14);
+  --ring: oklch(0.51 0.14 50);
+  --chart-1: oklch(0.52 0.15 50);
+  --chart-2: oklch(0.50 0.12 190);
+  --chart-3: oklch(0.51 0.13 150);
+  --chart-4: oklch(0.55 0.17 350);
+  --chart-5: oklch(0.52 0.15 295);
+  --black: oklch(0.945 0.003 225);
+  --surface: oklch(0.998 0.002 225);
+  --surface-2: oklch(0.968 0.003 225);
+  --surface-3: oklch(0.930 0.005 225);
+  --hairline: oklch(0.25 0.010 245 / 0.08);
+  --border-strong: oklch(0.25 0.010 245 / 0.18);
+  --glass: oklch(0.998 0.002 225 / 0.80);
+  --glass-strong: oklch(0.998 0.002 225 / 0.90);
+  --glass-highlight: rgba(255, 255, 255, 0.62);
+  --glass-shadow: rgba(32, 43, 49, 0.10);
+  --glass-blur: 12px;
+  --glass-saturate: 108%;
+  --accent-2: oklch(0.50 0.11 190);
+  --accent-ink: oklch(0.22 0.03 55);
+  --accent-soft: oklch(0.51 0.14 50 / 9%);
+  --accent-glow: oklch(0.51 0.14 50 / 0.20);
+  --accent-glow-soft: oklch(0.51 0.14 50 / 0.09);
+  --ok: oklch(0.51 0.13 150);
+  --warn: oklch(0.59 0.14 75);
+  --error: oklch(0.55 0.21 25);
+  --bright: oklch(0.20 0.008 245);
+  --text: oklch(0.225 0.008 245);
+  --blue: oklch(0.49 0.14 235);
+  --cobalt: oklch(0.45 0.15 255);
+  --cyan: oklch(0.49 0.11 195);
+  --rose: oklch(0.55 0.18 350);
+  --violet: oklch(0.51 0.17 295);
+  --brand-teal: oklch(0.50 0.11 190);
+  --ambient: oklch(0.61 0.07 70 / 0.04);
+  --ambient-2: oklch(0.58 0.06 190 / 0.04);
+  --ambient-center: oklch(0.99 0.003 225 / 0.20);
+  --radius: 0.25rem;
+  --sidebar: oklch(0.988 0.003 225 / 0.88);
+  --sidebar-foreground: oklch(0.28 0.010 245);
+  --sidebar-primary: oklch(0.49 0.15 48);
+  --sidebar-primary-foreground: oklch(0.99 0.003 225);
+  --sidebar-accent: oklch(0.945 0.005 225);
+  --sidebar-accent-foreground: oklch(0.25 0.010 245);
+  --sidebar-border: oklch(0.25 0.010 245 / 0.10);
+  --sidebar-ring: oklch(0.51 0.14 50);
 }
 
 @theme inline {
-  /* OPERATOR DIRECTIVE 2026-06-13 (do not revert): Alfred uses Instrument Sans
-     for headings, Quicksand for interface/body copy, and Fragment Mono for
-     transcripts, ids, and code. */
   --font-heading: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Quicksand Variable", "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -415,4 +336,3 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
-

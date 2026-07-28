@@ -1,6 +1,5 @@
-// Pixel-sweep audit harness. Loads every primary surface at five widths in both
-// themes against the live dev server, screenshots each, and asserts hard layout
-// invariants programmatically.
+// Pixel-sweep audit harness. Loads every primary surface across named palettes,
+// light/dark modes, and five widths, then asserts hard layout invariants.
 //
 //   node scripts/pixel-sweep.mjs
 //   node scripts/pixel-sweep.mjs --quiet
@@ -16,8 +15,27 @@ const OUT_DIR = join(__dirname, "..", ".pixel-sweep");
 const BASE = process.env.SWEEP_BASE || "http://127.0.0.1:1420";
 const QUIET = process.argv.includes("--quiet");
 
-const WIDTHS = [375, 768, 1024, 1280, 1680];
-const THEMES = ["dark", "light"];
+function parseWidths(value) {
+  const widths = value.split(",").map((entry) => Number(entry.trim()));
+  if (widths.length === 0 || widths.some((width) => !Number.isInteger(width) || width <= 0)) {
+    throw new Error(`SWEEP_WIDTHS must be a comma-separated list of positive integers: ${value}`);
+  }
+  return [...new Set(widths)];
+}
+
+function parsePalettes(value) {
+  const supported = new Set(["mineral", "carbon"]);
+  const palettes = value.split(",").map((entry) => entry.trim());
+  const invalid = palettes.filter((palette) => !supported.has(palette));
+  if (palettes.length === 0 || invalid.length > 0) {
+    throw new Error(`SWEEP_PALETTES must contain only mineral or carbon: ${value}`);
+  }
+  return [...new Set(palettes)];
+}
+
+const WIDTHS = parseWidths(process.env.SWEEP_WIDTHS || "375,768,1024,1280,1680");
+const PALETTES = parsePalettes(process.env.SWEEP_PALETTES || "mineral,carbon");
+const MODES = ["dark", "light"];
 const HEIGHT = 900;
 const ROUTE_TIMEOUT_MS = parsePositiveInt(process.env.SWEEP_ROUTE_TIMEOUT_MS, 20000);
 const NAVIGATION_ATTEMPTS = 2;
@@ -178,19 +196,24 @@ function parsePositiveInt(value, fallback) {
   return parsed;
 }
 
-async function applyTheme(page, theme) {
+async function applyTheme(page, palette, mode) {
   await page.evaluate(
-    ({ t, nameKey, modeKey }) => {
+    ({ paletteName, themeMode, nameKey, modeKey }) => {
       const root = document.documentElement;
-      root.classList.toggle("dark", t === "dark");
-      root.classList.toggle("light", t === "light");
-      root.setAttribute("data-theme", "alfred");
+      root.classList.toggle("dark", themeMode === "dark");
+      root.classList.toggle("light", themeMode === "light");
+      root.setAttribute("data-theme", paletteName);
       try {
-        localStorage.setItem(nameKey, "alfred");
-        localStorage.setItem(modeKey, t);
+        localStorage.setItem(nameKey, paletteName);
+        localStorage.setItem(modeKey, themeMode);
       } catch {}
     },
-    { t: theme, nameKey: THEME_NAME_STORAGE_KEY, modeKey: THEME_MODE_STORAGE_KEY },
+    {
+      paletteName: palette,
+      themeMode: mode,
+      nameKey: THEME_NAME_STORAGE_KEY,
+      modeKey: THEME_MODE_STORAGE_KEY,
+    },
   );
 }
 
@@ -208,23 +231,43 @@ async function withTimeout(task, ms, label) {
   }
 }
 
-async function renderRoute(browser, { theme, width, route }) {
+async function renderRoute(browser, { palette, mode, width, route }) {
   const context = await browser.newContext({
     viewport: { width, height: HEIGHT },
     deviceScaleFactor: 1,
-    colorScheme: theme === "dark" ? "dark" : "light",
+    colorScheme: mode,
   });
 
   try {
     const page = await context.newPage();
+    const runtimeViolations = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" || message.type() === "warning") {
+        runtimeViolations.push({
+          kind: `console-${message.type()}`,
+          detail: message.text().slice(0, 240),
+        });
+      }
+    });
+    page.on("pageerror", (error) => {
+      runtimeViolations.push({
+        kind: "page-error",
+        detail: error.message.slice(0, 240),
+      });
+    });
     await page.addInitScript(
-      ({ t, nameKey, modeKey }) => {
+      ({ paletteName, themeMode, nameKey, modeKey }) => {
         try {
-          localStorage.setItem(nameKey, "alfred");
-          localStorage.setItem(modeKey, t);
+          localStorage.setItem(nameKey, paletteName);
+          localStorage.setItem(modeKey, themeMode);
         } catch {}
       },
-      { t: theme, nameKey: THEME_NAME_STORAGE_KEY, modeKey: THEME_MODE_STORAGE_KEY },
+      {
+        paletteName: palette,
+        themeMode: mode,
+        nameKey: THEME_NAME_STORAGE_KEY,
+        modeKey: THEME_MODE_STORAGE_KEY,
+      },
     );
 
     const url = `${BASE}/?${route.q}`;
@@ -238,7 +281,7 @@ async function renderRoute(browser, { theme, width, route }) {
         await page.waitForTimeout(500);
       }
     }
-    await applyTheme(page, theme);
+    await applyTheme(page, palette, mode);
     await page.waitForTimeout(700);
     await page.waitForSelector(route.ready, {
       timeout: ROUTE_TIMEOUT_MS,
@@ -246,8 +289,8 @@ async function renderRoute(browser, { theme, width, route }) {
     });
     await page.waitForTimeout(300);
 
-    const violations = await page.evaluate(PROBE);
-    const shot = `${route.id}_${width}_${theme}.png`;
+    const violations = [...(await page.evaluate(PROBE)), ...runtimeViolations];
+    const shot = `${route.id}_${width}_${palette}_${mode}.png`;
     try {
       await page.screenshot({
         path: join(OUT_DIR, shot),
@@ -255,7 +298,7 @@ async function renderRoute(browser, { theme, width, route }) {
         timeout: SCREENSHOT_TIMEOUT_MS,
       });
     } catch {}
-    return { route: route.id, width, theme, violations, shot };
+    return { route: route.id, width, palette, mode, violations, shot };
   } finally {
     await context.close().catch(() => {});
   }
@@ -268,16 +311,18 @@ async function run() {
   let total = 0;
 
   try {
-    for (const theme of THEMES) {
-      for (const width of WIDTHS) {
-        for (const route of ROUTES) {
-          const result = await withTimeout(
-            renderRoute(browser, { theme, width, route }),
-            RENDER_TIMEOUT_MS,
-            `${route.id} ${width} ${theme}`,
-          );
-          total += result.violations.length;
-          results.push(result);
+    for (const palette of PALETTES) {
+      for (const mode of MODES) {
+        for (const width of WIDTHS) {
+          for (const route of ROUTES) {
+            const result = await withTimeout(
+              renderRoute(browser, { palette, mode, width, route }),
+              RENDER_TIMEOUT_MS,
+              `${route.id} ${width} ${palette} ${mode}`,
+            );
+            total += result.violations.length;
+            results.push(result);
+          }
         }
       }
     }
@@ -292,7 +337,7 @@ async function run() {
     for (const v of r.violations) {
       const key = v.kind;
       byKind[key] = byKind[key] || [];
-      byKind[key].push(`[${r.route} ${r.width} ${r.theme}] ${v.detail}`);
+      byKind[key].push(`[${r.route} ${r.width} ${r.palette} ${r.mode}] ${v.detail}`);
     }
   }
   if (!QUIET) {
@@ -300,7 +345,7 @@ async function run() {
   }
   const kinds = Object.keys(byKind).sort();
   if (kinds.length === 0) {
-    console.log("CLEAN: no violations across all routes / widths / themes.");
+    console.log("CLEAN: no violations across all routes / widths / palettes / modes.");
   } else {
     for (const k of kinds) {
       console.log(`\n## ${k} (${byKind[k].length})`);
