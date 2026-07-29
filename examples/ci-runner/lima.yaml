@@ -1,0 +1,79 @@
+# Disposable Ubuntu guest for one untrusted CI job.
+#
+# The dated image URL and digest make the base filesystem immutable. Update
+# both fields together after reviewing a newer Ubuntu cloud-image release.
+minimumLimaVersion: "2.0.0"
+vmType: vz
+arch: aarch64
+plain: true
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release-20260725/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: aarch64
+    digest: "sha256:2eaec7286c49fdea713dddabcf5012cafa7097a658e916acb48f4bc5fdc8e419"
+
+cpus: 4
+memory: "6GiB"
+disk: "40GiB"
+
+user:
+  name: alfred-ci
+  uid: 1000
+  home: /home/alfred-ci
+  shell: /bin/bash
+  passwordlessSudo: false
+
+mounts: []
+portForwards: []
+
+ssh:
+  forwardAgent: false
+
+containerd:
+  system: false
+  user: false
+
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+
+propagateProxyEnv: false
+
+provision:
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install --yes --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        iptables \
+        jq \
+        libicu-dev \
+        python3 \
+        python3-venv \
+        rsync \
+        shellcheck \
+        tar
+      iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      for cidr in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do
+        iptables -A OUTPUT -d "$cidr" -p udp --dport 53 -j ACCEPT
+        iptables -A OUTPUT -d "$cidr" -p tcp --dport 53 -j ACCEPT
+        iptables -A OUTPUT -d "$cidr" -j REJECT
+      done
+      iptables -A OUTPUT -d 100.64.0.0/10 -j REJECT
+      iptables -A OUTPUT -d 224.0.0.0/4 -j REJECT
+      iptables -A OUTPUT -d 240.0.0.0/4 -j REJECT
+      ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      for cidr in "fc00::/7" "fe80::/10"; do
+        ip6tables -A OUTPUT -d "$cidr" -p udp --dport 53 -j ACCEPT
+        ip6tables -A OUTPUT -d "$cidr" -p tcp --dport 53 -j ACCEPT
+        ip6tables -A OUTPUT -d "$cidr" -j REJECT
+      done
+      apt-get clean
+      rm -rf /var/lib/apt/lists/*

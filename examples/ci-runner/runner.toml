@@ -1,0 +1,27 @@
+[runner]
+organization = "luminik-io"
+repository = "luminik-io/alfred"
+runner_group = "mac-mini-disposable"
+instance_prefix = "alfred-ci"
+job_label_prefix = "alfred-job"
+cpus = 4
+memory_gib = 6
+disk_gib = 40
+job_timeout_minutes = 90
+lima_template = "lima.yaml"
+
+# Pinned from the signed actions/runner v2.336.0 release notes.
+runner_version = "2.336.0"
+runner_sha256 = "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"
+
+[fallback]
+context = "Hermes / Local CI"
+commands = [
+  ["python3", "-m", "venv", ".ci-venv"],
+  [".ci-venv/bin/python", "-m", "pip", "install", "--disable-pip-version-check", "pytest==9.1.1", "fastapi==0.140.13", "httpx==0.28.1", "httpx2==2.9.1", "ruff==0.15.22", "mypy==2.3.0"],
+  [".ci-venv/bin/ruff", "check", "."],
+  [".ci-venv/bin/ruff", "format", "--check", "."],
+  [".ci-venv/bin/mypy", "lib/"],
+  ["bash", "bin/scrub-check.sh"],
+  [".ci-venv/bin/python", "-m", "pytest", "tests/", "-q"],
+]
