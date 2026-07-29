@@ -2,7 +2,9 @@ name: Site
 
 on:
   schedule:
-    - cron: "17 6 * * *"
+    # Proof data does not need a full site rebuild every day. Main pushes still
+    # deploy immediately; this keeps long quiet periods fresh twice per week.
+    - cron: "17 6 * * 1,4"
   push:
     branches: [main]
     paths:
@@ -33,6 +35,7 @@ jobs:
   build:
     name: Build (Astro)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
 
@@ -85,12 +88,14 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: site/dist
+          retention-days: 1
 
   deploy:
     name: Deploy to GitHub Pages
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

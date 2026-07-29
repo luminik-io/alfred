@@ -1,13 +1,11 @@
 name: scrub-history
 
-# Scheduled full git-HISTORY scrub. The PR-blocking scrub-check job in ci.yml
-# only sees the current checkout; this catches private paths or secrets that
-# were committed in the PAST. It runs on a cron (and on demand) and is
-# deliberately NOT wired to pull_request / push, so it never blocks a PR.
+# On-demand full git-HISTORY scrub. The PR-blocking scrub-check job in ci.yml
+# prevents new private paths from landing, while the scheduled full-history
+# gitleaks scan covers secrets. This known-dirty historical check remains
+# available for the supervised history-rewrite work without spending a runner
+# minute every week to repeat the same informational result.
 on:
-  schedule:
-    # 06:17 UTC every Monday.
-    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 concurrency:
@@ -21,6 +19,7 @@ jobs:
   history-scan:
     name: Full git-history cleanliness scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:

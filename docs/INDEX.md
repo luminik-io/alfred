@@ -82,6 +82,7 @@ Current map of the public docs. Trust code first, then this index.
 ## Project
 
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
+- [`CI.md`](CI.md): hosted-check scopes, the stable required context, and complete local verification commands.
 - [`../ROADMAP.md`](../ROADMAP.md)
 - [`../CHANGELOG.md`](../CHANGELOG.md)
 - [`../SECURITY.md`](../SECURITY.md)

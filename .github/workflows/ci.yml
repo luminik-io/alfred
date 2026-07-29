@@ -4,131 +4,163 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited]
-  push:
-    branches: [main]
+  schedule:
+    - cron: "11 5 * * 1"
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  lint-python:
-    name: Lint (ruff + mypy)
+  quality:
+    name: Core quality
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-      - name: ruff check
-        run: uv run --with 'ruff==0.15.22' ruff check .
-      - name: ruff format check
-        run: uv run --with 'ruff==0.15.22' ruff format --check .
-      - name: mypy
-        run: uv run --with 'mypy==2.3.0' mypy lib/
-
-  test-python:
-    name: pytest
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-      - run: uv run --python ${{ matrix.python }} --with pytest --with fastapi --with httpx --with httpx2 pytest tests/ -v
-
-  shellcheck:
-    name: shellcheck (bash)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Remove flaky runner apt sources
-        run: |
-          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
-            \( -iname "*microsoft*" -o -iname "*azure-cli*" \) \
-            -print -delete || true
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Find shell scripts
-        id: find
-        run: |
-          {
-            echo "files<<EOF"
-            find . -type f \
-              \( -name "*.sh" -o -name "*.bash" \) \
-              ! -path "./site/node_modules/*" \
-              ! -path "./.git/*"
-            # Also any executable shell-shebang files
-            find . -type f -perm -u+x \
-              ! -path "./site/node_modules/*" \
-              ! -path "./.git/*" \
-              -exec sh -c 'head -1 "$1" | grep -qE "^#!.*\b(bash|sh)\b"' _ {} \;
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-      - name: Run shellcheck
-        if: steps.find.outputs.files != ''
-        run: |
-          # shellcheck disable=SC2086
-          echo "${{ steps.find.outputs.files }}" | sort -u | while read -r f; do
-            [ -z "$f" ] && continue
-            echo "==> $f"
-            shellcheck -S warning "$f" || exit 1
-          done
-
-  python-syntax:
-    name: Python syntax check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - name: Compile every Python file
-        run: |
-          find . -name "*.py" \
-            ! -path "./site/node_modules/*" \
-            ! -path "./.git/*" \
-            -print0 | xargs -0 -n1 python -m py_compile
-
-  scrub-check:
-    name: Alfred cleanliness scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Refuse known-private patterns
-        run: bash bin/scrub-check.sh
-
-  public-metadata:
-    name: Public PR metadata
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    # A squash merge turns the PR title and body into the permanent commit
-    # subject and message, so scanning them protects history. Every commit
-    # message on the branch is scanned too, in case the PR is not squashed.
-    env:
-      PR_TITLE: ${{ github.event.pull_request.title }}
-      PR_BODY: ${{ github.event.pull_request.body }}
+    timeout-minutes: 10
+    outputs:
+      python: ${{ steps.scopes.outputs.python }}
+      desktop: ${{ steps.scopes.outputs.desktop }}
+      desktop_native: ${{ steps.scopes.outputs.desktop_native }}
+      site_proof: ${{ steps.scopes.outputs.site_proof }}
+      source: ${{ steps.scopes.outputs.source }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v7
+
+      - name: Resolve changed surfaces
+        id: scopes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          python=false
+          desktop=false
+          desktop_native=false
+          site_proof=false
+          source=false
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            python=true
+            desktop=true
+            desktop_native=true
+            site_proof=true
+            source=true
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            python=true
+          elif [ "$EVENT_ACTION" != "edited" ]; then
+            changed_files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+
+            if grep -Eq '(^|/).*\.(py|sh|bash)$|^bin/|^pyproject\.toml$|^uv\.lock$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+              source=true
+            fi
+            if grep -Eq '(^|/).+\.py$|^pyproject\.toml$|^uv\.lock$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+              python=true
+            fi
+            if grep -Eq '^clients/desktop/|^lib/server/|^bin/alfred$|^pyproject\.toml$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+              desktop=true
+            fi
+            if grep -Eq '^clients/desktop/src-tauri/|^clients/desktop/package(-lock)?\.json$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+              desktop_native=true
+            fi
+            if grep -Eq '^site/scripts/|^site/package(-lock)?\.json$|^lib/self_proof\.py$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+              site_proof=true
+            fi
+          fi
+
+          {
+            echo "python=$python"
+            echo "desktop=$desktop"
+            echo "desktop_native=$desktop_native"
+            echo "site_proof=$site_proof"
+            echo "source=$source"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@v7
+        if: steps.scopes.outputs.source == 'true'
         with:
-          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Lint and type-check Python
+        if: steps.scopes.outputs.source == 'true'
+        run: |
+          uv run --with 'ruff==0.15.22' ruff check .
+          uv run --with 'ruff==0.15.22' ruff format --check .
+          uv run --with 'mypy==2.3.0' mypy lib/
+
+      - name: Compile every Python file
+        if: steps.scopes.outputs.source == 'true'
+        run: |
+          find . -name "*.py" \
+            ! -path "./site/node_modules/*" \
+            ! -path "./.git/*" \
+            -print0 | xargs -0 -n1 python3 -m py_compile
+
+      - name: Shellcheck
+        if: steps.scopes.outputs.source == 'true'
+        run: |
+          shellcheck --version
+          {
+            find . -type f \
+              \( -name "*.sh" -o -name "*.bash" \) \
+              ! -path "./site/node_modules/*" \
+              ! -path "./.git/*" \
+              -print0
+            find . -type f -perm -u+x \
+              ! -path "./site/node_modules/*" \
+              ! -path "./.git/*" \
+              -exec sh -c \
+                'head -1 "$1" | grep -qE "^#!.*\\b(bash|sh)\\b" && printf "%s\\0" "$1"' \
+                _ {} \;
+          } \
+            | sort -zu \
+            | xargs -0 shellcheck -S warning
+
+      - name: Refuse known-private patterns
+        run: bash bin/scrub-check.sh
+
+      - name: Install gitleaks
+        if: github.event_name == 'pull_request'
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          bash bin/install-gitleaks.sh "$RUNNER_TEMP"
+
+      - name: Scan pull-request commits for secrets
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          "$RUNNER_TEMP/gitleaks" git \
+            --log-opts="$BASE_SHA..$HEAD_SHA" \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            --exit-code 1 \
+            .
+
+      - name: Set up Node for proof tests
+        if: steps.scopes.outputs.site_proof == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22.12.0"
+
+      - name: Test proof emitter attribution and share
+        if: steps.scopes.outputs.site_proof == 'true'
+        working-directory: site
+        run: npm test
+
       - name: Collect PR commit messages
+        if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -138,29 +170,57 @@ jobs:
             git log --format=%B "$BASE_SHA..$HEAD_SHA"
             echo "PR_COMMITS_EOF"
           } >> "$GITHUB_ENV"
-      - name: Refuse private or raw PR metadata
-        run: python bin/public-metadata-check.py
 
-  site-emitter:
-    name: Site proof emitter (node:test)
+      - name: Refuse private or raw PR metadata
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 bin/public-metadata-check.py
+
+  python:
+    name: Python compatibility
+    needs: quality
+    if: needs.quality.outputs.python == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22.12.0"
-      # The public "% shipped by Alfred agents" headline is computed by the
-      # site emitter's attribution rule; these tests lock it to the same
-      # label-only, exact-match rule as lib/self_proof.py so the displayed
-      # number cannot drift or be gamed by a branch prefix. No deps to install:
-      # the module and its tests are dependency-free and run on node:test.
-      - name: Test proof emitter attribution + share
-        working-directory: site
-        run: npm test
 
-  desktop-client:
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      # PRs test the current 3.13 runtime. The weekly and manual runs cover the
+      # complete supported range without multiplying every synchronize event.
+      - name: Test supported Python versions
+        env:
+          FULL_COMPATIBILITY: ${{ github.event_name != 'pull_request' }}
+        run: |
+          set -euo pipefail
+          versions=(3.13)
+          if [ "$FULL_COMPATIBILITY" = "true" ]; then
+            versions=(3.11 3.12 3.13)
+          fi
+          uv python install "${versions[@]}"
+          for version in "${versions[@]}"; do
+            echo "==> pytest on Python $version"
+            uv run \
+              --python "$version" \
+              --with pytest \
+              --with fastapi \
+              --with httpx \
+              --with httpx2 \
+              pytest tests/ -v
+          done
+
+  desktop:
     name: Desktop client
+    needs: quality
+    if: needs.quality.outputs.desktop == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
 
@@ -171,20 +231,17 @@ jobs:
           cache-dependency-path: clients/desktop/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.quality.outputs.desktop_native == 'true'
         with:
           components: rustfmt
 
       - uses: Swatinem/rust-cache@v2
+        if: needs.quality.outputs.desktop_native == 'true'
         with:
           workspaces: clients/desktop/src-tauri
 
-      - name: Remove flaky runner apt sources
-        run: |
-          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
-            \( -iname "*microsoft*" -o -iname "*azure-cli*" \) \
-            -print -delete || true
-
       - name: Install Tauri Linux dependencies
+        if: needs.quality.outputs.desktop_native == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -202,13 +259,11 @@ jobs:
         working-directory: clients/desktop
         run: npm ci
 
-      - name: Type-check frontend
+      - name: Type-check and test frontend
         working-directory: clients/desktop
-        run: npm run typecheck
-
-      - name: Test frontend (vitest guards)
-        working-directory: clients/desktop
-        run: npm run test
+        run: |
+          npm run typecheck
+          npm run test
 
       - name: Install Playwright browser
         working-directory: clients/desktop
@@ -218,14 +273,38 @@ jobs:
         working-directory: clients/desktop
         run: npm run test:contract
 
-      - name: Check Rust formatting
+      - name: Check and test native shell
+        if: needs.quality.outputs.desktop_native == 'true'
         working-directory: clients/desktop
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-
-      - name: Test native shell
-        working-directory: clients/desktop/src-tauri
-        run: cargo test
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build native shell
+        if: needs.quality.outputs.desktop_native == 'true'
         working-directory: clients/desktop
         run: npm run tauri -- build --no-bundle --ci
+
+  required:
+    name: Required
+    needs: [quality, python, desktop]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Enforce all applicable checks
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+        run: |
+          set -euo pipefail
+          for result in "$QUALITY_RESULT" "$PYTHON_RESULT" "$DESKTOP_RESULT"; do
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "::error::An applicable CI job finished with: $result"
+                exit 1
+                ;;
+            esac
+          done

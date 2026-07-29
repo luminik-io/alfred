@@ -4,41 +4,46 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "07:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "deps"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
+    groups:
+      python-runtime:
+        patterns:
+          - "*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "07:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "deps"
     commit-message:
       prefix: "chore(actions)"
       include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "*"
 
   # Astro Starlight site
   - package-ecosystem: "npm"
     directory: "/site"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"
       time: "07:00"
       timezone: "Etc/UTC"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     labels:
       - "deps"
       - "site"
@@ -46,10 +51,6 @@ updates:
       prefix: "chore(site)"
       include: "scope"
     groups:
-      astro:
+      site-runtime:
         patterns:
-          - "astro*"
-          - "@astrojs/*"
-      starlight:
-        patterns:
-          - "@astrojs/starlight*"
+          - "*"

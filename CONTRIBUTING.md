@@ -63,6 +63,10 @@ uv run --with 'mypy>=1.10' mypy lib/
 bash bin/scrub-check.sh
 ```
 
+The hosted checks are path-aware and intentionally avoid repeating reviewed
+work after merge. See [`docs/CI.md`](docs/CI.md) for the full local commands,
+conditional CI surfaces, and the stable branch-protection context.
+
 4. Firing the smallest agent that exercises the changed code path. `hello.py` is good for `slack_post` changes; Bane is good for spend-state changes; Lucius for `make_worktree` changes.
 
 ## Public repo hygiene
