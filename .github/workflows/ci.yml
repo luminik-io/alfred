@@ -40,7 +40,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          python=false
+          # Python tests validate repository-wide contracts, including prompts,
+          # manifests, documentation, installers, and desktop packaging config.
+          # Run the current runtime on every PR instead of maintaining a brittle
+          # allowlist of those non-Python inputs.
+          python=true
           desktop=false
           desktop_native=false
           site_proof=false
@@ -70,12 +74,6 @@ jobs:
                   break
                 fi
               done <<<"$changed_files"
-            fi
-            # Pytest validates more than Python modules: prompts, fixtures,
-            # installers, service templates, skills, schemas, and workflow
-            # contracts are all direct test inputs.
-            if grep -Eq '(^|/).+\.py$|^tests/|^prompts/|^skills/|^examples/|^launchd/|^systemd/|^schema/|^bin/|^lib/roster_manifest\.json$|^(install|deploy|get)\.sh$|^site/scripts/|^site/src/content/docs/|^docs/|^[^/]+\.md$|^\.env\.example$|^\.github/workflows/|^\.github/dependabot\.yml$|^pyproject\.toml$|^uv\.lock$' <<<"$changed_files"; then
-              python=true
             fi
             if grep -Eq '^clients/desktop/|^lib/server/|^lib/roster_manifest\.json$|^bin/alfred$|^pyproject\.toml$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
               desktop=true

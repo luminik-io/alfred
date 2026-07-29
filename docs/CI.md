@@ -8,9 +8,10 @@ full billed minute.
 
 `CI` always runs one core-quality job. It performs the public-repository scrub
 and PR metadata checks, then runs Python and shell static checks when source
-files changed. The same job identifies whether the PR needs:
+files changed. Every pull request runs the Python runtime suite because it
+validates repository-wide contracts beyond Python source. The core job also
+identifies whether the PR needs:
 
-- Python runtime tests
 - desktop type checks, tests, protocol tests, Rust checks, and a native build
 - the dependency-free site proof-emitter tests
 
