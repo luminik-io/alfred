@@ -619,6 +619,7 @@ def test_guest_lockdown_uses_guest_only_password_and_invalidates_sudo(
     assert 'sudo -S -p \'\' passwd --lock "$(id -un)" <"$password_file"' in command
     assert "sudo -K" in command
     assert 'rm -f "$password_file"' in command
+    assert command.startswith("#!/usr/bin/env bash\n")
 
 
 @pytest.mark.parametrize("token", ["", "token with spaces", "x" * 513])
@@ -781,6 +782,57 @@ def test_serve_one_attempts_cleanup_when_guest_start_fails(
     assert deleted == ["alfred-ci-exact"]
 
 
+def test_serve_one_attempts_all_cleanup_when_diagnostic_capture_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    deleted: list[str] = []
+    runner_cleanup: list[str] = []
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_verified_pull_request",
+        lambda config, number: ci_runner.PullRequestTarget(number=number, sha="a" * 40),
+    )
+    monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
+    monkeypatch.setattr(ci_runner, "_dispatch_workflow", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
+    monkeypatch.setattr(ci_runner, "_lock_guest_privileges", lambda instance: None)
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(
+        ci_runner,
+        "_capture_diagnostics",
+        lambda instance, state: (_ for _ in ()).throw(OSError("diagnostics failed")),
+    )
+    monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_runner_registration",
+        lambda config, instance: runner_cleanup.append(instance),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments),
+    )
+
+    with pytest.raises(OSError, match="diagnostics failed"):
+        ci_runner.serve_one(
+            config,
+            pull_request=123,
+            dry_run=False,
+            approve_registration=True,
+        )
+
+    assert deleted == ["alfred-ci-exact"]
+    assert runner_cleanup == ["alfred-ci-exact"]
+
+
 @pytest.mark.parametrize(("job_returncode", "expected"), [(0, 2), (17, 17)])
 def test_serve_one_preserves_job_result_when_cleanup_fails(
     tmp_path: Path,
@@ -845,6 +897,7 @@ def test_serve_one_preserves_job_result_when_cleanup_fails(
 def test_runner_guest_script_pins_digest_and_ephemeral_mode() -> None:
     script = ci_runner._runner_guest_script()
 
+    assert script.startswith("#!/usr/bin/env bash\n")
     assert "sha256sum --check --status" in script
     assert "--ephemeral" in script
     assert "--disableupdate" in script
@@ -1054,6 +1107,7 @@ def test_fallback_guest_script_fetches_and_checks_exact_sha(tmp_path: Path) -> N
 
     script = ci_runner._fallback_guest_script(config, sha)
 
+    assert script.startswith("#!/usr/bin/env bash\n")
     assert "git -c protocol.version=2 fetch" in script
     assert "--depth=1" in script
     assert f"expected_sha={sha}" in script
@@ -1064,6 +1118,23 @@ def test_fallback_guest_script_fetches_and_checks_exact_sha(tmp_path: Path) -> N
     assert "uv-aarch64-unknown-linux-gnu.tar.gz" in script
     assert "sha256sum --check --status" in script
     assert 'test "$(uv --version | awk \'{print $2}\')" = "$uv_version"' in script
+
+
+def test_fallback_guest_script_logs_each_command_on_its_own_line(tmp_path: Path) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    script = ci_runner._fallback_guest_script(config, "a" * 40)
+    function_start = script.index("run_check() {")
+    function_end = script.index("\n}\n", function_start) + 3
+    run_check = script[function_start:function_end]
+
+    completed_process = subprocess.run(
+        ["bash", "-c", f"set -Eeuo pipefail\n{run_check}\nrun_check printf sample"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed_process.stdout == "==> printf sample \nsample"
 
 
 def test_fallback_dry_run_never_calls_external_commands(
@@ -1548,4 +1619,16 @@ def test_lima_template_has_plain_mode_and_no_host_exposure() -> None:
     assert "sha256:2eaec7286c49fdea" in content
     assert "passwordlessSudo: false" in content
     assert '"${resolver}/32"' in content
+    assert '"ff00::/8"' in content
     assert '-d "$cidr" -p udp --dport 53 -j ACCEPT' not in content
+
+
+def test_shellcheck_scanner_includes_all_embedded_guest_scripts() -> None:
+    scanner = REPOSITORY_ROOT / "bin" / "alfred-ci-shellcheck.sh"
+    content = scanner.read_text(encoding="utf-8")
+
+    assert "_guest_privilege_lock_script" in content
+    assert "_runner_guest_script" in content
+    assert "_fallback_guest_script" in content
+    assert "lima_provision_scripts" in content
+    assert "shellcheck -S warning" in content

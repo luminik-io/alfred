@@ -523,11 +523,10 @@ def _install_guest_helper(instance: str, name: str, content: str) -> None:
     _run(["limactl", "shell", instance, "bash", "-c", command], input_text=content)
 
 
-def _lock_guest_privileges(instance: str) -> None:
-    """Discard Lima's bootstrap password before repository code enters the guest."""
-
-    command = textwrap.dedent(
+def _guest_privilege_lock_script() -> str:
+    return textwrap.dedent(
         """\
+        #!/usr/bin/env bash
         set -Eeuo pipefail
         password_file="$HOME/password"
         test -s "$password_file"
@@ -540,7 +539,12 @@ def _lock_guest_privileges(instance: str) -> None:
         fi
         """
     )
-    _run(["limactl", "shell", instance, "bash", "-c", command])
+
+
+def _lock_guest_privileges(instance: str) -> None:
+    """Discard Lima's bootstrap password before repository code enters the guest."""
+
+    _run(["limactl", "shell", instance, "bash", "-c", _guest_privilege_lock_script()])
 
 
 def _registration_token(config: RunnerConfig) -> str:
@@ -649,7 +653,7 @@ def _new_job_label(prefix: str) -> str:
 
 def _runner_guest_script() -> str:
     return textwrap.dedent(
-        """\
+        r"""
         #!/usr/bin/env bash
         set -Eeuo pipefail
         umask 077
@@ -713,7 +717,7 @@ def _runner_guest_script() -> str:
             ;;
         esac
         """
-    )
+    ).lstrip("\n")
 
 
 def _capture_diagnostics(instance: str, state_directory: Path) -> Path | None:
@@ -991,33 +995,43 @@ def serve_one(
             completed = _run(run_command, check=False)
             job_returncode = completed.returncode
         finally:
-            active_exception = sys.exception()
             if start_attempted:
                 try:
-                    diagnostic_path = _capture_diagnostics(instance, state_directory)
-                except ControlPlaneError as exc:
-                    print(f"WARNING: diagnostic capture failed: {exc}", file=sys.stderr)
-                cleanup_errors: list[str] = []
-                try:
-                    _delete_instance(instance)
-                except ControlPlaneError as exc:
-                    cleanup_errors.append(str(exc))
-                try:
-                    _delete_runner_registration(config, instance)
-                except ControlPlaneError as exc:
-                    cleanup_errors.append(str(exc))
-                if cleanup_errors:
-                    detail = "; ".join(cleanup_errors)
-                    message = (
-                        f"cleanup incomplete for {instance}: {detail}; recover with "
-                        f"cleanup --instance {instance} --approve-delete"
-                    )
-                    print(f"ERROR: {message}", file=sys.stderr)
-                    if active_exception is None:
-                        if job_returncode is None:
-                            raise ControlPlaneError(message)
-                        if job_returncode == 0:
-                            job_returncode = 2
+                    try:
+                        diagnostic_path = _capture_diagnostics(instance, state_directory)
+                    except ControlPlaneError as exc:
+                        print(f"WARNING: diagnostic capture failed: {exc}", file=sys.stderr)
+                finally:
+                    active_exception = sys.exception()
+                    cleanup_errors: list[str] = []
+                    try:
+                        _delete_instance(instance)
+                    except (
+                        ControlPlaneError,
+                        OSError,
+                        subprocess.SubprocessError,
+                    ) as exc:
+                        cleanup_errors.append(str(exc))
+                    try:
+                        _delete_runner_registration(config, instance)
+                    except (
+                        ControlPlaneError,
+                        OSError,
+                        subprocess.SubprocessError,
+                    ) as exc:
+                        cleanup_errors.append(str(exc))
+                    if cleanup_errors:
+                        detail = "; ".join(cleanup_errors)
+                        message = (
+                            f"cleanup incomplete for {instance}: {detail}; recover with "
+                            f"cleanup --instance {instance} --approve-delete"
+                        )
+                        print(f"ERROR: {message}", file=sys.stderr)
+                        if active_exception is None:
+                            if job_returncode is None:
+                                raise ControlPlaneError(message)
+                            if job_returncode == 0:
+                                job_returncode = 2
             if diagnostic_path is not None:
                 print(f"diagnostics: {diagnostic_path}")
         if job_returncode is None:
@@ -1049,11 +1063,11 @@ def _verified_commit(config: RunnerConfig, sha: str) -> str:
 
 
 def _fallback_guest_script(config: RunnerConfig, sha: str) -> str:
-    command_lines = "\n".join(
+    command_lines = "\n        ".join(
         f"run_check {shlex.join(command)}" for command in config.fallback.commands
     )
     return textwrap.dedent(
-        f"""\
+        rf"""
         #!/usr/bin/env bash
         set -Eeuo pipefail
         umask 077
@@ -1098,13 +1112,13 @@ def _fallback_guest_script(config: RunnerConfig, sha: str) -> str:
         run_check() {{
           printf '==> '
           printf '%q ' "$@"
-          printf '\\n'
+          printf '\n'
           "$@"
         }}
 
         {command_lines}
         """
-    )
+    ).lstrip("\n")
 
 
 def _publish_status(config: RunnerConfig, sha: str, state: str, description: str) -> None:

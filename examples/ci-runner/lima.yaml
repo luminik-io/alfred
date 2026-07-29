@@ -83,7 +83,7 @@ provision:
       iptables -A OUTPUT -d 224.0.0.0/4 -j REJECT
       iptables -A OUTPUT -d 240.0.0.0/4 -j REJECT
       ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-      for cidr in "fc00::/7" "fe80::/10"; do
+      for cidr in "fc00::/7" "fe80::/10" "ff00::/8"; do
         ip6tables -A OUTPUT -d "$cidr" -j REJECT
       done
       apt-get clean

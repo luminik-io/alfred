@@ -88,7 +88,7 @@ bash bin/alfred-ci-shellcheck.sh
 
 ```text
 bin/alfred-ci-runner.py              thin executable entry point
-bin/alfred-ci-shellcheck.sh          shared complete shell-script scan
+bin/alfred-ci-shellcheck.sh          complete file and embedded-script scan
 lib/ci_runner.py                     validated control plane
 examples/ci-runner/lima.yaml         isolated VM template
 examples/ci-runner/runner.toml       repository and resource allowlist
@@ -404,6 +404,8 @@ Normal cleanup runs automatically. If the process or Mac crashes:
 - Runner dispatch starts from trusted `main`, uses an exact verified
   same-repository PR SHA, and routes through a random one-use label.
 - Every exit path attempts diagnostic capture and deletion.
+- ShellCheck covers repository shell files, Lima provision scripts, privilege
+  lockdown, runner setup, and fallback execution.
 - Fallback code runs only at an exact verified SHA inside a disposable guest.
 - Commit status publication is opt-in and occurs only from the host.
 - The active workflow has no automatic event, accepts only host-dispatched
