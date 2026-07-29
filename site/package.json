@@ -33,6 +33,7 @@
   },
   "overrides": {
     "esbuild": "^0.28.1",
+    "postcss": "8.5.18",
     "yaml": "^2.8.4"
   },
   "devDependencies": {
