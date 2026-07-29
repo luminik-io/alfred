@@ -78,7 +78,7 @@ jobs:
             if grep -Eq '^clients/desktop/|^lib/server/|^lib/roster_manifest\.json$|^bin/alfred$|^pyproject\.toml$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
               desktop=true
             fi
-            if grep -Eq '^clients/desktop/src-tauri/|^clients/desktop/package(-lock)?\.json$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+            if grep -Eq '^clients/desktop/src-tauri/|^clients/desktop/scripts/tauri\.mjs$|^clients/desktop/package(-lock)?\.json$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
               desktop_native=true
             fi
             if grep -Eq '^site/scripts/|^site/package(-lock)?\.json$|^lib/self_proof\.py$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
