@@ -23,8 +23,15 @@ export default tseslint.config(
       "react-refresh": reactRefresh,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // React Hooks 7 enables React Compiler diagnostics in its recommended preset.
+      // Keep this dependency-only migration on the two rules enforced before the
+      // upgrade; compiler adoption needs its own source-remediation change.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
+      // ESLint 10 newly recommends this rule. Adopt it with source cleanup in a
+      // dedicated change instead of broadening this security remediation.
+      "no-useless-assignment": "off",
       // Tests and the Tauri bridge legitimately need empty catch blocks and
       // intentional unused args; allow the underscore-prefix escape hatch.
       "@typescript-eslint/no-unused-vars": [
