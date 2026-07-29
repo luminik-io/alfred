@@ -9,6 +9,7 @@ on:
       - "**/*.jsx"
       - "**/*.mjs"
       - "**/*.cjs"
+      - "**/*.rb"
       - "**/*.ts"
       - "**/*.tsx"
       - ".github/actions/**"
@@ -37,6 +38,6 @@ jobs:
 
       - uses: github/codeql-action/init@v4
         with:
-          languages: actions,javascript-typescript,python
+          languages: actions,javascript-typescript,python,ruby
 
       - uses: github/codeql-action/analyze@v4

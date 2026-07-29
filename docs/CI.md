@@ -29,8 +29,8 @@ changes. Rust setup, native dependencies, native tests, and the Tauri build run
 only when the native shell or desktop dependency manifests change.
 
 CodeQL runs as one database cluster for supported source and workflow changes.
-Alfred contains Python, JavaScript/TypeScript, and GitHub Actions code, so those
-are the three analysis languages. There is no Ruby source to analyze.
+It analyzes Python, JavaScript/TypeScript, GitHub Actions, and the Ruby
+Homebrew formula and cask definitions.
 
 The core CI job scans only the commits introduced by a pull request with
 Gitleaks. A weekly Gitleaks run scans all history. This catches new secrets at
