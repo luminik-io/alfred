@@ -81,12 +81,14 @@ ruff format --check lib/ci_runner.py bin/alfred-ci-runner.py tests/test_ci_runne
 mypy lib/ci_runner.py
 python3 -m py_compile lib/ci_runner.py bin/alfred-ci-runner.py
 actionlint .github/workflows/mac-mini-ci.yml
+bash bin/alfred-ci-shellcheck.sh
 ```
 
 ## Project structure
 
 ```text
 bin/alfred-ci-runner.py              thin executable entry point
+bin/alfred-ci-shellcheck.sh          shared complete shell-script scan
 lib/ci_runner.py                     validated control plane
 examples/ci-runner/lima.yaml         isolated VM template
 examples/ci-runner/runner.toml       repository and resource allowlist
@@ -100,6 +102,8 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 ### Always
 
 - Resolve and check the full 40-character commit SHA before executing code.
+- Validate Lima's parsed, default-filled effective configuration instead of
+  trusting raw YAML text.
 - Resolve the pull request through GitHub and require an open, non-draft,
   same-repository head targeting `main`.
 - Hold a non-blocking host file lock for the full VM lifetime.
@@ -109,13 +113,17 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 - Disable host mounts, dynamic port forwarding, containerd, Rosetta, and SSH
   agent forwarding with Lima plain mode.
 - Remove password-based sudo and reject new guest connections to private,
-  carrier-grade NAT, link-local, multicast, and reserved address ranges.
+  carrier-grade NAT, link-local, multicast, and reserved address ranges. Only
+  the exact guest resolver addresses receive a DNS exception.
 - Keep the Lima SSH control socket bound to host loopback.
 - Download a pinned GitHub runner release and verify its SHA-256 digest.
+- Download a pinned uv release, verify its SHA-256 digest, and use Python 3.13
+  plus the same pinned check versions in both execution paths.
 - Keep GitHub credentials and commit-status calls on the host.
 - Give the workflow only `contents: read`.
 - Save bounded runner diagnostics under a mode-0700 host state directory before
-  deleting the VM.
+  deleting the VM. Bound source entries before compression so the archive stays
+  valid and extractable.
 - Keep untrusted job output out of the host terminal. Store bounded raw logs
   mode 0600 and use GitHub's job log for normal inspection.
 - Delete the VM in a `finally` path after success, failure, cancellation, or
@@ -171,7 +179,7 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 | Fork code reaches the Mac | The host rejects any PR whose head repository differs from `luminik-io/alfred`, then dispatches a workflow from trusted `main` with a random one-use runner label. |
 | Another queued job steals the guest | The runner has no default or shared labels. It has only the random label required by the trusted dispatch. |
 | PR code escapes into host files | Lima plain mode, no mounts, no forwarded agent, no static port forwards, disposable guest. |
-| PR code probes services on the Mac or LAN | The guest has no password-based sudo, and host-installed firewall rules reject new egress to private, carrier-grade NAT, link-local, multicast, and reserved ranges while preserving established SSH control traffic and DNS. |
+| PR code probes services on the Mac or LAN | The guest has no password-based sudo, and host-installed firewall rules reject new egress to private, carrier-grade NAT, link-local, multicast, and reserved ranges while preserving established SSH control traffic and DNS only to the exact configured resolvers. |
 | Job output attacks the host terminal | The guest redirects untrusted process output to guest files. The host stores only bounded mode-0600 diagnostics and does not render them. |
 | Job steals host GitHub credentials | Only the short-lived runner registration token crosses the boundary. Host `gh` credentials never enter the guest. |
 | Registration token leaks through process listing | The host writes it only to the guest process stdin. GitHub's `config.sh` necessarily receives it inside the disposable guest. |
@@ -183,6 +191,8 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 | Guest forges a success status | The guest returns only an exit code. The host maps that code to a status and calls GitHub after cleanup. |
 | Runner binary is replaced upstream | Version and SHA-256 digest are pinned in trusted TOML. |
 | VM or offline registration survives a crash | The recovery command requires an exact allowlisted prefix and an explicit delete flag, then targets only that VM and exact runner name. |
+| Fallback code hangs forever | Guest and host wall timeouts use the same configured 90-minute cap, followed by termination, diagnostic capture, and VM deletion. |
+| Cleanup hides the job result | A failed job keeps its original nonzero result; a green job with incomplete cleanup becomes control-plane exit 2, and both paths print the exact recovery target. |
 
 ### Residual risks
 

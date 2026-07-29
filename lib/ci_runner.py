@@ -78,6 +78,8 @@ class RunnerConfig:
     job_timeout_minutes: int
     runner_version: str
     runner_sha256: str
+    uv_version: str
+    uv_sha256: str
     lima_template: Path
     fallback: FallbackConfig
 
@@ -171,10 +173,16 @@ def load_config(path: Path) -> RunnerConfig:
 
     runner_version = _string(runner, "runner_version")
     runner_sha256 = _string(runner, "runner_sha256").lower()
+    uv_version = _string(runner, "uv_version")
+    uv_sha256 = _string(runner, "uv_sha256").lower()
     if not VERSION_PATTERN.fullmatch(runner_version):
         raise ConfigurationError("runner_version must use the x.y.z form")
     if not DIGEST_PATTERN.fullmatch(runner_sha256):
         raise ConfigurationError("runner_sha256 must be a lowercase SHA-256 digest")
+    if not VERSION_PATTERN.fullmatch(uv_version):
+        raise ConfigurationError("uv_version must use the x.y.z form")
+    if not DIGEST_PATTERN.fullmatch(uv_sha256):
+        raise ConfigurationError("uv_sha256 must be a lowercase SHA-256 digest")
 
     lima_template_value = _string(runner, "lima_template")
     lima_template = (resolved_path.parent / lima_template_value).resolve()
@@ -218,6 +226,8 @@ def load_config(path: Path) -> RunnerConfig:
         job_timeout_minutes=job_timeout_minutes,
         runner_version=runner_version,
         runner_sha256=runner_sha256,
+        uv_version=uv_version,
+        uv_sha256=uv_sha256,
         lima_template=lima_template,
         fallback=FallbackConfig(context=context, commands=tuple(commands)),
     )
@@ -245,27 +255,50 @@ def _print_command(arguments: Sequence[str]) -> None:
     print(f"+ {shlex.join(arguments)}")
 
 
-def _validate_template_contract(config: RunnerConfig) -> list[str]:
-    try:
-        template = config.lima_template.read_text(encoding="utf-8")
-    except OSError as exc:
-        return [f"cannot read Lima template: {exc}"]
+def _effective_yaml_settings(output: str) -> dict[tuple[str, ...], str | None]:
+    """Parse scalar paths from Lima's canonical `validate --fill` output."""
 
-    required_fragments = (
-        "plain: true",
-        "vmType: vz",
-        "arch: aarch64",
-        "mounts: []",
-        "portForwards: []",
-        "forwardAgent: false",
-        "passwordlessSudo: false",
-        "propagateProxyEnv: false",
-    )
-    return [
-        f"Lima template is missing the isolation contract: {fragment}"
-        for fragment in required_fragments
-        if fragment not in template
+    settings: dict[tuple[str, ...], str | None] = {}
+    parents: list[tuple[int, str]] = []
+    pattern = re.compile(r"^(\s*)([A-Za-z][A-Za-z0-9]*):(?:\s+(.*))?$")
+    for line in output.splitlines():
+        match = pattern.fullmatch(line)
+        if match is None:
+            continue
+        indentation = len(match.group(1))
+        while parents and parents[-1][0] >= indentation:
+            parents.pop()
+        key = match.group(2)
+        value = match.group(3)
+        path = (*(parent_key for _, parent_key in parents), key)
+        settings[path] = value
+        if value is None:
+            parents.append((indentation, key))
+    return settings
+
+
+def _effective_template_errors(output: str) -> list[str]:
+    settings = _effective_yaml_settings(output)
+    required = {
+        ("plain",): "true",
+        ("vmType",): "vz",
+        ("arch",): "aarch64",
+        ("ssh", "forwardAgent"): "false",
+        ("user", "passwordlessSudo"): "false",
+        ("containerd", "system"): "false",
+        ("containerd", "user"): "false",
+        ("vmOpts", "vz", "rosetta", "enabled"): "false",
+        ("propagateProxyEnv",): "false",
+    }
+    errors = [
+        f"Lima effective setting {'.'.join(path)} must equal {expected}"
+        for path, expected in required.items()
+        if settings.get(path) != expected
     ]
+    for path in (("mounts",), ("portForwards",)):
+        if path in settings and settings[path] != "[]":
+            errors.append(f"Lima effective setting {path[0]} must be empty")
+    return errors
 
 
 def _lima_version(version_output: str) -> tuple[int, int, int] | None:
@@ -337,7 +370,7 @@ def _runner_group_errors(config: RunnerConfig) -> list[str]:
 def preflight(config: RunnerConfig, *, require_runner_group: bool = True) -> int:
     """Run read-only host and configuration checks."""
 
-    errors = _validate_template_contract(config)
+    errors: list[str] = []
     if platform.system() != "Darwin":
         errors.append("the supported control host is macOS")
     if platform.machine().lower() not in {"arm64", "aarch64"}:
@@ -377,9 +410,17 @@ def preflight(config: RunnerConfig, *, require_runner_group: bool = True) -> int
         )
         return 2
     try:
-        _run(["limactl", "validate", str(config.lima_template)], capture_output=True)
+        validated = _run(
+            ["limactl", "validate", "--fill", str(config.lima_template)],
+            capture_output=True,
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"ERROR: Lima template validation failed: {exc}", file=sys.stderr)
+        return 2
+    effective_errors = _effective_template_errors(validated.stdout)
+    if effective_errors:
+        for error in effective_errors:
+            print(f"ERROR: {error}", file=sys.stderr)
         return 2
     if require_runner_group:
         group_errors = _runner_group_errors(config)
@@ -676,20 +717,47 @@ def _capture_diagnostics(instance: str, state_directory: Path) -> Path | None:
     diagnostics = state_directory / "diagnostics"
     _ensure_private_directory(diagnostics)
     archive = diagnostics / f"{instance}.tar.gz"
-    command = (
-        'set -o pipefail; cd "$HOME/actions-runner" 2>/dev/null || exit 0; '
-        f"tar -czf - --ignore-failed-read _diag 2>/dev/null | head -c {MAX_DIAGNOSTIC_BYTES}"
+    source_limit = MAX_DIAGNOSTIC_BYTES // 2
+    script = textwrap.dedent(
+        f"""\
+        import io
+        import pathlib
+        import sys
+        import tarfile
+
+        source = pathlib.Path.home() / "actions-runner" / "_diag"
+        remaining = {source_limit}
+        files = 0
+        with tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz") as archive:
+            if source.is_dir():
+                for path in sorted(source.rglob("*")):
+                    if files >= 128 or remaining <= 0 or not path.is_file():
+                        continue
+                    try:
+                        with path.open("rb") as handle:
+                            data = handle.read(remaining)
+                    except OSError:
+                        continue
+                    info = tarfile.TarInfo(str(path.relative_to(source.parent)))
+                    info.size = len(data)
+                    info.mode = 0o600
+                    archive.addfile(info, io.BytesIO(data))
+                    remaining -= len(data)
+                    files += 1
+        """
     )
     try:
         completed = subprocess.run(
-            ["limactl", "shell", instance, "bash", "-c", command],
+            ["limactl", "shell", instance, "python3", "-c", script],
             check=False,
             capture_output=True,
             timeout=30,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if not completed.stdout:
+    if completed.returncode != 0 or not completed.stdout:
+        return None
+    if len(completed.stdout) > MAX_DIAGNOSTIC_BYTES:
         return None
 
     return _write_diagnostic(archive, completed.stdout)
@@ -863,6 +931,7 @@ def serve_one(
     with exclusive_control_lock(state_directory):
         start_attempted = False
         diagnostic_path: Path | None = None
+        job_returncode: int | None = None
         try:
             start_attempted = True
             _run(start_arguments)
@@ -914,10 +983,14 @@ def serve_one(
                 str(timeout_seconds),
             ]
             completed = _run(run_command, check=False)
-            return completed.returncode
+            job_returncode = completed.returncode
         finally:
+            active_exception = sys.exception()
             if start_attempted:
-                diagnostic_path = _capture_diagnostics(instance, state_directory)
+                try:
+                    diagnostic_path = _capture_diagnostics(instance, state_directory)
+                except ControlPlaneError as exc:
+                    print(f"WARNING: diagnostic capture failed: {exc}", file=sys.stderr)
                 cleanup_errors: list[str] = []
                 try:
                     _delete_instance(instance)
@@ -929,12 +1002,21 @@ def serve_one(
                     cleanup_errors.append(str(exc))
                 if cleanup_errors:
                     detail = "; ".join(cleanup_errors)
-                    raise ControlPlaneError(
-                        f"cleanup incomplete for {instance}: {detail}; "
-                        f"recover with cleanup --instance {instance} --approve-delete"
+                    message = (
+                        f"cleanup incomplete for {instance}: {detail}; recover with "
+                        f"cleanup --instance {instance} --approve-delete"
                     )
+                    print(f"ERROR: {message}", file=sys.stderr)
+                    if active_exception is None:
+                        if job_returncode is None:
+                            raise ControlPlaneError(message)
+                        if job_returncode == 0:
+                            job_returncode = 2
             if diagnostic_path is not None:
                 print(f"diagnostics: {diagnostic_path}")
+        if job_returncode is None:
+            raise ControlPlaneError("runner stopped without a job result")
+        return job_returncode
 
 
 def _verified_commit(config: RunnerConfig, sha: str) -> str:
@@ -974,7 +1056,22 @@ def _fallback_guest_script(config: RunnerConfig, sha: str) -> str:
 
         repository_url={shlex.quote(config.clone_url)}
         expected_sha={shlex.quote(sha)}
+        uv_version={shlex.quote(config.uv_version)}
+        uv_sha256={shlex.quote(config.uv_sha256)}
         checkout="$HOME/fallback-checkout"
+        uv_archive="$HOME/uv.tar.gz"
+
+        mkdir -p "$HOME/.local/bin"
+        curl --fail --location --proto '=https' --tlsv1.2 \
+          --output "$uv_archive" \
+          "https://github.com/astral-sh/uv/releases/download/${{uv_version}}/uv-aarch64-unknown-linux-gnu.tar.gz"
+        printf '%s  %s\n' "$uv_sha256" "$uv_archive" | sha256sum --check --status
+        tar --extract --gzip --file "$uv_archive" \
+          --directory "$HOME/.local/bin" \
+          --strip-components=1
+        rm -f "$uv_archive"
+        export PATH="$HOME/.local/bin:$PATH"
+        test "$(uv --version | awk '{{print $2}}')" = "$uv_version"
 
         mkdir "$checkout"
         git init --quiet "$checkout"
@@ -1091,22 +1188,32 @@ def fallback(
                         instance,
                         "bash",
                         "-lc",
-                        'exec "$HOME/.alfred-ci/fallback.sh"',
+                        (
+                            'exec timeout --signal=TERM --kill-after=30s "$1" '
+                            '"$HOME/.alfred-ci/fallback.sh"'
+                        ),
+                        "--",
+                        f"{config.job_timeout_minutes * 60}s",
                     ],
                     check=False,
                     capture_output=True,
-                )
-                diagnostics = state_directory / "diagnostics"
-                _ensure_private_directory(diagnostics)
-                diagnostic_path = _capture_guest_file(
-                    instance,
-                    ".alfred-ci/fallback-console.log",
-                    diagnostics / f"{instance}-fallback.log",
+                    timeout=(config.job_timeout_minutes * 60) + 60,
                 )
                 result = completed.returncode
             finally:
                 if start_attempted:
-                    _delete_instance(instance)
+                    try:
+                        diagnostics = state_directory / "diagnostics"
+                        _ensure_private_directory(diagnostics)
+                        diagnostic_path = _capture_guest_file(
+                            instance,
+                            ".alfred-ci/fallback-console.log",
+                            diagnostics / f"{instance}-fallback.log",
+                        )
+                    except ControlPlaneError as exc:
+                        print(f"WARNING: diagnostic capture failed: {exc}", file=sys.stderr)
+                    finally:
+                        _delete_instance(instance)
     except (ControlPlaneError, KeyboardInterrupt, OSError, subprocess.SubprocessError):
         if publish_status:
             _publish_status(

@@ -14,14 +14,17 @@ lima_template = "lima.yaml"
 runner_version = "2.336.0"
 runner_sha256 = "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"
 
+# Pinned from the uv 0.12.0 GitHub release asset digest.
+uv_version = "0.12.0"
+uv_sha256 = "2c5d6e3092cc5223b10ff403880cc75121bf64e84644e7a0c69f643b0d89ac95"
+
 [fallback]
 context = "Hermes / Local CI"
 commands = [
-  ["python3", "-m", "venv", ".ci-venv"],
-  [".ci-venv/bin/python", "-m", "pip", "install", "--disable-pip-version-check", "pytest==9.1.1", "fastapi==0.140.13", "httpx==0.28.1", "httpx2==2.9.1", "ruff==0.15.22", "mypy==2.3.0"],
-  [".ci-venv/bin/ruff", "check", "."],
-  [".ci-venv/bin/ruff", "format", "--check", "."],
-  [".ci-venv/bin/mypy", "lib/"],
+  ["uv", "run", "--python", "3.13", "--with", "ruff==0.15.22", "ruff", "check", "."],
+  ["uv", "run", "--python", "3.13", "--with", "ruff==0.15.22", "ruff", "format", "--check", "."],
+  ["uv", "run", "--python", "3.13", "--with", "mypy==2.3.0", "mypy", "lib/"],
+  ["bash", "bin/alfred-ci-shellcheck.sh"],
   ["bash", "bin/scrub-check.sh"],
-  [".ci-venv/bin/python", "-m", "pytest", "tests/", "-q"],
+  ["uv", "run", "--python", "3.13", "--with", "pytest==9.1.1", "--with", "fastapi==0.140.13", "--with", "httpx==0.28.1", "--with", "httpx2==2.9.1", "pytest", "tests/", "-q"],
 ]

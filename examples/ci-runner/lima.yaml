@@ -61,9 +61,22 @@ provision:
         shellcheck \
         tar
       iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      mapfile -t resolvers < <(
+        awk '/^nameserver[[:space:]]/{print $2}' \
+          /run/systemd/resolve/resolv.conf \
+          /etc/resolv.conf 2>/dev/null |
+          sort -u
+      )
+      for resolver in "${resolvers[@]}"; do
+        if [[ "$resolver" == *:* ]]; then
+          ip6tables -A OUTPUT -d "${resolver}/128" -p udp --dport 53 -j ACCEPT
+          ip6tables -A OUTPUT -d "${resolver}/128" -p tcp --dport 53 -j ACCEPT
+        else
+          iptables -A OUTPUT -d "${resolver}/32" -p udp --dport 53 -j ACCEPT
+          iptables -A OUTPUT -d "${resolver}/32" -p tcp --dport 53 -j ACCEPT
+        fi
+      done
       for cidr in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do
-        iptables -A OUTPUT -d "$cidr" -p udp --dport 53 -j ACCEPT
-        iptables -A OUTPUT -d "$cidr" -p tcp --dport 53 -j ACCEPT
         iptables -A OUTPUT -d "$cidr" -j REJECT
       done
       iptables -A OUTPUT -d 100.64.0.0/10 -j REJECT
@@ -71,8 +84,6 @@ provision:
       iptables -A OUTPUT -d 240.0.0.0/4 -j REJECT
       ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
       for cidr in "fc00::/7" "fe80::/10"; do
-        ip6tables -A OUTPUT -d "$cidr" -p udp --dport 53 -j ACCEPT
-        ip6tables -A OUTPUT -d "$cidr" -p tcp --dport 53 -j ACCEPT
         ip6tables -A OUTPUT -d "$cidr" -j REJECT
       done
       apt-get clean

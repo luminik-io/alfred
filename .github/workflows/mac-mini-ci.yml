@@ -42,6 +42,8 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: "0.12.0"
 
       - name: Static checks
         run: |
@@ -49,6 +51,7 @@ jobs:
           uv run --with 'ruff==0.15.22' ruff check .
           uv run --with 'ruff==0.15.22' ruff format --check .
           uv run --with 'mypy==2.3.0' mypy lib/
+          bash bin/alfred-ci-shellcheck.sh
           bash bin/scrub-check.sh
 
       - name: Runtime tests
@@ -56,8 +59,8 @@ jobs:
           set -Eeuo pipefail
           uv run \
             --python 3.13 \
-            --with pytest \
-            --with fastapi \
-            --with httpx \
-            --with httpx2 \
+            --with 'pytest==9.1.1' \
+            --with 'fastapi==0.140.13' \
+            --with 'httpx==0.28.1' \
+            --with 'httpx2==2.9.1' \
             pytest tests/ -q

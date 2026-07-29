@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,8 @@ job_timeout_minutes = 90
 lima_template = "lima.yaml"
 runner_version = "2.336.0"
 runner_sha256 = "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"
+uv_version = "0.12.0"
+uv_sha256 = "2c5d6e3092cc5223b10ff403880cc75121bf64e84644e7a0c69f643b0d89ac95"
 
 [fallback]
 context = "Hermes / Local CI"
@@ -81,6 +84,7 @@ def test_load_config_accepts_bounded_allowlisted_values(tmp_path: Path) -> None:
     assert config.disk_gib == 40
     assert config.job_timeout_minutes == 90
     assert config.job_label_prefix == "alfred-job"
+    assert config.uv_version == "0.12.0"
     assert config.fallback.commands == (("python3", "-m", "pytest", "tests/", "-q"),)
     assert config.repository_url == "https://github.com/luminik-io/alfred"
     assert config.organization_url == "https://github.com/luminik-io"
@@ -112,6 +116,12 @@ def test_load_config_accepts_bounded_allowlisted_values(tmp_path: Path) -> None:
             'runner_sha256 = "short"',
             "SHA-256",
         ),
+        ('uv_version = "0.12.0"', 'uv_version = "latest"', "uv_version"),
+        (
+            'uv_sha256 = "2c5d6e3092cc5223b10ff403880cc75121bf64e84644e7a0c69f643b0d89ac95"',
+            'uv_sha256 = "short"',
+            "SHA-256",
+        ),
         (
             'commands = [["python3", "-m", "pytest", "tests/", "-q"]]',
             'commands = [["python3", "bad\\nargument"]]',
@@ -139,15 +149,55 @@ def test_load_config_requires_existing_lima_template(tmp_path: Path) -> None:
         ci_runner.load_config(config_path)
 
 
-def test_template_contract_requires_all_isolation_markers(tmp_path: Path) -> None:
-    config = ci_runner.load_config(write_config(tmp_path))
-    config.lima_template.write_text("plain: true\n", encoding="utf-8")
+def test_effective_template_contract_uses_canonical_parsed_settings() -> None:
+    output = """
+vmType: vz
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+arch: aarch64
+ssh:
+  forwardAgent: false
+containerd:
+  system: false
+  user: false
+propagateProxyEnv: false
+plain: true
+user:
+  passwordlessSudo: false
+""".lstrip()
 
-    errors = ci_runner._validate_template_contract(config)
+    assert ci_runner._effective_template_errors(output) == []
 
-    assert any("forwardAgent: false" in error for error in errors)
-    assert any("mounts: []" in error for error in errors)
-    assert any("portForwards: []" in error for error in errors)
+
+def test_effective_template_contract_rejects_comments_and_unsafe_values() -> None:
+    output = """
+plain: false
+description: '# plain: true and mounts: []'
+vmType: vz
+arch: aarch64
+mounts:
+- location: /Users/operator
+ssh:
+  forwardAgent: true
+containerd:
+  system: false
+  user: false
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+propagateProxyEnv: false
+user:
+  passwordlessSudo: false
+""".lstrip()
+
+    errors = ci_runner._effective_template_errors(output)
+
+    assert any("plain must equal true" in error for error in errors)
+    assert any("ssh.forwardAgent must equal false" in error for error in errors)
+    assert any("mounts must be empty" in error for error in errors)
 
 
 def test_preflight_is_read_only_when_lima_is_missing(
@@ -175,6 +225,49 @@ def test_preflight_is_read_only_when_lima_is_missing(
     assert "brew install lima" in output.out
     assert "missing required tools: limactl" in output.err
     assert calls == []
+
+
+def test_preflight_validates_lima_effective_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    monkeypatch.setattr(ci_runner.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(ci_runner.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(ci_runner.shutil, "which", lambda tool: f"/usr/bin/{tool}")
+    monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
+    calls: list[list[str]] = []
+    effective = """
+vmType: vz
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+arch: aarch64
+ssh:
+  forwardAgent: false
+containerd:
+  system: false
+  user: false
+propagateProxyEnv: false
+plain: true
+user:
+  passwordlessSudo: false
+""".lstrip()
+
+    def fake_run(
+        arguments: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(list(arguments))
+        if arguments == ["limactl", "--version"]:
+            return completed(arguments, stdout="limactl version 2.2.0")
+        return completed(arguments, stdout=effective)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    assert ci_runner.preflight(config) == 0
+    assert ["limactl", "validate", "--fill", str(config.lima_template)] in calls
 
 
 @pytest.mark.parametrize(
@@ -688,6 +781,67 @@ def test_serve_one_attempts_cleanup_when_guest_start_fails(
     assert deleted == ["alfred-ci-exact"]
 
 
+@pytest.mark.parametrize(("job_returncode", "expected"), [(0, 2), (17, 17)])
+def test_serve_one_preserves_job_result_when_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    job_returncode: int,
+    expected: int,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    runner_cleanup: list[str] = []
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_verified_pull_request",
+        lambda config, number: ci_runner.PullRequestTarget(number=number, sha="a" * 40),
+    )
+    monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
+    monkeypatch.setattr(ci_runner, "_dispatch_workflow", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
+    monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
+    monkeypatch.setattr(ci_runner, "_lock_guest_privileges", lambda instance: None)
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_instance",
+        lambda instance: (_ for _ in ()).throw(ci_runner.ControlPlaneError("VM remained")),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_runner_registration",
+        lambda config, instance: runner_cleanup.append(instance),
+    )
+
+    def fake_run(
+        arguments: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        return completed(
+            arguments,
+            returncode=job_returncode if "run" in arguments else 0,
+        )
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    assert (
+        ci_runner.serve_one(
+            config,
+            pull_request=123,
+            dry_run=False,
+            approve_registration=True,
+        )
+        == expected
+    )
+    assert runner_cleanup == ["alfred-ci-exact"]
+    assert "cleanup incomplete" in capsys.readouterr().err
+
+
 def test_runner_guest_script_pins_digest_and_ephemeral_mode() -> None:
     script = ci_runner._runner_guest_script()
 
@@ -764,6 +918,42 @@ def test_instance_cleanup_deletes_only_exact_present_vm(
         ["limactl", "list", "--format", "{{.Name}}"],
         ["limactl", "delete", "--force", "alfred-ci-exact"],
     ]
+
+
+def test_runner_diagnostics_archive_is_bounded_and_extractable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guest_home = tmp_path / "guest"
+    source = guest_home / "actions-runner" / "_diag"
+    source.mkdir(parents=True)
+    (source / "Runner.log").write_text("safe diagnostic\n", encoding="utf-8")
+    state = tmp_path / "state"
+    original_run = subprocess.run
+
+    def execute_guest_script(
+        arguments: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[bytes]:
+        script = arguments[-1]
+        return original_run(
+            ["python3", "-c", script],
+            check=False,
+            capture_output=True,
+            timeout=30,
+            env={**os.environ, "HOME": str(guest_home)},
+        )
+
+    monkeypatch.setattr(ci_runner.subprocess, "run", execute_guest_script)
+
+    archive = ci_runner._capture_diagnostics("alfred-ci-exact", state)
+
+    assert archive is not None
+    assert archive.stat().st_size <= ci_runner.MAX_DIAGNOSTIC_BYTES
+    with tarfile.open(archive, "r:gz") as captured:
+        member = captured.extractfile("_diag/Runner.log")
+        assert member is not None
+        assert member.read() == b"safe diagnostic\n"
 
 
 def test_runner_registration_cleanup_is_noop_after_ephemeral_deregistration(
@@ -844,6 +1034,9 @@ def test_fallback_guest_script_fetches_and_checks_exact_sha(tmp_path: Path) -> N
     assert "python3 -m pytest tests/ -q" in script
     assert "GITHUB_TOKEN" not in script
     assert 'exec >"$HOME/.alfred-ci/fallback-console.log" 2>&1' in script
+    assert "uv-aarch64-unknown-linux-gnu.tar.gz" in script
+    assert "sha256sum --check --status" in script
+    assert 'test "$(uv --version | awk \'{print $2}\')" = "$uv_version"' in script
 
 
 def test_fallback_dry_run_never_calls_external_commands(
@@ -883,24 +1076,29 @@ def test_fallback_publishes_pending_and_success_only_from_host(
     sha = "a" * 40
     statuses: list[tuple[str, str]] = []
     deleted: list[str] = []
+    calls: list[tuple[list[str], dict[str, object]]] = []
 
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_verified_commit", lambda config, value: value)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
     monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
-    monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
+    monkeypatch.setattr(ci_runner, "_capture_guest_file", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
     monkeypatch.setattr(
         ci_runner,
         "_publish_status",
         lambda config, sha, state, description: statuses.append((state, description)),
     )
-    monkeypatch.setattr(
-        ci_runner,
-        "_run",
-        lambda arguments, **kwargs: completed(arguments),
-    )
+
+    def fake_run(
+        arguments: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((list(arguments), dict(kwargs)))
+        return completed(arguments)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
 
     assert (
         ci_runner.fallback(
@@ -913,6 +1111,10 @@ def test_fallback_publishes_pending_and_success_only_from_host(
     )
     assert [state for state, _ in statuses] == ["pending", "success"]
     assert deleted == ["alfred-ci-exact"]
+    fallback_calls = [call for call in calls if "fallback.sh" in " ".join(call[0])]
+    assert len(fallback_calls) == 1
+    assert "timeout --signal=TERM --kill-after=30s" in " ".join(fallback_calls[0][0])
+    assert fallback_calls[0][1]["timeout"] == (90 * 60) + 60
 
 
 def test_fallback_publishes_failure_for_nonzero_guest_result(
@@ -929,7 +1131,7 @@ def test_fallback_publishes_failure_for_nonzero_guest_result(
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
     monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
-    monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
+    monkeypatch.setattr(ci_runner, "_capture_guest_file", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: None)
     monkeypatch.setattr(
         ci_runner,
@@ -964,11 +1166,17 @@ def test_fallback_publishes_error_when_operator_interrupts(
     sha = "a" * 40
     statuses: list[str] = []
     deleted: list[str] = []
+    captured: list[str] = []
 
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_verified_commit", lambda config, value: value)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_capture_guest_file",
+        lambda instance, guest, local: captured.append(guest),
+    )
     monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
     monkeypatch.setattr(
@@ -997,6 +1205,7 @@ def test_fallback_publishes_error_when_operator_interrupts(
 
     assert statuses == ["pending", "error"]
     assert deleted == ["alfred-ci-exact"]
+    assert captured == [".alfred-ci/fallback-console.log"]
 
 
 def test_fallback_attempts_cleanup_when_guest_start_fails(
@@ -1011,6 +1220,7 @@ def test_fallback_attempts_cleanup_when_guest_start_fails(
     monkeypatch.setattr(ci_runner, "_verified_commit", lambda config, value: value)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(ci_runner, "_capture_guest_file", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
     monkeypatch.setattr(
         ci_runner,
@@ -1122,6 +1332,10 @@ def test_workflow_runs_only_by_trusted_dispatch() -> None:
     assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"' in content
     assert "permissions:\n  contents: read" in content
     assert "persist-credentials: false" in content
+    assert 'version: "0.12.0"' in content
+    assert "pytest==9.1.1" in content
+    assert "fastapi==0.140.13" in content
+    assert "bash bin/alfred-ci-shellcheck.sh" in content
     assert "secrets:" not in content
     assert "environment:" not in content
     assert "deploy" not in content.lower()
@@ -1143,3 +1357,6 @@ def test_lima_template_has_plain_mode_and_no_host_exposure() -> None:
     assert 'memory: "6GiB"' in content
     assert 'disk: "40GiB"' in content
     assert "sha256:2eaec7286c49fdea" in content
+    assert "passwordlessSudo: false" in content
+    assert '"${resolver}/32"' in content
+    assert '-d "$cidr" -p udp --dport 53 -j ACCEPT' not in content
