@@ -35,7 +35,6 @@ jobs:
         id: scopes
         env:
           EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -55,13 +54,22 @@ jobs:
             source=true
           elif [ "$EVENT_NAME" = "schedule" ]; then
             python=true
-          elif [ "$EVENT_ACTION" != "edited" ]; then
+          else
             changed_files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
 
             if grep -Eq '(^|/).*\.(py|sh|bash)$|^bin/|^pyproject\.toml$|^uv\.lock$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
               source=true
             fi
-            if grep -Eq '(^|/).+\.py$|^pyproject\.toml$|^uv\.lock$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
+            if [ "$source" = "false" ]; then
+              while IFS= read -r changed_path; do
+                [ -f "$changed_path" ] || continue
+                if head -1 "$changed_path" | grep -qE '^#!.*\b(bash|sh)\b'; then
+                  source=true
+                  break
+                fi
+              done <<<"$changed_files"
+            fi
+            if grep -Eq '(^|/).+\.py$|^bin/alfred$|^pyproject\.toml$|^uv\.lock$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
               python=true
             fi
             if grep -Eq '^clients/desktop/|^lib/server/|^bin/alfred$|^pyproject\.toml$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
@@ -103,6 +111,7 @@ jobs:
             ! -path "./site/node_modules/*" \
             ! -path "./.git/*" \
             -print0 | xargs -0 -n1 python3 -m py_compile
+          python3 -m py_compile bin/alfred
 
       - name: Shellcheck
         if: steps.scopes.outputs.source == 'true'
