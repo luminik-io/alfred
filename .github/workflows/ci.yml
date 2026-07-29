@@ -55,7 +55,9 @@ jobs:
           elif [ "$EVENT_NAME" = "schedule" ]; then
             python=true
           else
-            changed_files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+            # Disable rename detection so both the deleted source path and the
+            # added destination path participate in scope resolution.
+            changed_files="$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA")"
 
             if grep -Eq '(^|/).*\.(py|sh|bash)$|^bin/|^pyproject\.toml$|^uv\.lock$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
               source=true
