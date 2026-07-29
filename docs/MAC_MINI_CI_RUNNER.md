@@ -192,7 +192,7 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 | Runner binary is replaced upstream | Version and SHA-256 digest are pinned in trusted TOML. |
 | VM or offline registration survives a crash | The recovery command requires an exact allowlisted prefix and an explicit delete flag, then targets only that VM and exact runner name. |
 | Fallback code hangs forever | Guest and host wall timeouts use the same configured 90-minute cap, followed by termination, diagnostic capture, and VM deletion. |
-| Cleanup hides the job result | A failed job keeps its original nonzero result; a green job with incomplete cleanup becomes control-plane exit 2, and both paths print the exact recovery target. |
+| Cleanup hides the job result | A failed job keeps its original nonzero result; a green job with incomplete cleanup becomes control-plane exit 2, and both paths print the exact recovery target. When cleanup alone fails after passing checks, the fallback publishes error instead of a false success. |
 
 ### Residual risks
 
@@ -343,7 +343,10 @@ billing or hosted-runner capacity. It is not a way to bypass a failing check.
    ```
 
 3. If the result and commit are correct, rerun with `--publish-status`.
-   Publication writes `Hermes / Local CI` as pending, then success or failure.
+   Publication writes `Hermes / Local CI` as pending, then success, failure, or
+   error.
+   Passing checks followed by incomplete VM cleanup publish error instead of a
+   false success and print the exact recovery command.
 4. Link the local diagnostic directory in the pull-request handoff. Do not paste
    or render raw diagnostics without reviewing them as untrusted binary data.
 5. Branch protection must explicitly recognize the fallback context before it

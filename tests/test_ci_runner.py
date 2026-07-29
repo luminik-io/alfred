@@ -920,6 +920,33 @@ def test_instance_cleanup_deletes_only_exact_present_vm(
     ]
 
 
+@pytest.mark.parametrize("failure_step", ["stop", "retry"])
+def test_instance_cleanup_normalizes_force_delete_subprocess_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_step: str,
+) -> None:
+    delete_calls = 0
+
+    def fake_run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal delete_calls
+        if "list" in arguments:
+            return completed(arguments, stdout="alfred-ci-exact\n")
+        if "delete" in arguments:
+            delete_calls += 1
+            if delete_calls == 1:
+                return completed(arguments, returncode=1)
+            if failure_step == "retry":
+                raise subprocess.TimeoutExpired(arguments, timeout=1)
+        if "stop" in arguments and failure_step == "stop":
+            raise OSError("stop failed")
+        return completed(arguments)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="cannot force-delete"):
+        ci_runner._delete_instance("alfred-ci-exact")
+
+
 def test_runner_diagnostics_archive_is_bounded_and_extractable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1158,6 +1185,120 @@ def test_fallback_publishes_failure_for_nonzero_guest_result(
     assert statuses == ["pending", "failure"]
 
 
+@pytest.mark.parametrize(
+    (
+        "guest_returncode",
+        "cleanup_error",
+        "expected_returncode",
+        "expected_final_status",
+    ),
+    [
+        (0, ci_runner.ControlPlaneError("delete failed"), 2, "error"),
+        (2, ci_runner.ControlPlaneError("delete failed"), 2, "failure"),
+        (17, ci_runner.ControlPlaneError("delete failed"), 17, "failure"),
+        (17, OSError("delete failed"), 17, "failure"),
+        (17, subprocess.TimeoutExpired(["limactl"], timeout=1), 17, "failure"),
+    ],
+)
+def test_fallback_preserves_guest_result_when_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    guest_returncode: int,
+    cleanup_error: BaseException,
+    expected_returncode: int,
+    expected_final_status: str,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    sha = "a" * 40
+    statuses: list[tuple[str, str]] = []
+    calls = 0
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_verified_commit", lambda config, value: value)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_capture_guest_file", lambda *args: None)
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_instance",
+        lambda instance: (_ for _ in ()).throw(cleanup_error),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_publish_status",
+        lambda config, sha, state, description: statuses.append((state, description)),
+    )
+
+    def fake_run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return completed(arguments, returncode=0 if calls == 1 else guest_returncode)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    assert (
+        ci_runner.fallback(
+            config,
+            sha=sha,
+            publish_status=True,
+            dry_run=False,
+        )
+        == expected_returncode
+    )
+    assert [state for state, _ in statuses] == ["pending", expected_final_status]
+    assert "cleanup incomplete for alfred-ci-exact" in capsys.readouterr().err
+
+
+def test_fallback_deletes_instance_when_diagnostic_directory_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    sha = "a" * 40
+    statuses: list[str] = []
+    deleted: list[str] = []
+    calls = 0
+    original_ensure_private_directory = ci_runner._ensure_private_directory
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_verified_commit", lambda config, value: value)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
+    monkeypatch.setattr(
+        ci_runner,
+        "_publish_status",
+        lambda config, sha, state, description: statuses.append(state),
+    )
+
+    def ensure_private_directory(path: Path) -> None:
+        if path.name == "diagnostics":
+            raise OSError("diagnostic directory failed")
+        original_ensure_private_directory(path)
+
+    def fake_run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return completed(arguments, returncode=0 if calls == 1 else 17)
+
+    monkeypatch.setattr(ci_runner, "_ensure_private_directory", ensure_private_directory)
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    with pytest.raises(OSError, match="diagnostic directory failed"):
+        ci_runner.fallback(
+            config,
+            sha=sha,
+            publish_status=True,
+            dry_run=False,
+        )
+
+    assert deleted == ["alfred-ci-exact"]
+    assert statuses == ["pending", "error"]
+
+
 def test_fallback_publishes_error_when_operator_interrupts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1206,6 +1347,54 @@ def test_fallback_publishes_error_when_operator_interrupts(
     assert statuses == ["pending", "error"]
     assert deleted == ["alfred-ci-exact"]
     assert captured == [".alfred-ci/fallback-console.log"]
+
+
+def test_fallback_cleanup_failure_does_not_mask_operator_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    sha = "a" * 40
+    statuses: list[str] = []
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_verified_commit", lambda config, value: value)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(ci_runner, "_capture_guest_file", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_instance",
+        lambda instance: (_ for _ in ()).throw(ci_runner.ControlPlaneError("delete failed")),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_publish_status",
+        lambda config, sha, state, description: statuses.append(state),
+    )
+
+    def interrupted_run(
+        arguments: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        if arguments[:2] == ["limactl", "start"]:
+            return completed(arguments)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(ci_runner, "_run", interrupted_run)
+
+    with pytest.raises(KeyboardInterrupt):
+        ci_runner.fallback(
+            config,
+            sha=sha,
+            publish_status=True,
+            dry_run=False,
+        )
+
+    assert statuses == ["pending", "error"]
+    assert "cleanup incomplete for alfred-ci-exact" in capsys.readouterr().err
 
 
 def test_fallback_attempts_cleanup_when_guest_start_fails(

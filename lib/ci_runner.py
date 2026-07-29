@@ -442,7 +442,10 @@ def _state_directory() -> Path:
 
 
 def _ensure_private_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError as exc:
+        raise ControlPlaneError(f"cannot create private state directory: {path}") from exc
     flags = os.O_RDONLY
     if hasattr(os, "O_DIRECTORY"):
         flags |= os.O_DIRECTORY
@@ -818,12 +821,15 @@ def _delete_instance(instance: str) -> None:
         raise ControlPlaneError(f"cannot delete Lima instance {instance}: {exc}") from exc
     if completed.returncode == 0:
         return
-    _run(["limactl", "stop", "--force", instance], check=False, capture_output=True)
-    retry = _run(
-        ["limactl", "delete", "--force", instance],
-        check=False,
-        capture_output=True,
-    )
+    try:
+        _run(["limactl", "stop", "--force", instance], check=False, capture_output=True)
+        retry = _run(
+            ["limactl", "delete", "--force", instance],
+            check=False,
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ControlPlaneError(f"cannot force-delete Lima instance {instance}: {exc}") from exc
     if retry.returncode != 0:
         detail = retry.stderr.strip() or completed.stderr.strip() or "unknown Lima error"
         raise ControlPlaneError(f"failed to delete {instance}: {detail}")
@@ -1167,7 +1173,8 @@ def fallback(
             "Disposable Mac Mini checks are running",
         )
 
-    result = 1
+    result: int | None = None
+    cleanup_failed_after_success = False
     start_attempted = False
     diagnostic_path: Path | None = None
     try:
@@ -1203,17 +1210,36 @@ def fallback(
             finally:
                 if start_attempted:
                     try:
-                        diagnostics = state_directory / "diagnostics"
-                        _ensure_private_directory(diagnostics)
-                        diagnostic_path = _capture_guest_file(
-                            instance,
-                            ".alfred-ci/fallback-console.log",
-                            diagnostics / f"{instance}-fallback.log",
-                        )
-                    except ControlPlaneError as exc:
-                        print(f"WARNING: diagnostic capture failed: {exc}", file=sys.stderr)
+                        try:
+                            diagnostics = state_directory / "diagnostics"
+                            _ensure_private_directory(diagnostics)
+                            diagnostic_path = _capture_guest_file(
+                                instance,
+                                ".alfred-ci/fallback-console.log",
+                                diagnostics / f"{instance}-fallback.log",
+                            )
+                        except ControlPlaneError as exc:
+                            print(f"WARNING: diagnostic capture failed: {exc}", file=sys.stderr)
                     finally:
-                        _delete_instance(instance)
+                        active_exception = sys.exception()
+                        try:
+                            _delete_instance(instance)
+                        except (
+                            ControlPlaneError,
+                            OSError,
+                            subprocess.SubprocessError,
+                        ) as exc:
+                            message = (
+                                f"cleanup incomplete for {instance}: {exc}; recover with "
+                                f"cleanup --instance {instance} --approve-delete"
+                            )
+                            print(f"ERROR: {message}", file=sys.stderr)
+                            if active_exception is None:
+                                if result is None:
+                                    raise ControlPlaneError(message) from exc
+                                if result == 0:
+                                    result = 2
+                                    cleanup_failed_after_success = True
     except (ControlPlaneError, KeyboardInterrupt, OSError, subprocess.SubprocessError):
         if publish_status:
             _publish_status(
@@ -1226,8 +1252,17 @@ def fallback(
 
     if diagnostic_path is not None:
         print(f"diagnostics: {diagnostic_path}")
+    if result is None:
+        raise ControlPlaneError("fallback stopped without a job result")
     if publish_status:
-        if result == 0:
+        if cleanup_failed_after_success:
+            _publish_status(
+                config,
+                verified_sha,
+                "error",
+                "Checks passed but VM cleanup is incomplete",
+            )
+        elif result == 0:
             _publish_status(
                 config,
                 verified_sha,
