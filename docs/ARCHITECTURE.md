@@ -320,7 +320,8 @@ flowchart TD
         brew["compute source sha256<br/>for Formula/alfred-os.rb"]
     end
 
-    ci["gitleaks CI<br/>(.github/workflows/gitleaks.yml)<br/>push + PR to main"]
+    prscan["PR gitleaks<br/>(.github/workflows/ci.yml)<br/>introduced commits"]
+    historyscan["weekly gitleaks<br/>(.github/workflows/gitleaks.yml)<br/>full history"]
 
     core --> clientTier
     core --> slackTier
@@ -328,12 +329,13 @@ flowchart TD
     tauri --> macbun
     tauri --> linbun
     tag --> verify --> notes --> ghrel --> brew
-    ci -.->|secret scan gate| ghrel
+    prscan -.->|merge gate| ghrel
+    historyscan -.->|defense in depth| ghrel
 ```
 
 - **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS 11+ Apple silicon, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Public releases start as drafts; signed macOS assets and Linux packages are attached before publish (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
 - **Tag-triggered release.** `.github/workflows/release.yml` runs on a `v*.*.*` tag (or `workflow_dispatch`). It verifies the tag matches the `VERSION` file, extracts the matching `CHANGELOG.md` section as release notes, creates or edits the GitHub Release, and prints the source-tarball `sha256` for the Homebrew formula (`Formula/alfred-os.rb`).
-- **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs the free gitleaks binary (no org license needed) on every push and PR to `main`, scanning full history with `.gitleaks.toml`. The same scan runs on the internal repo, so nothing with a leaked secret reaches a release.
+- **Secret-scan gates.** The core pull-request workflow installs the free Gitleaks binary, verifies its release checksum, and scans every commit introduced by the pull request with `.gitleaks.toml`. Requiring `CI / Required` in the main ruleset makes this a merge gate. `.github/workflows/gitleaks.yml` separately scans the complete history every Monday and on manual dispatch as defense in depth.
 
 ## Where to go next
 

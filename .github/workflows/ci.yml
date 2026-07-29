@@ -72,7 +72,7 @@ jobs:
             # Pytest validates more than Python modules: prompts, fixtures,
             # installers, service templates, skills, schemas, and workflow
             # contracts are all direct test inputs.
-            if grep -Eq '(^|/).+\.py$|^tests/|^prompts/|^skills/|^examples/|^launchd/|^systemd/|^schema/|^bin/|^(install|deploy|get)\.sh$|^site/scripts/|^site/src/content/docs/|^docs/|^[^/]+\.md$|^\.github/workflows/|^\.github/dependabot\.yml$|^pyproject\.toml$|^uv\.lock$' <<<"$changed_files"; then
+            if grep -Eq '(^|/).+\.py$|^tests/|^prompts/|^skills/|^examples/|^launchd/|^systemd/|^schema/|^bin/|^(install|deploy|get)\.sh$|^site/scripts/|^site/src/content/docs/|^docs/|^[^/]+\.md$|^\.env\.example$|^\.github/workflows/|^\.github/dependabot\.yml$|^pyproject\.toml$|^uv\.lock$' <<<"$changed_files"; then
               python=true
             fi
             if grep -Eq '^clients/desktop/|^lib/server/|^bin/alfred$|^pyproject\.toml$|^\.github/workflows/ci\.yml$' <<<"$changed_files"; then
