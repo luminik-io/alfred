@@ -120,6 +120,10 @@ jobs:
       - name: Shellcheck
         if: steps.scopes.outputs.source == 'true'
         run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends shellcheck
+          fi
           shellcheck --version
           {
             find . -type f \
