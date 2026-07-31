@@ -18,8 +18,7 @@ permissions:
 jobs:
   quality:
     name: Core quality
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, luminik-org]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       python: ${{ steps.scopes.outputs.python }}
@@ -207,8 +206,8 @@ jobs:
   python:
     name: Python compatibility
     needs: quality
-    if: needs.quality.outputs.python == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, linux, x64, luminik-org]
+    if: needs.quality.outputs.python == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -244,8 +243,8 @@ jobs:
   desktop:
     name: Desktop client
     needs: quality
-    if: needs.quality.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, linux, x64, luminik-org]
+    if: needs.quality.outputs.desktop == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -314,8 +313,8 @@ jobs:
   required:
     name: Required
     needs: [quality, python, desktop]
-    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, linux, x64, luminik-org]
+    if: always()
+    runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Enforce all applicable checks

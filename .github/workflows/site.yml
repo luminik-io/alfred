@@ -34,8 +34,7 @@ permissions:
 jobs:
   build:
     name: Build (Astro)
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, luminik-org]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -95,7 +94,7 @@ jobs:
     name: Deploy to GitHub Pages
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' && vars.ALFRED_OS_PUBLISH_PAGES == 'true'
     needs: build
-    runs-on: [self-hosted, linux, x64, luminik-org]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
       name: github-pages
