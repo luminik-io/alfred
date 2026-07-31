@@ -18,7 +18,8 @@ permissions:
 jobs:
   quality:
     name: Core quality
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, luminik-org]
     timeout-minutes: 10
     outputs:
       python: ${{ steps.scopes.outputs.python }}
@@ -193,8 +194,8 @@ jobs:
   python:
     name: Python compatibility
     needs: quality
-    if: needs.quality.outputs.python == 'true'
-    runs-on: ubuntu-latest
+    if: needs.quality.outputs.python == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, linux, x64, luminik-org]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -230,15 +231,15 @@ jobs:
   desktop:
     name: Desktop client
     needs: quality
-    if: needs.quality.outputs.desktop == 'true'
-    runs-on: ubuntu-latest
+    if: needs.quality.outputs.desktop == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, linux, x64, luminik-org]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
-          node-version: "22.12.0"
+          node-version: "22.13.0"
           cache: npm
           cache-dependency-path: clients/desktop/package-lock.json
 
@@ -300,8 +301,8 @@ jobs:
   required:
     name: Required
     needs: [quality, python, desktop]
-    if: always()
-    runs-on: ubuntu-latest
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, linux, x64, luminik-org]
     timeout-minutes: 2
     steps:
       - name: Enforce all applicable checks
