@@ -121,8 +121,17 @@ jobs:
         if: steps.scopes.outputs.source == 'true'
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends shellcheck
+            for attempt in {1..20}; do
+              if sudo apt-get update \
+                && sudo apt-get install --yes --no-install-recommends shellcheck; then
+                break
+              fi
+              if [ "$attempt" -eq 20 ]; then
+                echo "::error::Unable to install shellcheck after waiting for the package-manager lock"
+                exit 1
+              fi
+              sleep 3
+            done
           fi
           shellcheck --version
           {
