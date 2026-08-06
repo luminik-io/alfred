@@ -26,9 +26,17 @@ permissions:
 jobs:
   repository-checks:
     name: Required
-    runs-on:
-      group: mac-mini-disposable
-      labels: "${{ inputs.runner_label }}"
+    # Was a self-hosted "mac-mini-disposable" group addressed by a one-use
+    # label. Blacksmith's macOS runners are ephemeral per-job VMs, so the
+    # disposability the group existed to provide is kept, and there is no
+    # longer a physical mini to re-image, keep patched, or lose.
+    #
+    # The runner_label input is now vestigial for routing. It is retained
+    # because the dispatching control plane still sends it, and an unexpected
+    # input would fail the dispatch; it is simply no longer what selects the
+    # machine. The immutable-checkout check below is untouched and is what
+    # actually pins this run to a verified same-repository head.
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
