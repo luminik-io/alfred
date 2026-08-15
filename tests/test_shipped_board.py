@@ -159,9 +159,7 @@ def test_pr_cards_include_verifiable_github_evidence(monkeypatch):
             ],
             "files": [{"path": "client.tsx"}, {"path": "client.test.tsx"}],
             "commits": [{"oid": "b" * 40}, {"oid": "a" * 40}],
-            "latestReviews": [
-                {"author": {"login": "reviewer"}, "state": "COMMENTED"}
-            ],
+            "latestReviews": [{"author": {"login": "reviewer"}, "state": "COMMENTED"}],
         }
     ]
     monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
