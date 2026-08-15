@@ -27,7 +27,7 @@ import memory.sqlite_hybrid as mod  # noqa: E402
 from fleet_brain import FleetBrain, Lesson, MemoryPromotionError  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
 from memory.config import load_lesson_writer, load_provider  # noqa: E402
-from memory.providers import FleetBrainProvider  # noqa: E402
+from memory.providers import ChainedMemoryProvider, FleetBrainProvider  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 from memory.sqlite_hybrid import (  # noqa: E402
     SqliteHybridProvider,
@@ -110,6 +110,20 @@ def test_recall_query_miss_does_not_inject_unrelated_recent_lessons(
     provider.reflect(codename="c", repo="r", body="Always use UTC for stored timestamps")
 
     out = provider.recall(query="GraphQL batching policy", codename="c", repo="r")
+
+    assert out == []
+
+
+def test_default_chain_query_miss_does_not_fall_back_to_recent_fleet_lesson(
+    tmp_path: Path,
+) -> None:
+    sqlite = SqliteHybridProvider(db_path=tmp_path / "memory.db")
+    fleet = FleetBrainProvider(brain=FleetBrain(db_path=tmp_path / "brain.db"))
+    sqlite.reflect(codename="c", repo="r", body="Always use UTC for stored timestamps")
+    fleet.reflect(codename="c", repo="r", body="Run the release checklist before tagging")
+    chain = ChainedMemoryProvider(providers=[sqlite, fleet])
+
+    out = chain.recall(query="GraphQL batching policy", codename="c", repo="r")
 
     assert out == []
 

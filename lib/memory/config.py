@@ -4,7 +4,7 @@ The operator tunes runtime memory via two env vars:
 
 * ``ALFRED_MEMORY_PROVIDERS`` -- comma-separated provider names, in
   consult order. Example: ``sqlite,fleet``. Unset means the embedded
-  SQLite hybrid store first (zero-daemon semantic recall), with the local
+  SQLite hybrid store first (zero-daemon lexical recall), with the local
   FleetBrain ledger behind it; set it to ``null`` or an empty string to
   disable runtime memory. Redis Agent Memory (``redis``) stays a supported
   opt-in: ``ALFRED_MEMORY_PROVIDERS=redis,fleet`` restores the daemon-backed
@@ -150,7 +150,7 @@ def load_provider(env: Mapping[str, str] | None = None) -> MemoryProvider:
     ``ALFRED_MEMORY_PROVIDERS``.
 
     The default (env unset) is the embedded SQLite hybrid store first, then
-    FleetBrain. The SQLite store is the zero-daemon semantic-recall layer
+    FleetBrain. The SQLite store is the zero-daemon lexical-recall layer
     (FTS5 lexical + optional sqlite-vec dense, fused with RRF). FleetBrain stays
     in the chain as the local operational ledger for candidates, firings, GitHub
     cache, worker heartbeats, and telemetry inputs. Redis Agent Memory remains a

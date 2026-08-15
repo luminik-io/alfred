@@ -1,9 +1,9 @@
 """Embedded SQLite hybrid memory provider (zero-daemon default).
 
-This provider gives Alfred semantic-quality recall of promoted lessons
-without any running service. It is the zero-dependency default recall
-backend: a single SQLite file under the state root, no Redis, no Ollama,
-no cloud vector database.
+This provider gives Alfred ranked lexical recall of promoted lessons without
+any running service. It is the zero-dependency default recall backend: a single
+SQLite file under the state root, no Redis, no Ollama, no cloud vector database.
+Dense semantic retrieval is optional.
 
 Retrieval is hybrid and degrades in clean tiers:
 

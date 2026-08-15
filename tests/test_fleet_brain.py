@@ -297,27 +297,20 @@ def test_recall_query_substring(brain: FleetBrain) -> None:
     assert "GraphQL" in out[0].body
 
 
-def test_recall_query_never_starves_local_fallback(brain: FleetBrain) -> None:
-    """An issue-scoped query is a long blob that literal ``body LIKE`` almost
-    never matches. It must NOT drop recall to empty; recent scoped lessons still
-    surface (query is a soft filter, not a hard one)."""
+def test_recall_query_miss_returns_no_unrelated_lesson(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use the fixture factory")
     brain.reflect(codename="lucius", repo="org/api", body="Mock the outbound client")
 
     issue_query = "Fix the GraphQL schema loader so nested unions resolve on cold start"
     out = brain.recall(codename="lucius", repo="org/api", query=issue_query)
-    # No lesson body contains the query, but recall still returns the scoped
-    # lessons by recency rather than an empty list.
-    assert {L.body for L in out} == {"Use the fixture factory", "Mock the outbound client"}
+    assert out == []
 
 
-def test_recall_query_matches_first_then_backfills(brain: FleetBrain) -> None:
-    """A partial literal match ranks first, then recency backfills up to limit."""
+def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="older unrelated lesson")
     brain.reflect(codename="lucius", repo="org/api", body="the GraphQL loader caches unions")
     out = brain.recall(codename="lucius", repo="org/api", query="GraphQL loader", limit=5)
-    assert out[0].body == "the GraphQL loader caches unions"  # literal match first
-    assert "older unrelated lesson" in {L.body for L in out}  # recency backfill
+    assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
 
 
 def test_recall_limit_is_clamped(brain: FleetBrain) -> None:

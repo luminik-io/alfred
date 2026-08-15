@@ -684,13 +684,9 @@ class SQLiteStore:
         ``query`` is given. Redis Agent Memory provides semantic recall in the
         default runtime provider chain.
 
-        ``query`` is treated as a SOFT filter here: an issue-scoped query is a
-        long "title + body" blob that a literal ``body LIKE`` almost never
-        matches, so using it as a hard filter would starve the local fallback
-        (existing reviewed lessons vanish instead of surfacing recent ones).
-        Instead, literal matches are ranked first, then the result is backfilled
-        with recency-ordered scoped lessons up to ``limit`` so a query narrows
-        when it can but never drops below the recency baseline.
+        ``query`` is a hard literal filter. A miss returns no lesson instead of
+        backfilling recent scoped rows that do not match the task. Calling
+        without a query is the explicit recency-ordered listing operation.
 
         Either ``codename`` or ``repo`` may be ``None`` to widen the scope.
 
@@ -730,24 +726,9 @@ class SQLiteStore:
             return params
 
         with self._connect() as conn:
-            if not query:
-                rows = conn.execute(_scoped(None), _scope_params(None)).fetchall()
-                return [self._row_to_lesson(conn, r) for r in rows]
-            # Literal matches first (most-recent among them), then backfill with
-            # recency-scoped lessons so injection never starves on a narrow query.
-            matched = conn.execute(_scoped(query), _scope_params(query)).fetchall()
-            lessons = [self._row_to_lesson(conn, r) for r in matched]
-            if len(lessons) < limit:
-                seen = {lesson.id for lesson in lessons}
-                recent = conn.execute(_scoped(None), _scope_params(None)).fetchall()
-                for r in recent:
-                    lesson = self._row_to_lesson(conn, r)
-                    if lesson.id in seen:
-                        continue
-                    lessons.append(lesson)
-                    if len(lessons) >= limit:
-                        break
-            return lessons[:limit]
+            query_body = (query or "").strip() or None
+            rows = conn.execute(_scoped(query_body), _scope_params(query_body)).fetchall()
+            return [self._row_to_lesson(conn, row) for row in rows]
 
     def list_lessons(self, limit: int | None = None) -> list[Lesson]:
         sql = f"SELECT {_LESSON_COLUMNS} FROM lessons ORDER BY created_at DESC"
