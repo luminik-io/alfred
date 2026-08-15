@@ -3,6 +3,7 @@ import {
   Check,
   CheckCircle2,
   CircleDotDashed,
+  CircleX,
   ExternalLink,
   FileCode2,
   FilePlus2,
@@ -20,6 +21,15 @@ import type { FollowupAction } from "../../lib/uiTypes";
 import type { PlanDecision, PlanDraft, ShippedCard } from "../../types";
 import { Markdown } from "../Markdown";
 import { cardOutcome, type QueueActionHandler } from "./types";
+
+const FAILED_CHECK_STATES = new Set([
+  "ACTION_REQUIRED",
+  "CANCELLED",
+  "FAILURE",
+  "STALE",
+  "STARTUP_FAILURE",
+  "TIMED_OUT",
+]);
 
 // The plan detail sheet body: metadata, the go/no-go decision block, file /
 // discard / follow-up actions, and the rendered plan markdown.
@@ -302,10 +312,19 @@ export function CardInspector({
               <h5>Checks</h5>
               <ul>
                 {visibleChecks.map((check) => {
-                  const passed = check.status.toUpperCase() === "SUCCESS";
+                  const status = check.status.toUpperCase();
+                  const passed = status === "SUCCESS";
+                  const failed = FAILED_CHECK_STATES.has(status);
+                  const state = passed ? "passed" : failed ? "failed" : "pending";
                   return (
-                    <li key={`${check.name}:${check.status}`} data-state={passed ? "passed" : "pending"}>
-                      {passed ? <CheckCircle2 aria-hidden="true" /> : <CircleDotDashed aria-hidden="true" />}
+                    <li key={`${check.name}:${check.status}`} data-state={state}>
+                      {passed ? (
+                        <CheckCircle2 aria-hidden="true" />
+                      ) : failed ? (
+                        <CircleX aria-hidden="true" />
+                      ) : (
+                        <CircleDotDashed aria-hidden="true" />
+                      )}
                       <span>{check.name}</span>
                       <small>{humanState(check.status)}</small>
                     </li>

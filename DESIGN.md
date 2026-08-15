@@ -177,7 +177,7 @@ The default palette is warm cloud paper and slate ink with a low-chroma teal pri
 
 ## Layout
 
-The desktop shell uses a persistent compact sidebar and a fluid content area. Work surfaces occupy the available viewport instead of producing a long page. The Work board uses four equal lifecycle lanes and adds a clamped 19rem to 22rem inspector when an item is selected. At widths below 1024px, lanes become two columns. Below 900px, fixed-height lane scrolling yields to page scrolling. Below 640px, lanes and assignment controls stack into one column.
+The desktop shell uses a persistent compact sidebar and a fluid content area. Work surfaces occupy the available viewport instead of producing a long page. The Work board uses four equal lifecycle lanes and adds a clamped 19rem to 22rem inspector when an item is selected at widths of 1100px and above. Narrower windows use a sheet so the inspector cannot compress the board. At widths below 1024px, lanes become two columns. Below 900px, fixed-height lane scrolling yields to page scrolling. Below 640px, lanes and assignment controls stack into one column.
 
 Spacing follows a dense 4px base rhythm, most often appearing as 8px, 12px, 16px, and 24px gaps or padding. Content insets are 16px on small screens, 20px at the next step, and 28px on wide screens. Desktop controls are normally 28px to 36px tall; at phone widths interactive targets have a 36px minimum short axis.
 

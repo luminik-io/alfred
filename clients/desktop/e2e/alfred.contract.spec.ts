@@ -59,6 +59,20 @@ test("approving a plan sends an authenticated mutation and refreshes the queue",
   expect(request?.body).toEqual({ decision: "approve" });
 });
 
+test("compact Work windows open the inspector as a sheet", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 900, height: 800 });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Work", exact: true }).click();
+  await page
+    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .click();
+
+  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Work item inspector" })).toHaveCount(0);
+});
+
 test("primary navigation loads code, models, settings, and returns to Inbox", async ({ page }) => {
   const api = await installAlfredApi(page);
 

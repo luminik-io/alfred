@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { supportsMutations } from "../api/client";
 import { exactTime, friendlyTime } from "../format";
-import { useIsMobile } from "../hooks/use-mobile";
+import { useMediaQuery } from "../hooks/use-mobile";
 import { type BoardColumn } from "../lib/chips";
 import {
   type CustomRosterNames,
@@ -93,7 +93,7 @@ export function PipelineView({
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showLowSignal, setShowLowSignal] = useState(false);
-  const isMobile = useIsMobile();
+  const dockInspector = useMediaQuery("(min-width: 1100px)");
 
   const loading = state === "loading";
   const columns = board?.columns;
@@ -277,7 +277,7 @@ export function PipelineView({
           body="When you ask Alfred for something, it appears here first as a plan for you to approve, then as work in progress, then as shipped."
         />
       ) : (
-        <div className={`alfred-pipeline__workspace${hasSelection && !isMobile ? " has-inspector" : ""}`}>
+        <div className={`alfred-pipeline__workspace${hasSelection && dockInspector ? " has-inspector" : ""}`}>
           <div className="alfred-pipeline__columns motion-rise">
           <PipelineColumn label="Needs your go-ahead" count={goAheadCount} lane="needs">
             {visiblePlans.map((entry) => (
@@ -368,7 +368,7 @@ export function PipelineView({
             );
           })}
           </div>
-          {hasSelection && !isMobile ? (
+          {hasSelection && dockInspector ? (
             <aside className="pipeline-inspector motion-rise" aria-label={`${inspectorTitle} inspector`}>
               <header className="pipeline-inspector__header">
                 <div>
@@ -391,7 +391,7 @@ export function PipelineView({
         </div>
       )}
 
-      {isMobile ? (
+      {!dockInspector ? (
         <Sheet
           open={hasSelection}
           onOpenChange={(open) => {

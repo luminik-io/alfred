@@ -5,6 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import { PipelineView } from "./PipelineView";
 import type { PlanDraft, ShippedBoard, ShippedCard } from "../types";
 
+const viewport = vi.hoisted(() => ({ wide: true }));
+
+vi.mock("../hooks/use-mobile", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/use-mobile")>()),
+  useMediaQuery: () => viewport.wide,
+}));
+
 // PipelineView merges the old Work board and Plans page into the single
 // lifecycle board. Render in desktop-capable mode so the queue actions appear.
 vi.mock("../api/client", async (importOriginal) => ({
@@ -580,6 +587,7 @@ describe("PipelineView", () => {
                 checks: [
                   { name: "Desktop client", status: "SUCCESS" },
                   { name: "policy", status: "PENDING" },
+                  { name: "Integration", status: "FAILURE" },
                 ],
                 changed_files: ["client.tsx", "client.test.tsx"],
                 commit_count: 2,
@@ -616,8 +624,32 @@ describe("PipelineView", () => {
     expect(within(inspector).getByRole("region", { name: "Changed files" })).toHaveTextContent(
       "client.test.tsx",
     );
+    expect(within(inspector).getByText("Integration").closest("li")).toHaveAttribute(
+      "data-state",
+      "failed",
+    );
     expect(screen.getByRole("region", { name: /working now/i })).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("uses a sheet instead of compressing the board at compact viewport widths", async () => {
+    const user = userEvent.setup();
+    viewport.wide = false;
+    try {
+      renderPipeline({
+        board: board({
+          columns: { queued: [card()], in_progress: [], shipped: [] },
+          counts: { queued: 1, in_progress: 0, shipped: 0 },
+        }),
+      });
+
+      await user.click(screen.getByRole("button", { name: /ready issue/i }));
+
+      expect(screen.getByRole("dialog", { name: "Work item" })).toBeVisible();
+      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    } finally {
+      viewport.wide = true;
+    }
   });
 
   it("routes an existing issue from the Work assignment strip", async () => {

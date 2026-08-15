@@ -352,6 +352,10 @@
   color: var(--ok);
 }
 
+.evidence-block li[data-state="failed"] svg {
+  color: var(--error);
+}
+
 .evidence-block small {
   color: var(--muted-foreground);
   font-family: var(--font-sans);

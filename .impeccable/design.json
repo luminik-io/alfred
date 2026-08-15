@@ -40,10 +40,11 @@
     "breakpoints": [
       { "name": "phone", "value": "480px" },
       { "name": "single-lane", "value": "640px" },
-      { "name": "mobile-inspector", "value": "767px" },
+      { "name": "mobile-material", "value": "767px" },
       { "name": "board-scroll", "value": "899px" },
       { "name": "compact-assignment", "value": "920px" },
-      { "name": "two-lane", "value": "1024px" }
+      { "name": "two-lane", "value": "1024px" },
+      { "name": "docked-inspector", "value": "1100px" }
     ]
   },
   "components": [
