@@ -1,23 +1,10 @@
 name: Mac Mini CI
 
 on:
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: Exact verified same-repository pull-request head
-        required: true
-        type: string
-      runner_label:
-        description: One-use label minted by the trusted host control plane
-        required: true
-        type: string
-      pr_number:
-        description: Pull request recorded for the job receipt
-        required: true
-        type: string
+  workflow_call:
 
 concurrency:
-  group: mac-mini-ci-${{ inputs.pr_number }}
+  group: mac-mini-ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -26,26 +13,34 @@ permissions:
 jobs:
   repository-checks:
     name: Required
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'mac-mini-ci' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.base.repo.full_name == github.repository &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on:
       group: mac-mini-disposable
-      labels: "${{ inputs.runner_label }}"
+      labels: "alfred-job-${{ github.event.pull_request.head.sha }}"
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Verify immutable checkout
         env:
-          EXPECTED_SHA: ${{ inputs.sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           version: "0.12.0"
-          # This trusted workflow_dispatch executes a verified PR head. Never
-          # expose a default-branch Actions cache token to that code.
+          # The caller is a pull_request event, so GitHub scopes any workflow
+          # cache token to that PR. Keep setup-uv's own cache disabled too.
           enable-cache: false
 
       - name: Static checks

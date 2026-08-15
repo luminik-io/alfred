@@ -33,7 +33,7 @@ implementation do not edit those workflows.
    are rejected.
 5. The host's existing GitHub authentication is not modified by setup or test
    commands.
-6. The dispatch workflow becomes callable only after this reviewed pull request
+6. The reusable workflow becomes callable only after its reviewed definition
    reaches `main`.
 
 ## Commands
@@ -92,7 +92,8 @@ bin/alfred-ci-shellcheck.sh          complete file and embedded-script scan
 lib/ci_runner.py                     validated control plane
 examples/ci-runner/lima.yaml         isolated VM template
 examples/ci-runner/runner.toml       repository and resource allowlist
-.github/workflows/mac-mini-ci.yml    trusted main-only dispatch workflow
+.github/workflows/mac-mini-ci.yml    trusted main-only reusable workflow
+.github/workflows/mac-mini-ci-request.yml  low-privilege PR-event caller
 tests/test_ci_runner.py              unit and command-boundary tests
 docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 ```
@@ -108,8 +109,8 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
   same-repository head targeting `main`.
 - Hold a non-blocking host file lock for the full VM lifetime.
 - Use a new VM name and a new ephemeral GitHub runner registration for each job.
-- Register with `--no-default-labels` and exactly one random label so another
-  queued job cannot match a shared subset.
+- Register with `--no-default-labels` and exactly one full-commit-bound label
+  so a job for different code cannot match the guest.
 - Disable host mounts, dynamic port forwarding, containerd, Rosetta, and SSH
   agent forwarding with Lima plain mode.
 - Remove password-based sudo and reject new guest connections to private,
@@ -136,7 +137,7 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 - Install Lima.
 - Create or change a GitHub token.
 - Register a runner.
-- Merge or change the dispatch workflow.
+- Merge or change either Mac Mini workflow.
 - Publish a commit status.
 - Delete a named recovery VM.
 
@@ -176,8 +177,9 @@ docs/MAC_MINI_CI_RUNNER.md           spec, threat model, and runbook
 
 | Risk | Control |
 |---|---|
-| Fork code reaches the Mac | The host rejects any PR whose head repository differs from `luminik-io/alfred`, then dispatches a workflow from trusted `main` with a random one-use runner label. |
-| Another queued job steals the guest | The runner has no default or shared labels. It has only the random label required by the trusted dispatch. |
+| Fork code reaches the Mac | The host and the trusted reusable workflow independently reject any PR whose head repository differs from `luminik-io/alfred`; no runner is registered for a fork. |
+| Another queued job steals the guest | The runner has no default or shared labels. Its only label contains the full verified PR head SHA, and the runner group admits only the reusable workflow pinned to `main`. |
+| PR code poisons a default-branch cache | Untrusted code runs only from a `pull_request` event, whose cache scope is the PR. The default-branch reusable workflow is called in that event context, setup-uv caching stays disabled, and no default-branch dispatch executes PR code. |
 | PR code escapes into host files | Lima plain mode, no mounts, no forwarded agent, no static port forwards, disposable guest. |
 | PR code probes services on the Mac or LAN | The guest has no password-based sudo, and host-installed firewall rules reject new egress to private, carrier-grade NAT, link-local, multicast, and reserved ranges while preserving established SSH control traffic and DNS only to the exact configured resolvers. |
 | Job output attacks the host terminal | The guest redirects untrusted process output to guest files. The host stores only bounded mode-0600 diagnostics and does not render them. |
@@ -219,26 +221,41 @@ forks:
 Lima plain mode disables mounts, dynamic forwarding, containerd, Rosetta, and
 SSH agent forwarding:
 [Lima plain mode](https://lima-vm.io/docs/config/plain/).
+GitHub's CodeQL guidance requires untrusted code to run outside the default
+branch cache context:
+[cache-poisoning query help](https://codeql.github.com/codeql-query-help/actions/actions-cache-poisoning-poisonable-step/).
+GitHub also specifies that a reusable workflow inherits the caller's `github`
+event context and that runner groups may admit only jobs directly defined in a
+selected workflow:
+[reusable workflow reference](https://docs.github.com/en/enterprise-cloud@latest/actions/reference/workflows-and-actions/reusing-workflow-configurations),
+[runner-group access](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
 
 ## Workflow contract
 
-`.github/workflows/mac-mini-ci.yml` uses `workflow_dispatch`, not
-`pull_request`, because pull-request code can propose changes to workflow files.
-GitHub will not dispatch this new workflow until it exists on the default
-branch. After a reviewed merge, the host verifies PR provenance first and passes
-the exact SHA plus a random one-use runner label to the trusted workflow on
-`main`. Before merging a change to it:
+`.github/workflows/mac-mini-ci-request.yml` listens only for the
+`pull_request:labeled` event and calls
+`luminik-io/alfred/.github/workflows/mac-mini-ci.yml@main`. The host verifies
+the PR, registers the exact-SHA-labelled runner, and toggles the dedicated
+`mac-mini-ci` label to emit that low-privilege event. The reusable workflow on
+`main` derives the repository, PR number, head SHA, and runner label from the
+event instead of accepting caller inputs. Pull-request code can propose a
+different caller, but the runner group admits only jobs directly defined in the
+reusable workflow pinned to `main`.
 
-1. Keep the `workflow_dispatch` event. Do not add `pull_request` or
-   `pull_request_target`.
-2. Keep the exact-SHA checkout and verification step.
-3. Keep the one-use runner label input.
-4. Keep `permissions: contents: read`.
-5. Keep `runs-on` restricted to the one-use label input. Do not add default or
-   shared labels.
-6. Keep dependency and build caches disabled. The trusted dispatch executes an
-   exact same-repository PR head, so it must not expose a default-branch cache
-   token that the checked-out code could use to poison later jobs.
+Before merging a change to either workflow:
+
+1. Keep the caller on `pull_request:labeled`. Never use `pull_request_target`,
+   `workflow_dispatch`, `repository_dispatch`, `workflow_run`, or another
+   default-branch event to execute PR code.
+2. Keep the reusable workflow pinned to `main` in both the caller and runner
+   group policy.
+3. Keep the same-repository, non-draft, `main`-base, and exact `mac-mini-ci`
+   label guards in the trusted reusable job.
+4. Keep the exact event head-SHA checkout and verification step.
+5. Keep `runs-on` restricted to `alfred-job-<full head SHA>`. Do not add default
+   or shared labels.
+6. Keep `permissions: contents: read`, dependency caches disabled, and setup-uv
+   caching explicitly disabled.
 7. Do not add `environment`, `secrets`, deployment, release, or publishing
    steps.
 8. Keep the workflow independent from PR 598. After both land, update branch
@@ -273,7 +290,7 @@ These steps are intentionally not automated.
    the host control plane:
 
    - organization Self-hosted runners: write, to mint registration tokens
-   - Actions: write, only to dispatch the trusted `mac-mini-ci.yml` workflow
+   - Issues: write, only to toggle the dedicated `mac-mini-ci` PR label
    - Commit statuses: write, only for the Hermes fallback
    - Metadata: read
 
@@ -290,9 +307,9 @@ These steps are intentionally not automated.
      serve-one --pr PULL_REQUEST_NUMBER --dry-run
    ```
 
-4. Review and merge `.github/workflows/mac-mini-ci.yml` through the normal
-   signed pull-request path. Do not dispatch a workflow definition from a PR
-   branch.
+4. Review and merge both Mac Mini workflow files through the normal signed
+   pull-request path. Create the repository label `mac-mini-ci`; do not reuse it
+   for lifecycle or approval state.
 
 5. In organization Actions settings, verify `mac-mini-disposable` has all of
    these exact properties:
@@ -382,8 +399,8 @@ Normal cleanup runs automatically. If the process or Mac crashes:
 
 4. If GitHub still shows an offline runner, remove that exact runner in
    organization settings. Do not bulk-delete runners.
-5. If a dispatch stayed queued because runner setup failed, cancel only the run
-   whose one-use `alfred-job-*` label was printed by the control plane.
+5. If a request stayed queued because runner setup failed, cancel only the run
+   for the exact PR head SHA printed by the control plane.
 6. Remove a stale lock only after confirming there is no control process and no
    matching VM:
 
@@ -404,12 +421,14 @@ Normal cleanup runs automatically. If the process or Mac crashes:
 - Runner registration is org-scoped inside the selected-repository,
   main-workflow-restricted group. It is ephemeral, checksum-verified, and
   supplied over guest stdin.
-- Runner dispatch starts from trusted `main`, uses an exact verified
-  same-repository PR SHA, and routes through a random one-use label.
+- Runner execution comes from the trusted reusable workflow on `main`, keeps the
+  low-privilege pull-request cache scope, uses an exact verified same-repository
+  PR SHA, and routes through a full-SHA-bound label.
 - Every exit path attempts diagnostic capture and deletion.
 - ShellCheck covers repository shell files, Lima provision scripts, privilege
   lockdown, runner setup, and fallback execution.
 - Fallback code runs only at an exact verified SHA inside a disposable guest.
 - Commit status publication is opt-in and occurs only from the host.
-- The active workflow has no automatic event, accepts only host-dispatched
-  inputs, and cannot run until reviewed code reaches `main`.
+- The trusted reusable workflow accepts no caller-controlled authority inputs.
+  Only the dedicated label event can request it, and the job cannot reach the
+  restricted runner group until reviewed reusable code reaches `main`.

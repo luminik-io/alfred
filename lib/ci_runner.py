@@ -35,6 +35,8 @@ MAX_JOB_MINUTES = 90
 MAX_DIAGNOSTIC_BYTES = 16 * 1024 * 1024
 MINIMUM_LIMA_VERSION = (2, 0, 0)
 STATE_DIRECTORY = Path.home() / ".local" / "state" / "alfred-ci-runner"
+CI_REQUEST_LABEL = "mac-mini-ci"
+CI_JOB_LABEL_PREFIX = "alfred-job"
 
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,38})/[A-Za-z0-9_.-]{1,100}$")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -153,9 +155,9 @@ def load_config(path: Path) -> RunnerConfig:
         )
 
     job_label_prefix = _string(runner, "job_label_prefix")
-    if not SAFE_NAME_PATTERN.fullmatch(job_label_prefix) or len(job_label_prefix) > 32:
+    if job_label_prefix != CI_JOB_LABEL_PREFIX:
         raise ConfigurationError(
-            "job_label_prefix must be 1 to 32 lowercase letters, digits, or hyphens"
+            f"job_label_prefix must equal {CI_JOB_LABEL_PREFIX!r} to match the trusted workflow"
         )
 
     cpus = _integer(runner, "cpus")
@@ -367,6 +369,29 @@ def _runner_group_errors(config: RunnerConfig) -> list[str]:
     return errors
 
 
+def _request_label_errors(config: RunnerConfig) -> list[str]:
+    try:
+        result = _run(
+            [
+                "gh",
+                "api",
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+                f"repos/{config.repository}/labels/{CI_REQUEST_LABEL}",
+                "--jq",
+                ".name",
+            ],
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [f"cannot verify request label {CI_REQUEST_LABEL!r}: {exc}"]
+    if result.stdout.strip() != CI_REQUEST_LABEL:
+        return [f"repository label {CI_REQUEST_LABEL!r} is missing or renamed"]
+    return []
+
+
 def preflight(config: RunnerConfig, *, require_runner_group: bool = True) -> int:
     """Run read-only host and configuration checks."""
 
@@ -388,7 +413,7 @@ def preflight(config: RunnerConfig, *, require_runner_group: bool = True) -> int
         f"{config.disk_gib} GiB disk, {config.job_timeout_minutes} minutes"
     )
     print(f"Lima template: {config.lima_template}")
-    print("workflow dispatch target: trusted main")
+    print(f"workflow request: pull_request label {CI_REQUEST_LABEL!r}")
     print("GitHub auth scopes inspected or changed: no")
 
     if "limactl" in missing:
@@ -423,9 +448,9 @@ def preflight(config: RunnerConfig, *, require_runner_group: bool = True) -> int
             print(f"ERROR: {error}", file=sys.stderr)
         return 2
     if require_runner_group:
-        group_errors = _runner_group_errors(config)
-        if group_errors:
-            for error in group_errors:
+        policy_errors = _runner_group_errors(config) + _request_label_errors(config)
+        if policy_errors:
+            for error in policy_errors:
                 print(f"ERROR: {error}", file=sys.stderr)
             return 2
     print(f"Lima: {version_output}")
@@ -611,24 +636,54 @@ def _verified_pull_request(config: RunnerConfig, number: int) -> PullRequestTarg
     return PullRequestTarget(number=number, sha=sha)
 
 
-def _dispatch_workflow(
+def _request_pull_request_workflow(
     config: RunnerConfig,
     target: PullRequestTarget,
-    job_label: str,
 ) -> None:
-    if not SAFE_LABEL_PATTERN.fullmatch(job_label):
-        raise ControlPlaneError("generated job label is unsafe")
-    payload = json.dumps(
-        {
-            "ref": "main",
-            "inputs": {
-                "sha": target.sha,
-                "runner_label": job_label,
-                "pr_number": str(target.number),
-            },
-        },
-        separators=(",", ":"),
+    """Emit a low-privilege pull_request:labeled event for the verified PR."""
+    labels_result = _run(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+            f"repos/{config.repository}/issues/{target.number}/labels",
+        ],
+        capture_output=True,
     )
+    try:
+        pages = json.loads(labels_result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ControlPlaneError("GitHub returned invalid pull-request labels") from exc
+    if not isinstance(pages, list) or not all(isinstance(page, list) for page in pages):
+        raise ControlPlaneError("GitHub returned invalid pull-request labels")
+    label_records = [record for page in pages for record in page]
+    if not all(
+        isinstance(record, dict) and isinstance(record.get("name"), str) for record in label_records
+    ):
+        raise ControlPlaneError("GitHub returned invalid pull-request labels")
+    labels = [record["name"] for record in label_records]
+
+    if CI_REQUEST_LABEL in labels:
+        _run(
+            [
+                "gh",
+                "api",
+                "--method",
+                "DELETE",
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+                f"repos/{config.repository}/issues/{target.number}/labels/{CI_REQUEST_LABEL}",
+            ]
+        )
+
+    payload = json.dumps({"labels": [CI_REQUEST_LABEL]}, separators=(",", ":"))
     _run(
         [
             "gh",
@@ -639,7 +694,7 @@ def _dispatch_workflow(
             "Accept: application/vnd.github+json",
             "-H",
             f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
-            f"repos/{config.repository}/actions/workflows/mac-mini-ci.yml/dispatches",
+            f"repos/{config.repository}/issues/{target.number}/labels",
             "--input",
             "-",
         ],
@@ -647,8 +702,11 @@ def _dispatch_workflow(
     )
 
 
-def _new_job_label(prefix: str) -> str:
-    return f"{prefix}-{secrets.token_hex(12)}"
+def _job_label_for_target(prefix: str, target: PullRequestTarget) -> str:
+    label = f"{prefix}-{target.sha}"
+    if not SAFE_LABEL_PATTERN.fullmatch(label):
+        raise ControlPlaneError("derived job label is unsafe")
+    return label
 
 
 def _runner_guest_script() -> str:
@@ -908,7 +966,6 @@ def serve_one(
     """Create one ephemeral runner guest, process at most one job, then delete it."""
 
     instance = _new_instance_name(config.instance_prefix)
-    job_label = _new_job_label(config.job_label_prefix)
     start_arguments = _start_arguments(config, instance)
     if dry_run:
         print("dry run, no VM or GitHub runner will be created")
@@ -918,9 +975,9 @@ def serve_one(
             f"+ gh api --method POST orgs/{config.organization}/actions/runners/registration-token"
         )
         print(
-            "+ gh api --method POST "
-            f"repos/{config.repository}/actions/workflows/mac-mini-ci.yml/dispatches "
-            f"[exact PR SHA; one-use label {job_label}]"
+            "+ gh api [remove if present, then add] "
+            f"repos/{config.repository}/issues/{pull_request}/labels/{CI_REQUEST_LABEL} "
+            "[emits pull_request:labeled; workflow derives exact PR SHA]"
         )
         print(
             f"+ limactl shell {instance} [verified runner {config.runner_version}; "
@@ -937,6 +994,7 @@ def serve_one(
         raise ControlPlaneError("preflight failed")
 
     target = _verified_pull_request(config, pull_request)
+    job_label = _job_label_for_target(config.job_label_prefix, target)
     state_directory = _state_directory()
     with exclusive_control_lock(state_directory):
         start_attempted = False
@@ -975,9 +1033,12 @@ def serve_one(
                 config.runner_sha256,
             ]
             _run(configure_command, input_text=f"{token}\n")
-            _dispatch_workflow(config, current_target, job_label)
+            final_target = _verified_pull_request(config, pull_request)
+            if final_target != target:
+                raise ControlPlaneError("pull-request head changed after runner registration")
+            _request_pull_request_workflow(config, final_target)
             print(
-                f"queued trusted workflow for PR #{target.number} at {target.sha} "
+                f"requested pull-request workflow for PR #{target.number} at {target.sha} "
                 f"with label {job_label}"
             )
             timeout_seconds = config.job_timeout_minutes * 60

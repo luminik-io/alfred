@@ -171,7 +171,7 @@ def test_load_config_accepts_bounded_allowlisted_values(tmp_path: Path) -> None:
         ("disk_gib = 40", "disk_gib = 41", "disk_gib"),
         ("job_timeout_minutes = 90", "job_timeout_minutes = 91", "job_timeout"),
         ('job_label_prefix = "alfred-job"', 'job_label_prefix = "Bad label"', "job_label"),
-        ('job_label_prefix = "alfred-job"', f'job_label_prefix = "{"a" * 33}"', "job_label"),
+        ('job_label_prefix = "alfred-job"', 'job_label_prefix = "other-job"', "job_label"),
         (
             'runner_sha256 = "58b758e420b87093fbd4bfddd368074960053e2f1388f01848c82624b90f27d1"',
             'runner_sha256 = "short"',
@@ -297,6 +297,7 @@ def test_preflight_validates_lima_effective_settings(
     monkeypatch.setattr(ci_runner.platform, "machine", lambda: "arm64")
     monkeypatch.setattr(ci_runner.shutil, "which", lambda tool: f"/usr/bin/{tool}")
     monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
+    monkeypatch.setattr(ci_runner, "_request_label_errors", lambda config: [])
     calls: list[list[str]] = []
     effective = """
 vmType: vz
@@ -447,6 +448,29 @@ def test_runner_group_policy_rejects_extra_repository(
 
     assert ci_runner._runner_group_errors(config) == [
         "runner group must select only luminik-io/alfred"
+    ]
+
+
+def test_request_label_policy_requires_exact_dedicated_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments, stdout="mac-mini-ci\n"),
+    )
+
+    assert ci_runner._request_label_errors(config) == []
+
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments, stdout="renamed\n"),
+    )
+    assert ci_runner._request_label_errors(config) == [
+        "repository label 'mac-mini-ci' is missing or renamed"
     ]
 
 
@@ -631,7 +655,16 @@ def test_verified_pull_request_rejects_nonpositive_number(tmp_path: Path) -> Non
         ci_runner._verified_pull_request(config, 0)
 
 
-def test_dispatch_workflow_uses_trusted_main_exact_sha_and_one_use_label(
+def test_job_label_is_bound_to_the_full_verified_head_sha(tmp_path: Path) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+
+    assert ci_runner._job_label_for_target(config.job_label_prefix, target) == (
+        "alfred-job-" + "a" * 40
+    )
+
+
+def test_request_pull_request_workflow_relabels_verified_pr(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -646,20 +679,29 @@ def test_dispatch_workflow_uses_trusted_main_exact_sha_and_one_use_label(
         **kwargs: object,
     ) -> subprocess.CompletedProcess[str]:
         calls.append((list(arguments), input_text))
+        if "--paginate" in arguments:
+            first_page = [{"name": f"label-{index}"} for index in range(30)]
+            second_page = [{"name": "label-30"}, {"name": "mac-mini-ci"}]
+            return completed(arguments, stdout=json.dumps([first_page, second_page]))
         return completed(arguments)
 
     monkeypatch.setattr(ci_runner, "_run", fake_run)
 
-    ci_runner._dispatch_workflow(config, target, "alfred-job-abcd1234")
+    ci_runner._request_pull_request_workflow(config, target)
 
-    assert len(calls) == 1
-    arguments, payload = calls[0]
-    assert "repos/luminik-io/alfred/actions/workflows/mac-mini-ci.yml/dispatches" in arguments
+    assert len(calls) == 3
+    assert "repos/luminik-io/alfred/issues/598/labels" in calls[0][0]
+    assert "--paginate" in calls[0][0]
+    assert "--slurp" in calls[0][0]
+    assert "--jq" not in calls[0][0]
+    assert "--method" in calls[1][0]
+    assert "DELETE" in calls[1][0]
+    assert "repos/luminik-io/alfred/issues/598/labels/mac-mini-ci" in calls[1][0]
+    arguments, payload = calls[2]
+    assert "repos/luminik-io/alfred/issues/598/labels" in arguments
     assert payload is not None
-    assert '"ref":"main"' in payload
-    assert f'"sha":"{target.sha}"' in payload
-    assert '"runner_label":"alfred-job-abcd1234"' in payload
-    assert '"pr_number":"598"' in payload
+    assert payload == '{"labels":["mac-mini-ci"]}'
+    assert all("actions/workflows" not in argument for argument in arguments)
 
 
 def test_guest_lockdown_uses_guest_only_password_and_invalidates_sudo(
@@ -712,18 +754,22 @@ def test_serve_one_passes_token_only_via_guest_stdin_and_always_deletes(
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: state_directory)
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
-    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_job_label_for_target",
+        lambda prefix, target: "alfred-job-exact",
+    )
     monkeypatch.setattr(
         ci_runner,
         "_verified_pull_request",
         lambda config, number: ci_runner.PullRequestTarget(number=number, sha="a" * 40),
     )
     monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
-    dispatches: list[tuple[int, str]] = []
+    requests: list[int] = []
     monkeypatch.setattr(
         ci_runner,
-        "_dispatch_workflow",
-        lambda config, target, label: dispatches.append((target.number, label)),
+        "_request_pull_request_workflow",
+        lambda config, target: requests.append(target.number),
     )
     monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
     monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
@@ -752,13 +798,62 @@ def test_serve_one_passes_token_only_via_guest_stdin_and_always_deletes(
         == 0
     )
     assert deleted == ["alfred-ci-exact"]
-    assert dispatches == [(123, "alfred-job-exact")]
+    assert requests == [123]
     token_calls = [(arguments, stdin) for arguments, stdin in calls if stdin]
     assert len(token_calls) == 1
     assert token_calls[0][1] == "private-token\n"
     assert all("private-token" not in argument for argument in token_calls[0][0])
     assert "alfred-job-exact" in token_calls[0][0]
     assert "--ephemeral" not in token_calls[0][0]
+
+
+def test_serve_one_rechecks_head_after_registration_before_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    original = ci_runner.PullRequestTarget(number=123, sha="a" * 40)
+    changed = ci_runner.PullRequestTarget(number=123, sha="b" * 40)
+    targets = iter((original, original, changed))
+    requested: list[int] = []
+    deleted: list[str] = []
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_verified_pull_request",
+        lambda config, number: next(targets),
+    )
+    monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
+    monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
+    monkeypatch.setattr(ci_runner, "_lock_guest_privileges", lambda instance: None)
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
+    monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
+    monkeypatch.setattr(ci_runner, "_delete_runner_registration", lambda config, instance: None)
+    monkeypatch.setattr(
+        ci_runner,
+        "_request_pull_request_workflow",
+        lambda config, target: requested.append(target.number),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments),
+    )
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="changed after runner registration"):
+        ci_runner.serve_one(
+            config,
+            pull_request=123,
+            dry_run=False,
+            approve_registration=True,
+        )
+
+    assert requested == []
+    assert deleted == ["alfred-ci-exact"]
 
 
 def test_serve_one_deletes_guest_when_runner_command_fails(
@@ -772,14 +867,18 @@ def test_serve_one_deletes_guest_when_runner_command_fails(
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
-    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_job_label_for_target",
+        lambda prefix, target: "alfred-job-exact",
+    )
     monkeypatch.setattr(
         ci_runner,
         "_verified_pull_request",
         lambda config, number: ci_runner.PullRequestTarget(number=number, sha="a" * 40),
     )
     monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
-    monkeypatch.setattr(ci_runner, "_dispatch_workflow", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_request_pull_request_workflow", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
     monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
     monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
@@ -815,7 +914,11 @@ def test_serve_one_attempts_cleanup_when_guest_start_fails(
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
-    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_job_label_for_target",
+        lambda prefix, target: "alfred-job-exact",
+    )
     monkeypatch.setattr(
         ci_runner,
         "_verified_pull_request",
@@ -854,14 +957,18 @@ def test_serve_one_attempts_all_cleanup_when_diagnostic_capture_fails(
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
-    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_job_label_for_target",
+        lambda prefix, target: "alfred-job-exact",
+    )
     monkeypatch.setattr(
         ci_runner,
         "_verified_pull_request",
         lambda config, number: ci_runner.PullRequestTarget(number=number, sha="a" * 40),
     )
     monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
-    monkeypatch.setattr(ci_runner, "_dispatch_workflow", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_request_pull_request_workflow", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
     monkeypatch.setattr(ci_runner, "_lock_guest_privileges", lambda instance: None)
     monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
@@ -908,14 +1015,18 @@ def test_serve_one_preserves_job_result_when_cleanup_fails(
     monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
     monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
     monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
-    monkeypatch.setattr(ci_runner, "_new_job_label", lambda prefix: "alfred-job-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_job_label_for_target",
+        lambda prefix, target: "alfred-job-exact",
+    )
     monkeypatch.setattr(
         ci_runner,
         "_verified_pull_request",
         lambda config, number: ci_runner.PullRequestTarget(number=number, sha="a" * 40),
     )
     monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
-    monkeypatch.setattr(ci_runner, "_dispatch_workflow", lambda *args: None)
+    monkeypatch.setattr(ci_runner, "_request_pull_request_workflow", lambda *args: None)
     monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
     monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
     monkeypatch.setattr(ci_runner, "_lock_guest_privileges", lambda instance: None)
@@ -1638,15 +1749,20 @@ def test_cleanup_deletes_one_exact_prefixed_instance(
     assert deleted == [instance]
 
 
-def test_workflow_runs_only_by_trusted_dispatch() -> None:
+def test_workflow_runs_only_from_low_privilege_same_repository_pr_event() -> None:
     workflow = REPOSITORY_ROOT / ".github" / "workflows" / "mac-mini-ci.yml"
     content = workflow.read_text(encoding="utf-8")
+    request_workflow = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "mac-mini-ci-request.yml"
+    ).read_text(encoding="utf-8")
 
-    assert "workflow_dispatch:" in content
-    assert "pull_request:" not in content
+    assert "workflow_call:" in content
+    assert "workflow_dispatch:" not in content
     assert "pull_request_target" not in content
-    assert "ref: ${{ inputs.sha }}" in content
-    assert 'labels: "${{ inputs.runner_label }}"' in content
+    assert "ref: ${{ github.event.pull_request.head.sha }}" in content
+    assert 'labels: "alfred-job-${{ github.event.pull_request.head.sha }}"' in content
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in content
+    assert "github.event.label.name == 'mac-mini-ci'" in content
     setup_uv_values = workflow_action_with_values(content, "astral-sh/setup-uv")
     assert setup_uv_values["enable-cache"] == "false"
     cache_setting_only_in_a_comment = content.replace(
@@ -1674,6 +1790,16 @@ def test_workflow_runs_only_by_trusted_dispatch() -> None:
     assert "secrets:" not in content
     assert "environment:" not in content
     assert "deploy" not in content.lower()
+
+    assert "pull_request:" in request_workflow
+    assert "types: [labeled]" in request_workflow
+    assert "workflow_dispatch:" not in request_workflow
+    assert "pull_request_target" not in request_workflow
+    assert "uses: luminik-io/alfred/.github/workflows/mac-mini-ci.yml@main" in (request_workflow)
+    assert "runs-on:" not in request_workflow
+    assert "with:" not in request_workflow
+    assert "secrets:" not in request_workflow
+    assert "permissions:\n  contents: read" in request_workflow
 
 
 def test_lima_template_has_plain_mode_and_no_host_exposure() -> None:
