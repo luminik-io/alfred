@@ -25,6 +25,7 @@ import { cardOutcome, type QueueActionHandler } from "./types";
 const FAILED_CHECK_STATES = new Set([
   "ACTION_REQUIRED",
   "CANCELLED",
+  "ERROR",
   "FAILURE",
   "STALE",
   "STARTUP_FAILURE",
@@ -244,6 +245,7 @@ export function CardInspector({
       : "Not reported";
   const visibleChecks = github?.checks.slice(0, 6) || [];
   const visibleFiles = github?.changed_files.slice(0, 6) || [];
+  const countLabel = (count: number, incomplete: boolean) => `${count}${incomplete ? "+" : ""}`;
   return (
     <div className="detail-panel detail-panel--sheet" aria-label="Selected pipeline item">
       <div className="detail-panel__head">
@@ -300,7 +302,7 @@ export function CardInspector({
             </div>
             <div>
               <dt>Commits</dt>
-              <dd>{github.commit_count}</dd>
+              <dd>{countLabel(github.commit_count, github.commit_count_incomplete)}</dd>
             </div>
             <div>
               <dt>Signature</dt>
@@ -354,14 +356,17 @@ export function CardInspector({
       ) : null}
       {github && visibleFiles.length ? (
         <section className="inspector-evidence inspector-evidence--files" aria-label="Changed files">
-          <h4>Changed files <span>{github.changed_files.length}</span></h4>
+          <h4>Changed files <span>{countLabel(github.changed_file_count, github.changed_file_count_incomplete)}</span></h4>
           <ul>
             {visibleFiles.map((file) => (
               <li key={file}><FileCode2 aria-hidden="true" />{file}</li>
             ))}
           </ul>
-          {github.changed_files.length > visibleFiles.length ? (
-            <p>{github.changed_files.length - visibleFiles.length} more files on GitHub</p>
+          {github.changed_file_count > visibleFiles.length ? (
+            <p>
+              {github.changed_file_count_incomplete ? "At least " : ""}
+              {github.changed_file_count - visibleFiles.length} more files on GitHub
+            </p>
           ) : null}
         </section>
       ) : null}

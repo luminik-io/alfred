@@ -588,9 +588,13 @@ describe("PipelineView", () => {
                   { name: "Desktop client", status: "SUCCESS" },
                   { name: "policy", status: "PENDING" },
                   { name: "Integration", status: "FAILURE" },
+                  { name: "Legacy policy", status: "ERROR" },
                 ],
                 changed_files: ["client.tsx", "client.test.tsx"],
-                commit_count: 2,
+                changed_file_count: 240,
+                changed_file_count_incomplete: false,
+                commit_count: 100,
+                commit_count_incomplete: true,
                 latest_reviews: [{ author: "reviewer", state: "COMMENTED" }],
               },
             }),
@@ -621,10 +625,20 @@ describe("PipelineView", () => {
     expect(within(inspector).getByRole("region", { name: "GitHub evidence" })).toHaveTextContent(
       "Desktop client",
     );
+    expect(within(inspector).getByRole("region", { name: "GitHub evidence" })).toHaveTextContent(
+      "100+",
+    );
     expect(within(inspector).getByRole("region", { name: "Changed files" })).toHaveTextContent(
-      "client.test.tsx",
+      "Changed files 240",
+    );
+    expect(within(inspector).getByRole("region", { name: "Changed files" })).toHaveTextContent(
+      "238 more files on GitHub",
     );
     expect(within(inspector).getByText("Integration").closest("li")).toHaveAttribute(
+      "data-state",
+      "failed",
+    );
+    expect(within(inspector).getByText("Legacy policy").closest("li")).toHaveAttribute(
       "data-state",
       "failed",
     );

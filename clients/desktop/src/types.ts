@@ -375,7 +375,10 @@ export type ShippedCard = {
     review_state: string | null;
     checks: Array<{ name: string; status: string }>;
     changed_files: string[];
+    changed_file_count: number;
+    changed_file_count_incomplete: boolean;
     commit_count: number;
+    commit_count_incomplete: boolean;
     latest_reviews: Array<{ author: string; state: string }>;
   } | null;
   demo?: boolean;

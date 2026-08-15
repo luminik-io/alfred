@@ -378,6 +378,8 @@ def _github_evidence(item: dict) -> dict:
         if isinstance(file, dict) and file.get("path")
     ]
     commits = [commit for commit in (item.get("commits") or []) if isinstance(commit, dict)]
+    changed_file_total = item.get("changedFiles")
+    has_exact_changed_file_total = isinstance(changed_file_total, int)
     latest_reviews = []
     for review in item.get("latestReviews") or []:
         if not isinstance(review, dict):
@@ -392,7 +394,13 @@ def _github_evidence(item: dict) -> dict:
         "review_state": item.get("reviewDecision") or None,
         "checks": checks,
         "changed_files": changed_files,
+        "changed_file_count": changed_file_total
+        if has_exact_changed_file_total
+        else len(changed_files),
+        "changed_file_count_incomplete": not has_exact_changed_file_total
+        and len(changed_files) >= 100,
         "commit_count": len(commits),
+        "commit_count_incomplete": len(commits) >= 100,
         "latest_reviews": latest_reviews,
     }
 
@@ -446,7 +454,7 @@ def _fetch_repo(
             str(limit),
             "--json",
             "number,title,url,author,state,createdAt,mergedAt,isDraft,labels,headRefName,"
-            "headRefOid,reviewDecision,statusCheckRollup,files,commits,latestReviews",
+            "headRefOid,reviewDecision,statusCheckRollup,changedFiles,files,commits,latestReviews",
         ]
     )
     if prs is None:
