@@ -22,14 +22,13 @@ import SectionHeader from "../components/marketing/SectionHeader.astro";
 import MetricRow from "../components/marketing/MetricRow.astro";
 import JobCard from "../components/marketing/JobCard.astro";
 import CodeBlock from "../components/marketing/CodeBlock.astro";
-import SlackProof from "../components/marketing/SlackProof.astro";
 import FiringLifecycle from "../components/marketing/FiringLifecycle.astro";
 import FleetStatus from "../components/marketing/FleetStatus.astro";
 import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 import ArchitectFanOut from "../components/marketing/ArchitectFanOut.astro";
 import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
 import DownloadTracker from "../components/marketing/DownloadTracker.astro";
-import productProof from "../data/luminik-product-proof.json";
+import proof from "../data/impact-proof.json";
 
 // Assets under public/ must carry the configured base path
 // (ALFRED_OS_SITE_BASE) so a prefixed deploy still resolves them.
@@ -104,20 +103,20 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
 
 const why = [
   {
-    title: "Removes prompt-by-prompt babysitting",
-    body: "Alfred finds the next task, hands it to the right role, runs the work in an isolated repo copy, routes review, records memory, and comes back to Slack when a human decision is needed.",
+    title: "Coordinates work between prompts",
+    body: "Alfred claims the next approved task, assigns the configured role, isolates the run, routes review, records evidence, and reports when a decision is needed.",
   },
   {
     title: "Runs on a Mac or Linux box you choose",
     body: "A Mac mini, an old MacBook on a dock, or a small Linux box is enough. Alfred runs locally, using the Claude Code and Codex subscriptions you already pay for.",
   },
   {
-    title: "You plan and approve in Slack",
-    body: "Planning happens in a Slack thread. Reply with what you want, what should change, or questions of your own, and Alfred turns the discussion into the next task. Nothing big runs until you approve it.",
+    title: "Slack is optional",
+    body: "You can plan and approve in Slack, the desktop app, or GitHub. Slack messages cannot bypass the configured approval or merge policy.",
   },
   {
-    title: "Builds useful memory without a queue",
-    body: "Alfred keeps notes about each repo on your machine. Structural gates and an LLM judge decide what becomes durable context, and you can still inspect or override the memory queue from Slack or the desktop app.",
+    title: "Keeps reviewed local memory",
+    body: "Alfred stores candidate lessons on your machine. Structural checks and a separate review decide what can affect later runs. Every memory action remains inspectable and reversible.",
   },
   {
     title: "Works on one repo or many at once",
@@ -131,16 +130,16 @@ const why = [
 
 const heroImpactStats = [
   {
-    label: "files changed",
-    value: productProof.summary.files_changed.toLocaleString("en-US"),
+    label: `agent PRs / ${proof.window.days}d`,
+    value: proof.summary.prs_merged.toLocaleString("en-US"),
   },
   {
-    label: "issues closed",
-    value: productProof.summary.agent_issues_closed.toLocaleString("en-US"),
+    label: `all PRs / ${proof.window.days}d`,
+    value: proof.summary.repo_activity.prs_merged.toLocaleString("en-US"),
   },
   {
-    label: "lines changed",
-    value: (productProof.summary.lines_added + productProof.summary.lines_removed).toLocaleString("en-US"),
+    label: `agent files / ${proof.window.days}d`,
+    value: proof.summary.files_changed.toLocaleString("en-US"),
   },
 ];
 
@@ -154,14 +153,14 @@ const heroRuntimeLines = [
 ---
 
 <MarketingLayout
-  title="Alfred | Autonomous coding agents for lean engineering teams"
-  description="Alfred runs Claude Code and Codex from a Mac or Linux box you choose. It turns Slack requests, plans, and GitHub issues into worktrees, pull requests, reviews, safe merges, and Slack updates."
+  title="Alfred | Supervised coding-agent fleets on your machine"
+  description="Alfred coordinates Claude Code and Codex through scheduled roles, isolated worktrees, independent review, local memory, and explicit approval gates."
   path="/"
 >
   <Hero
-    eyebrow="LOCAL ENGINEERING TEAM"
-    headline="An autonomous engineering team that ships while you're away."
-    sub="Alfred turns Claude Code and Codex into a spec-driven engineering team. Named agents plan the work, write the code, review each other, and open pull requests. On your machine, behind an approval gate."
+    eyebrow="LOCAL AGENT OPERATIONS"
+    headline="Run a supervised fleet of coding agents on your own machine."
+    sub="Alfred coordinates Claude Code and Codex as short-lived engineering roles. It adds scheduling, worktree isolation, memory, independent review, and approval controls around the harnesses you already use."
     headlineSize="lg"
     headlineWrap="default"
     compactCtas
@@ -169,15 +168,15 @@ const heroRuntimeLines = [
     secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
     tertiaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred" }}
   >
-    <div slot="panel" class="hero-proof" aria-label={`Alfred proof in the last ${productProof.window.days} days`}>
+    <div slot="panel" class="hero-proof" aria-label="Public GitHub evidence from the Alfred repository">
       <div class="hero-proof__head">
-        <span class="m-eyebrow">RUNTIME PROOF</span>
-        <span class="m-mono m-mute">local / {productProof.summary.repos_scanned} repos</span>
+        <span class="m-eyebrow">PUBLIC REPOSITORY PROOF</span>
+        <span class="m-mono m-mute">luminik-io/alfred</span>
       </div>
 
       <div class="hero-proof__metric">
-        <strong>{productProof.summary.agent_prs_merged.toLocaleString("en-US")}</strong>
-        <span>Alfred-merged PRs in the last {productProof.window.days} days</span>
+        <strong>{proof.self_proof.agent_shipped_total.toLocaleString("en-US")}</strong>
+        <span>provenance-labelled PRs merged in this public repo</span>
       </div>
 
       <div class="hero-proof__pipeline" aria-label="Representative Alfred run path">
@@ -199,8 +198,8 @@ const heroRuntimeLines = [
       </div>
 
       <p class="hero-proof__fleet">
-        <strong>Full team included.</strong>
-        Batman architects, Drake scopes, Lucius builds, Ra's reviews, Bane tests, and Nightwing fixes comments.
+        <strong>Exact evidence only.</strong>
+        Dependabot and branch-name-only matches do not count. The public method and PR list are on the Impact page.
       </p>
     </div>
   </Hero>
@@ -223,8 +222,8 @@ const heroRuntimeLines = [
     <div class="m-container">
       <SectionHeader
         eyebrow="THE TOUR"
-        title="Watch a request become a merged pull request."
-        lede="About a minute of Alfred working on a repo. It answers a question about the code, turns a change you describe into a plan you approve, and scopes the same request from Slack. Its agents then build it, review it, and open a pull request."
+        title="Watch a request become a reviewed pull request."
+        lede="This one-minute tour shows Alfred answering a code question, preparing a plan for approval, and accepting a scoped Slack request. Separate roles then build, review, and open the pull request."
       />
       <div class="tour-video">
         <video controls playsinline preload="none" poster={withBase("media/alfred-tour-poster.png")}>
@@ -239,7 +238,7 @@ const heroRuntimeLines = [
       <SectionHeader
         eyebrow="WHAT IT DOES FOR YOU"
         title="Specialist agents carry work from request to reviewed PR."
-        lede="Each agent has one plain job, and the default install wires the whole engineering loop: planning, architecture, implementation, review, test coverage, high-priority review fixes, cleanup, summaries, and safe automerge when your policy allows it."
+        lede="Each role has one job. The default install includes planning, architecture, implementation, review, test coverage, review fixes, cleanup, summaries, and policy-gated merge."
       />
       <div class="job-grid">
         {jobs.map((j, i) => (
@@ -254,9 +253,9 @@ const heroRuntimeLines = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="WHY ALFRED IS DIFFERENT"
-        title="It runs the engineering loop without babysitting."
-        lede="Alfred checks the Slack drafts, plans, and GitHub issues you marked for it, works in isolated repo copies, opens pull requests, routes review, and comes back to Slack when it needs a decision."
+        eyebrow="THE COORDINATION LAYER"
+        title="Keep work moving between harness sessions."
+        lede="Alfred claims selected work, creates an isolated worktree, invokes the configured harness, routes the result through review, and reports decisions through the configured control surface."
       />
       <div class="why-grid">
         {why.map((w, i) => (
@@ -274,14 +273,14 @@ const heroRuntimeLines = [
       <SectionHeader
         eyebrow="LOCAL MEMORY"
         title="Your agents keep a record of each run."
-        lede="Alfred keeps notes on your own machine: durable lessons, file touches, failure patterns, what went wrong before, and what is in progress right now. Memory promotion is designed to run without a human babysitting every candidate: structural gates and an LLM judge decide what becomes durable context, while you can still inspect or override it."
+        lede="Alfred keeps reviewed lessons, file touches, failures, and current work on your machine. Structural checks and a separate model review control promotion. You can inspect, reject, retire, or revert each lesson."
       />
       <div class="memory-grid">
         <div class="memory-copy">
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">01</span>
-            <h3 class="m-h3">Lessons earn promotion automatically.</h3>
-            <p>Agents and trusted teammates can suggest a lesson worth keeping. Alfred filters candidates through structural checks and an LLM judge before durable promotion, so memory keeps improving without turning every operator into a queue janitor.</p>
+            <h3 class="m-h3">Promotion has explicit checks.</h3>
+            <p>Agents and trusted teammates can propose a lesson. Alfred applies structural checks and a separate model review before the lesson can affect later runs.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">02</span>
@@ -291,7 +290,7 @@ const heroRuntimeLines = [
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">03</span>
             <h3 class="m-h3">The memory loop stays local.</h3>
-            <p>The default recall path is a local Redis Agent Memory Server, with FleetBrain as the reliability ledger and inspection surface. If Redis is disabled, missing, or unreachable later, Alfred keeps running and exposes Redis-specific checks through the memory controls instead of treating FleetBrain as the same thing.</p>
+            <p>Embedded SQLite provides the default recalled-lesson store. FleetBrain keeps the operational ledger and review state. Redis remains an optional scale battery.</p>
           </div>
           <p class="memory-link">
             <a class="m-link" href="/concepts/fleet-brain/">How local memory works</a>
@@ -401,36 +400,12 @@ const heroRuntimeLines = [
     </div>
   </section>
 
-  <section class="m-section m-section--soft" id="real-production">
-    <div class="m-container">
-      <SectionHeader
-        eyebrow="SLACK-NATIVE PLANNING"
-        title="Talk to Alfred where your team already talks."
-        lede="Slack is the planning and control surface. Trusted users can start requests, refine plans in a thread, approve big work, ask for status, pause agents, and keep context attached to the work. Slack never bypasses the approval gates."
-      />
-
-      <div class="proof-grid">
-        <SlackProof
-          src="/proof/slack-shipped-summary.png"
-          alt="Slack message from the Alfred bot summarising one private Luminik setup: 153 PRs merged, 44 issues opened, 144 issues closed, and 44,351 lines added across six repos."
-          tag="daily summary"
-          meta="2026-05-20 20:45 CET"
-          caption="A real Luminik setup summary across six repos. The impact page keeps the current totals up to date."
-        />
-      </div>
-
-      <p style="margin-top:36px;">
-        <a class="m-link" href="/reference/output-samples/">See more examples of what Alfred posts</a>
-      </p>
-    </div>
-  </section>
-
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
         eyebrow="YOUR AGENTS, RIGHT NOW"
         title="What `alfred status` shows."
-        lede="Real output from a local OSS full-fleet install on 2026-06-30: architect, senior-dev, planner, test-engineer, fixer, triage, ops-watch, e2e-runner, memory, code-map, cleanup, reports, and fleet doctor are loaded from the start."
+        lede="The status view lists configured roles, schedules, recent outcomes, and health. The example below shows the full local roster."
       />
       <FleetStatus />
     </div>
@@ -464,19 +439,19 @@ const heroRuntimeLines = [
     </div>
   </section>
 
-  <section class="m-section">
+  <section class="m-section m-section--soft">
     <div class="m-container built-by">
       <SectionHeader
-        eyebrow="BUILT BY LUMINIK"
-        title="Used every day by Luminik."
-        lede={`In the last ${productProof.window.days} days, Alfred helped merge ${productProof.summary.agent_prs_merged.toLocaleString("en-US")} PRs across ${productProof.summary.repos_scanned} Luminik repos. The impact page shows aggregate product totals and public examples.`}
+        eyebrow="PUBLIC EVIDENCE"
+        title="Check the claims against this repository."
+        lede={`The public proof emitter found ${proof.self_proof.agent_shipped_total.toLocaleString("en-US")} merged PRs with exact Alfred provenance labels. It excludes Dependabot and branch-name-only matches.`}
       />
       <div class="built-by__panel m-card">
         <div class="built-by__metrics">
-          <MetricRow label="Alfred PRs" value={productProof.summary.agent_prs_merged.toLocaleString("en-US")} state="live" />
-          <MetricRow label="Alfred issues" value={productProof.summary.agent_issues_opened.toLocaleString("en-US")} state="live" />
-          <MetricRow label="files changed" value={productProof.summary.files_changed.toLocaleString("en-US")} state="info" />
-          <MetricRow label="repos" value={productProof.summary.repos_scanned.toLocaleString("en-US")} state="live" />
+          <MetricRow label="provenance-labelled PRs" value={proof.self_proof.agent_shipped_total.toLocaleString("en-US")} state="live" />
+          <MetricRow label={`agent PRs / ${proof.window.days}d`} value={proof.summary.prs_merged.toLocaleString("en-US")} state="live" />
+          <MetricRow label={`all PRs / ${proof.window.days}d`} value={proof.summary.repo_activity.prs_merged.toLocaleString("en-US")} state="info" />
+          <MetricRow label={`agent files / ${proof.window.days}d`} value={proof.summary.files_changed.toLocaleString("en-US")} state="live" />
         </div>
         <div class="built-by__cta">
           <a class="m-btn" href="/install/">Pick an install path</a>
@@ -868,14 +843,6 @@ const heroRuntimeLines = [
   .built-by__panel { padding: 28px; }
   .built-by__metrics { margin-bottom: 24px; }
   .built-by__cta { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 8px; }
-
-  .proof-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-    margin-top: 12px;
-  }
-  @media (max-width: 880px) { .proof-grid { grid-template-columns: 1fr; } }
 
   .architect-cta {
     display: flex;

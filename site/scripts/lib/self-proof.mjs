@@ -112,7 +112,7 @@ function windowCopy(agentMerged, totalMerged, sharePct, days) {
     };
   }
   if (agentMerged <= 0) {
-    const text = `No agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days.`;
+    const text = `No agent-authored PRs among ${totalMerged} merged PRs in the last ${days} days.`;
     return { headline: text, sentence: text };
   }
   return {
@@ -132,7 +132,7 @@ function windowCopy(agentMerged, totalMerged, sharePct, days) {
  *
  * Honesty is preserved: agentTotal is a real count (0 stays 0, never faked
  * upward), the window share_pct is null (never 0) when there are no merged PRs
- * in the window, and an all-zero repo renders a plain "no agent-attributed PRs
+ * in the window, and an all-zero repo renders a plain "no agent-authored PRs
  * yet" line rather than a fabricated number. Use noDataSelfProof() for a
  * committed seed so a skipped pre-deploy refresh cannot publish stale traction.
  *
@@ -166,14 +166,15 @@ export function buildSelfProof({
     // undercount presented as exact.
     const noun = agentTotal === 1 && !agentTotalIncomplete ? "PR" : "PRs";
     const count = agentTotalIncomplete ? `${agentTotal}+` : String(agentTotal);
-    sentence = `${count} agent-attributed ${noun} merged so far.`;
-    headline = `Alfred agents have merged ${count} agent-attributed ${noun} so far.`;
+    const verb = noun === "PR" ? "has" : "have";
+    sentence = `${count} agent-authored ${noun} ${verb} been merged so far.`;
+    headline = sentence;
   } else if (agentTotalIncomplete) {
-    sentence = "Agent-attributed PR count is temporarily unavailable.";
-    headline = "Agent-attributed PR count is temporarily unavailable.";
+    sentence = "Agent-authored PR count is temporarily unavailable.";
+    headline = "Agent-authored PR count is temporarily unavailable.";
   } else {
-    sentence = "No agent-attributed PRs merged yet.";
-    headline = "No agent-attributed PRs merged yet.";
+    sentence = "No agent-authored PRs have been merged yet.";
+    headline = "No agent-authored PRs have been merged yet.";
   }
 
   return {
@@ -198,7 +199,7 @@ export function buildSelfProof({
 /**
  * A no-data self_proof block for the committed seed. The cumulative count is
  * zero and the window share_pct is null, so the Impact page shows "no
- * agent-attributed PRs yet" rather than a real number if a pre-deploy refresh
+ * agent-authored PRs yet" rather than a real number if a pre-deploy refresh
  * is ever skipped.
  *
  * @param {number} days window size the live build will use
@@ -224,8 +225,8 @@ export const SELF_PROOF_MARKER_CLOSE = "<!-- /SELF_PROOF -->";
 /**
  * The README sentence for a self_proof block, honest on empty data.
  *
- * Leads with the CUMULATIVE count ("Alfred agents have merged N agent-attributed
- * PRs in this repo so far") and appends the rolling window as a secondary clause
+ * Leads with the CUMULATIVE count ("N agent-authored PRs in this repo have been
+ * merged so far") and appends the rolling window as a secondary clause
  * when it carries agent work. An all-zero repo says so plainly, so a
  * refreshed-but-idle repo never advertises a fabricated number.
  *
@@ -238,13 +239,14 @@ export function readmeSelfProofText(selfProof) {
   const days = selfProof.window_days;
   if (total <= 0) {
     if (incomplete) {
-      return "Agent-attributed PR count for Alfred's own repo is temporarily unavailable";
+      return "Agent-authored PR count for Alfred's own repo is temporarily unavailable";
     }
-    return "No agent-attributed PRs in Alfred's own repo yet";
+    return "No agent-authored PRs in Alfred's own repo have been merged yet";
   }
   const noun = total === 1 && !incomplete ? "PR" : "PRs";
   const count = incomplete ? `${total}+` : String(total);
-  let text = `Alfred agents have merged ${count} agent-attributed ${noun} in this repo so far`;
+  const verb = noun === "PR" ? "has" : "have";
+  let text = `${count} agent-authored ${noun} in this repo ${verb} been merged so far`;
   if ((selfProof.agent_shipped ?? 0) > 0) {
     text += `, ${selfProof.agent_shipped} in the last ${days} days`;
   }
