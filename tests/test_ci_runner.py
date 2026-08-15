@@ -769,6 +769,87 @@ def test_request_pull_request_workflow_retries_when_label_add_has_no_fresh_event
     assert event_reads == 3
 
 
+def test_request_pull_request_workflow_tolerates_concurrent_label_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+    label_reads = 0
+    event_reads = 0
+    post_calls = 0
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        input_text: str | None = None,
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal event_reads, label_reads, post_calls
+        if any("/events?per_page=100" in argument for argument in arguments):
+            event_reads += 1
+            events = (
+                []
+                if event_reads == 1
+                else [{"id": 101, "event": "labeled", "label": {"name": "mac-mini-ci"}}]
+            )
+            return completed(arguments, stdout=json.dumps([events]))
+        if "DELETE" in arguments:
+            return completed(arguments, returncode=1, stderr="HTTP 404: Not Found")
+        if "POST" in arguments:
+            post_calls += 1
+            return completed(arguments)
+        if "--paginate" in arguments:
+            label_reads += 1
+            labels = [{"name": "mac-mini-ci"}] if label_reads == 1 else []
+            return completed(arguments, stdout=json.dumps([labels]))
+        return completed(arguments)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    ci_runner._request_pull_request_workflow(config, target)
+
+    assert label_reads == 2
+    assert post_calls == 1
+
+
+def test_request_pull_request_workflow_fails_when_label_delete_did_not_remove(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+    label_reads = 0
+    post_calls = 0
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        input_text: str | None = None,
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal label_reads, post_calls
+        if any("/events?per_page=100" in argument for argument in arguments):
+            return completed(arguments, stdout="[[]]")
+        if "DELETE" in arguments:
+            return completed(arguments, returncode=1, stderr="HTTP 403: Forbidden")
+        if "POST" in arguments:
+            post_calls += 1
+            return completed(arguments)
+        if "--paginate" in arguments:
+            label_reads += 1
+            return completed(arguments, stdout='[[{"name":"mac-mini-ci"}]]')
+        return completed(arguments)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="could not remove"):
+        ci_runner._request_pull_request_workflow(config, target)
+
+    assert label_reads == 2
+    assert post_calls == 0
+
+
 @pytest.mark.parametrize("event_id", [True, False, 0, -1, "101"])
 def test_pull_request_label_events_reject_invalid_ids(
     tmp_path: Path,
@@ -990,6 +1071,57 @@ def test_serve_one_rechecks_head_after_registration_before_request(
 
     assert requested == []
     assert deleted == ["alfred-ci-exact"]
+
+
+def test_serve_one_rechecks_head_after_workflow_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    original = ci_runner.PullRequestTarget(number=123, sha="a" * 40)
+    changed = ci_runner.PullRequestTarget(number=123, sha="b" * 40)
+    targets = iter((original, original, original, changed))
+    requested: list[int] = []
+    deleted: list[str] = []
+    run_calls: list[list[str]] = []
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(ci_runner, "_state_directory", lambda: tmp_path / "state")
+    monkeypatch.setattr(ci_runner, "_new_instance_name", lambda prefix: f"{prefix}-exact")
+    monkeypatch.setattr(
+        ci_runner,
+        "_job_label_for_target",
+        lambda prefix, target: "alfred-job-exact",
+    )
+    monkeypatch.setattr(ci_runner, "_verified_pull_request", lambda config, number: next(targets))
+    monkeypatch.setattr(ci_runner, "_runner_group_errors", lambda config: [])
+    monkeypatch.setattr(
+        ci_runner,
+        "_request_pull_request_workflow",
+        lambda config, target: requested.append(target.number),
+    )
+    monkeypatch.setattr(ci_runner, "_registration_token", lambda config: "private-token")
+    monkeypatch.setattr(ci_runner, "_capture_diagnostics", lambda instance, state: None)
+    monkeypatch.setattr(ci_runner, "_delete_instance", lambda instance: deleted.append(instance))
+    monkeypatch.setattr(ci_runner, "_delete_runner_registration", lambda config, instance: None)
+    monkeypatch.setattr(ci_runner, "_install_guest_helper", lambda *args: None)
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: run_calls.append(list(arguments)) or completed(arguments),
+    )
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="while requesting"):
+        ci_runner.serve_one(
+            config,
+            pull_request=123,
+            dry_run=False,
+            approve_registration=True,
+        )
+
+    assert requested == [123]
+    assert deleted == ["alfred-ci-exact"]
+    assert not any("run" in arguments for arguments in run_calls)
 
 
 def test_serve_one_deletes_guest_when_runner_command_fails(

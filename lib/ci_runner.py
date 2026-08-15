@@ -714,6 +714,32 @@ def _pull_request_label_event_ids(
     return event_ids
 
 
+def _remove_pull_request_label_if_present(
+    config: RunnerConfig,
+    target: PullRequestTarget,
+) -> None:
+    result = _run(
+        [
+            "gh",
+            "api",
+            "--method",
+            "DELETE",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+            f"repos/{config.repository}/issues/{target.number}/labels/{CI_REQUEST_LABEL}",
+        ],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return
+    if CI_REQUEST_LABEL not in _pull_request_label_names(config, target):
+        return
+    raise ControlPlaneError(f"GitHub could not remove pull-request label {CI_REQUEST_LABEL!r}")
+
+
 def _request_pull_request_workflow(
     config: RunnerConfig,
     target: PullRequestTarget,
@@ -725,19 +751,7 @@ def _request_pull_request_workflow(
         labels = _pull_request_label_names(config, target)
 
         if CI_REQUEST_LABEL in labels:
-            _run(
-                [
-                    "gh",
-                    "api",
-                    "--method",
-                    "DELETE",
-                    "-H",
-                    "Accept: application/vnd.github+json",
-                    "-H",
-                    f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
-                    f"repos/{config.repository}/issues/{target.number}/labels/{CI_REQUEST_LABEL}",
-                ]
-            )
+            _remove_pull_request_label_if_present(config, target)
 
         payload = json.dumps({"labels": [CI_REQUEST_LABEL]}, separators=(",", ":"))
         _run(
@@ -1103,6 +1117,9 @@ def serve_one(
             if final_target != target:
                 raise ControlPlaneError("pull-request head changed after runner registration")
             _request_pull_request_workflow(config, final_target)
+            requested_target = _verified_pull_request(config, pull_request)
+            if requested_target != target:
+                raise ControlPlaneError("pull-request head changed while requesting the workflow")
             print(
                 f"requested pull-request workflow for PR #{target.number} at {target.sha} "
                 f"with label {job_label}"
