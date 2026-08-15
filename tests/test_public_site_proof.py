@@ -19,8 +19,11 @@ def test_public_pages_use_the_public_repository_proof() -> None:
 
 def test_private_repository_aggregate_emitter_is_not_shipped() -> None:
     package = json.loads((SITE / "package.json").read_text(encoding="utf-8"))
+    workflow = (ROOT / ".github/workflows/site.yml").read_text(encoding="utf-8")
 
     assert "proof:product" not in package["scripts"]
+    assert "proof:product" not in workflow
+    assert "ALFRED_PRODUCT_PROOF" not in workflow
     assert not (SITE / "scripts/build-product-proof.mjs").exists()
     assert not (SITE / "src/data/luminik-product-proof.json").exists()
     assert not (SITE / "public/proof/slack-shipped-summary.png").exists()
