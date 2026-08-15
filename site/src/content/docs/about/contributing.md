@@ -8,7 +8,7 @@ Full guide at [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred/blob/main
 ## Read first
 
 - [Architecture](/concepts/architecture/): the design rationale.
-- [Roadmap](/about/roadmap/): what's in flight and what's out.
+- [Roadmap](/about/roadmap/): current priorities, research topics, and non-goals.
 - The constraints in [Architecture → "What this rules out"](/concepts/architecture/#what-this-rules-out).
 
 PRs that fit get reviewed. PRs that broaden scope get politely declined.

@@ -1,6 +1,6 @@
 ---
 title: Claude Code skills
-description: Recommended skill set for an autonomous engineering fleet, install commands, per-agent matrix.
+description: Recommended skills for a supervised engineering fleet, with install commands and a role matrix.
 ---
 
 Skills are small bundles (markdown + optional scripts) that extend Claude Code's

@@ -26,24 +26,21 @@ export const GET: APIRoute = async ({ site }) => {
   // import.meta.env.BASE_URL is the build-time `base`, always "/"-bounded.
   const url = (id: string) =>
     new URL(`${import.meta.env.BASE_URL}${id}/`.replace(/\/{2,}/g, "/"), origin).href;
-  const root = docs.find((d) => d.id === "");
+  const root = docs.find((d) => d.id === "docs");
   const summary =
     root?.data.description ??
-    "Autonomous coding agents that keep development moving while you are away. Claude Code and Codex agents run by launchd or systemd on a Mac or Linux box you choose.";
+    "Run a supervised fleet of Claude Code and Codex agents on your own machine.";
 
   const lines: string[] = [
     "# Alfred",
     "",
     `> ${summary}`,
     "",
-    "Alfred is the open-source local runtime for autonomous coding agents that",
-    "turn Slack requests, rough plans, specs, and GitHub issues into PRs while you are away. The host scheduler",
-    "(launchd on macOS, systemd on Linux) fires",
-    "each agent; the harness wraps every firing in a lock, preflight, spend",
-    "cap, and an isolated git worktree. The engineering fleet ships today;",
-    "content, sales, and ops departments are the roadmap. Source: https://github.com/luminik-io/alfred",
-    "You give Alfred goals, repos, and approval rules instead of",
-    "sitting in front of Claude or Codex and prompting every step.",
+    "Alfred is the open-source coordination and supervision layer around Claude Code and Codex.",
+    "The host scheduler starts short-lived roles. Each run gets a lock, preflight checks,",
+    "limits, and an isolated git worktree. GitHub stores shared work state, and Alfred keeps",
+    "local events, reviewed lessons, and reliability data. Source: https://github.com/luminik-io/alfred",
+    "Operators configure repositories, roles, schedules, approval rules, and merge policy.",
     "",
   ];
 
@@ -64,7 +61,7 @@ export const GET: APIRoute = async ({ site }) => {
     "## Source",
     "",
     "- [GitHub repository](https://github.com/luminik-io/alfred): the framework, examples, and issues.",
-    "- [Roadmap](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md): shipped, in flight, and the design boundaries.",
+    "- [Roadmap](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md): current priorities, research topics, and design boundaries.",
     "",
     "## Other LLM-friendly surfaces",
     "",
