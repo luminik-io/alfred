@@ -236,9 +236,12 @@ the exact SHA plus a random one-use runner label to the trusted workflow on
 4. Keep `permissions: contents: read`.
 5. Keep `runs-on` restricted to the one-use label input. Do not add default or
    shared labels.
-6. Do not add `environment`, `secrets`, deployment, release, or publishing
+6. Keep dependency and build caches disabled. The trusted dispatch executes an
+   exact same-repository PR head, so it must not expose a default-branch cache
+   token that the checked-out code could use to poison later jobs.
+7. Do not add `environment`, `secrets`, deployment, release, or publishing
    steps.
-7. Keep the workflow independent from PR 598. After both land, update branch
+8. Keep the workflow independent from PR 598. After both land, update branch
    protection deliberately instead of requiring duplicate CI contexts.
 
 The guest establishes outbound connections to GitHub and normal dependency
