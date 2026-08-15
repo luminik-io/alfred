@@ -41,6 +41,8 @@ CI_JOB_LABEL_PREFIX = "alfred-job"
 LABEL_REQUEST_ATTEMPTS = 3
 LABEL_EVENT_POLL_ATTEMPTS = 5
 LABEL_EVENT_POLL_SECONDS = 1.0
+MERGEABILITY_POLL_ATTEMPTS = 5
+MERGEABILITY_POLL_SECONDS = 1.0
 
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,38})/[A-Za-z0-9_.-]{1,100}$")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -602,42 +604,56 @@ def _registration_token(config: RunnerConfig) -> str:
 def _verified_pull_request(config: RunnerConfig, number: int) -> PullRequestTarget:
     if number < 1:
         raise ControlPlaneError("pull-request number must be positive")
-    completed = _run(
-        [
-            "gh",
-            "api",
-            "-H",
-            "Accept: application/vnd.github+json",
-            "-H",
-            f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
-            f"repos/{config.repository}/pulls/{number}",
-            "--jq",
-            (
-                "{state,draft,base_ref:.base.ref,"
-                "base_repo:.base.repo.full_name,"
-                "head_repo:.head.repo.full_name,head_sha:.head.sha}"
-            ),
-        ],
-        capture_output=True,
-    )
-    try:
-        payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise ControlPlaneError("GitHub returned invalid pull-request metadata") from exc
-    if not isinstance(payload, dict):
+    payload: dict[str, object] | None = None
+    for attempt in range(MERGEABILITY_POLL_ATTEMPTS):
+        completed = _run(
+            [
+                "gh",
+                "api",
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+                f"repos/{config.repository}/pulls/{number}",
+                "--jq",
+                (
+                    "{state,draft,mergeable,base_ref:.base.ref,"
+                    "base_repo:.base.repo.full_name,"
+                    "head_repo:.head.repo.full_name,head_sha:.head.sha}"
+                ),
+            ],
+            capture_output=True,
+        )
+        try:
+            parsed = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise ControlPlaneError("GitHub returned invalid pull-request metadata") from exc
+        if not isinstance(parsed, dict):
+            raise ControlPlaneError("GitHub returned invalid pull-request metadata")
+        if parsed.get("state") != "open" or parsed.get("draft") is not False:
+            raise ControlPlaneError("pull request must be open and ready for review")
+        if parsed.get("base_ref") != "main":
+            raise ControlPlaneError("pull request must target main")
+        if parsed.get("base_repo") != config.repository:
+            raise ControlPlaneError("pull-request base repository is not allowlisted")
+        if parsed.get("head_repo") != config.repository:
+            raise ControlPlaneError("fork pull requests may not use this runner")
+        parsed_sha = parsed.get("head_sha")
+        if not isinstance(parsed_sha, str) or not SHA_PATTERN.fullmatch(parsed_sha):
+            raise ControlPlaneError("pull request has an invalid head SHA")
+        payload = parsed
+        if payload.get("mergeable") is not None:
+            break
+        if attempt + 1 < MERGEABILITY_POLL_ATTEMPTS:
+            time.sleep(MERGEABILITY_POLL_SECONDS)
+
+    if payload is None:
         raise ControlPlaneError("GitHub returned invalid pull-request metadata")
-    if payload.get("state") != "open" or payload.get("draft") is not False:
-        raise ControlPlaneError("pull request must be open and ready for review")
-    if payload.get("base_ref") != "main":
-        raise ControlPlaneError("pull request must target main")
-    if payload.get("base_repo") != config.repository:
-        raise ControlPlaneError("pull-request base repository is not allowlisted")
-    if payload.get("head_repo") != config.repository:
-        raise ControlPlaneError("fork pull requests may not use this runner")
-    sha = payload.get("head_sha")
-    if not isinstance(sha, str) or not SHA_PATTERN.fullmatch(sha):
-        raise ControlPlaneError("pull request has an invalid head SHA")
-    return PullRequestTarget(number=number, sha=sha)
+    if payload.get("mergeable") is False:
+        raise ControlPlaneError("pull request has merge conflicts")
+    if payload.get("mergeable") is not True:
+        raise ControlPlaneError("GitHub did not confirm pull-request mergeability")
+    return PullRequestTarget(number=number, sha=str(payload["head_sha"]))
 
 
 def _pull_request_label_names(
@@ -1049,7 +1065,10 @@ def serve_one(
     start_arguments = _start_arguments(config, instance)
     if dry_run:
         print("dry run, no VM or GitHub runner will be created")
-        print(f"+ verify open same-repository PR #{pull_request} targets {config.repository}:main")
+        print(
+            f"+ verify open, mergeable same-repository PR #{pull_request} "
+            f"targets {config.repository}:main"
+        )
         _print_command(start_arguments)
         print(
             f"+ gh api --method POST orgs/{config.organization}/actions/runners/registration-token"

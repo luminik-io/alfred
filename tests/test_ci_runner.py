@@ -552,6 +552,58 @@ def test_serve_one_requires_explicit_registration_approval(tmp_path: Path) -> No
         )
 
 
+def test_serve_one_rejects_conflicted_pr_before_runner_side_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    side_effects: list[str] = []
+
+    monkeypatch.setattr(ci_runner, "preflight", lambda config, **kwargs: 0)
+    monkeypatch.setattr(
+        ci_runner,
+        "_verified_pull_request",
+        lambda config, number: (_ for _ in ()).throw(
+            ci_runner.ControlPlaneError("pull request has merge conflicts")
+        ),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: side_effects.append("vm-start") or completed(arguments),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_registration_token",
+        lambda config: side_effects.append("registration-token") or "token",
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_request_pull_request_workflow",
+        lambda config, target: side_effects.append("request-label"),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_instance",
+        lambda instance: side_effects.append("delete-instance"),
+    )
+    monkeypatch.setattr(
+        ci_runner,
+        "_delete_runner_registration",
+        lambda config, instance: side_effects.append("delete-runner"),
+    )
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="merge conflicts"):
+        ci_runner.serve_one(
+            config,
+            pull_request=123,
+            dry_run=False,
+            approve_registration=True,
+        )
+
+    assert side_effects == []
+
+
 def test_registration_token_uses_organization_endpoint_and_is_not_logged(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -591,7 +643,7 @@ def test_verified_pull_request_accepts_only_open_same_repository_head(
     config = ci_runner.load_config(write_config(tmp_path))
     sha = "a" * 40
     response = (
-        '{"state":"open","draft":false,"base_ref":"main",'
+        '{"state":"open","draft":false,"mergeable":true,"base_ref":"main",'
         '"base_repo":"luminik-io/alfred","head_repo":"luminik-io/alfred",'
         f'"head_sha":"{sha}"}}'
     )
@@ -615,6 +667,7 @@ def test_verified_pull_request_accepts_only_open_same_repository_head(
         ("base_ref", "release", "target main"),
         ("base_repo", "other/alfred", "base repository"),
         ("head_repo", "attacker/alfred", "fork pull requests"),
+        ("mergeable", False, "merge conflicts"),
         ("head_sha", "short", "invalid head SHA"),
     ],
 )
@@ -629,6 +682,7 @@ def test_verified_pull_request_rejects_unsafe_metadata(
     payload: dict[str, object] = {
         "state": "open",
         "draft": False,
+        "mergeable": True,
         "base_ref": "main",
         "base_repo": "luminik-io/alfred",
         "head_repo": "luminik-io/alfred",
@@ -653,6 +707,71 @@ def test_verified_pull_request_rejects_nonpositive_number(tmp_path: Path) -> Non
 
     with pytest.raises(ci_runner.ControlPlaneError, match="positive"):
         ci_runner._verified_pull_request(config, 0)
+
+
+def test_verified_pull_request_polls_until_mergeability_is_known(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    sha = "a" * 40
+    responses = iter(
+        (
+            {
+                "state": "open",
+                "draft": False,
+                "mergeable": None,
+                "base_ref": "main",
+                "base_repo": "luminik-io/alfred",
+                "head_repo": "luminik-io/alfred",
+                "head_sha": sha,
+            },
+            {
+                "state": "open",
+                "draft": False,
+                "mergeable": True,
+                "base_ref": "main",
+                "base_repo": "luminik-io/alfred",
+                "head_repo": "luminik-io/alfred",
+                "head_sha": sha,
+            },
+        )
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments, stdout=json.dumps(next(responses))),
+    )
+    monkeypatch.setattr(ci_runner.time, "sleep", lambda seconds: sleeps.append(seconds))
+
+    assert ci_runner._verified_pull_request(config, 598).sha == sha
+    assert sleeps == [ci_runner.MERGEABILITY_POLL_SECONDS]
+
+
+def test_verified_pull_request_fails_when_mergeability_remains_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    payload = {
+        "state": "open",
+        "draft": False,
+        "mergeable": None,
+        "base_ref": "main",
+        "base_repo": "luminik-io/alfred",
+        "head_repo": "luminik-io/alfred",
+        "head_sha": "a" * 40,
+    }
+    monkeypatch.setattr(ci_runner, "MERGEABILITY_POLL_ATTEMPTS", 1)
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments, stdout=json.dumps(payload)),
+    )
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="did not confirm"):
+        ci_runner._verified_pull_request(config, 598)
 
 
 def test_job_label_is_bound_to_the_full_verified_head_sha(tmp_path: Path) -> None:
