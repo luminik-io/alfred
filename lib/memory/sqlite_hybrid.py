@@ -616,6 +616,7 @@ class SqliteHybridProvider:
         call passes no anchors and behaves exactly as Phase 1.
         """
         cap = max(1, int(limit))
+        has_query = bool((query or "").strip())
         text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
         anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
         with self._connect() as conn:
@@ -624,9 +625,14 @@ class SqliteHybridProvider:
             if self._dense_active(conn):
                 dense = self._dense_ids(conn, text, codename=codename, repo=repo)
             if not lexical and not dense:
-                # No query signal (or no lexical/dense hit): fall back to the
-                # recency baseline so a scoped rail is never blank.
-                fused_ids = self._recency_ids(conn, codename=codename, repo=repo, limit=cap)
+                # An intentionally unfiltered view gets a recency baseline. A
+                # real query miss stays empty so unrelated recent lessons do
+                # not enter an agent prompt as if they matched the task.
+                fused_ids = (
+                    []
+                    if has_query
+                    else self._recency_ids(conn, codename=codename, repo=repo, limit=cap)
+                )
             else:
                 fused = _reciprocal_rank_fusion(lexical, dense, k=self.rrf_k)
                 fused_ids = [lid for lid, _ in fused]

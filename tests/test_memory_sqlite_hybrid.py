@@ -104,6 +104,16 @@ def test_recall_no_query_returns_recency_baseline(provider: SqliteHybridProvider
     assert len(out) == 2
 
 
+def test_recall_query_miss_does_not_inject_unrelated_recent_lessons(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Always use UTC for stored timestamps")
+
+    out = provider.recall(query="GraphQL batching policy", codename="c", repo="r")
+
+    assert out == []
+
+
 def test_recall_honors_limit(provider: SqliteHybridProvider) -> None:
     for i in range(6):
         provider.reflect(codename="c", repo="r", body=f"token shared lesson number {i}")

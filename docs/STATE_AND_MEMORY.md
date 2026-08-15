@@ -6,7 +6,7 @@ Alfred is built on the premise that the host filesystem is a fine operational
 state store for a single-operator fleet. Every firing reads its inputs from
 scratch, writes operational state to plain JSON or JSONL files under
 `$ALFRED_HOME/state/`, and records local review and reliability state in
-`$ALFRED_HOME/fleet-brain.db`. Recalled semantic lessons live in the embedded
+`$ALFRED_HOME/fleet-brain.db`. Recalled lessons live in the embedded
 SQLite hybrid store by default. If you delete the state tree, memory database,
 and FleetBrain database, the next firing rebuilds whatever it still can from
 GitHub and local config.
@@ -127,8 +127,9 @@ problems, provider limits, auth failures, timeouts, and agent-quality loops,
 then returns a read-only action list for you and the dashboard.
 
 The default provider chain is `sqlite,fleet`: the embedded SQLite hybrid store
-gives zero-daemon semantic recall (no Redis or Ollama), with FleetBrain behind
-it. Set `ALFRED_MEMORY_PROVIDERS=redis,fleet` to opt into Redis Agent Memory
+gives zero-daemon lexical recall (no Redis or Ollama), with FleetBrain behind
+it. Dense semantic retrieval is optional. Set
+`ALFRED_MEMORY_PROVIDERS=redis,fleet` to opt into Redis Agent Memory
 instead, `ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and
 reflection, or `ALFRED_MEMORY_PROVIDERS=sqlite,fleet,gbrain` to add a read-only
 personal knowledge base behind the default stack. Keep `fleet` in the chain if you want
