@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -558,6 +558,66 @@ describe("PipelineView", () => {
     expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 12, "hold");
     await user.click(screen.getByRole("button", { name: /mark done/i }));
     expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 12, "done");
+  });
+
+  it("shows review state and agent evidence in the work inspector", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            card({
+              kind: "pr",
+              number: 21,
+              title: "Replace legacy appearance presets",
+              is_draft: true,
+              labels: ["harness:codex"],
+              agent_evidence: ["label:agent:authored", "branch:senior-dev/themes"],
+              github_evidence: {
+                head_sha: "a".repeat(40),
+                review_state: "REVIEW_REQUIRED",
+                checks: [
+                  { name: "Desktop client", status: "SUCCESS" },
+                  { name: "policy", status: "PENDING" },
+                ],
+                changed_files: ["client.tsx", "client.test.tsx"],
+                commit_count: 2,
+                latest_reviews: [{ author: "reviewer", state: "COMMENTED" }],
+              },
+            }),
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: /replace legacy appearance presets/i }),
+    );
+    const inspector = screen.getByRole("complementary", { name: "Work item inspector" });
+    expect(within(inspector).getByText("In review", { exact: true })).toBeInTheDocument();
+    expect(within(inspector).getByRole("region", { name: "Agent evidence" })).toHaveTextContent(
+      "Label agent:authored",
+    );
+    expect(within(inspector).getByRole("region", { name: "Agent evidence" })).toHaveTextContent(
+      "Branch senior-dev/themes",
+    );
+    expect(within(inspector).getByRole("region", { name: "GitHub evidence" })).toHaveTextContent(
+      "Codex",
+    );
+    expect(within(inspector).getByRole("region", { name: "GitHub evidence" })).toHaveTextContent(
+      "aaaaaaaaaaaa",
+    );
+    expect(within(inspector).getByRole("region", { name: "GitHub evidence" })).toHaveTextContent(
+      "Desktop client",
+    );
+    expect(within(inspector).getByRole("region", { name: "Changed files" })).toHaveTextContent(
+      "client.test.tsx",
+    );
+    expect(screen.getByRole("region", { name: /working now/i })).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("routes an existing issue from the Work assignment strip", async () => {

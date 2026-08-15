@@ -370,6 +370,14 @@ export type ShippedCard = {
   is_draft: boolean;
   labels: string[];
   agent_evidence?: string[];
+  github_evidence?: {
+    head_sha: string | null;
+    review_state: string | null;
+    checks: Array<{ name: string; status: string }>;
+    changed_files: string[];
+    commit_count: number;
+    latest_reviews: Array<{ author: string; state: string }>;
+  } | null;
   demo?: boolean;
 };
 
@@ -379,6 +387,7 @@ export type ShippedBoard = {
   generated_at?: string;
   lookback_days: number;
   repos: string[];
+  sample?: boolean;
   columns: {
     queued: ShippedCard[];
     in_progress: ShippedCard[];

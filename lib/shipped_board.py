@@ -361,6 +361,42 @@ def _author_login(obj: dict) -> str | None:
     return author.get("login") if isinstance(author, dict) else None
 
 
+def _github_evidence(item: dict) -> dict:
+    """Return GitHub facts that can be displayed without inference."""
+    checks = []
+    for check in item.get("statusCheckRollup") or []:
+        if not isinstance(check, dict):
+            continue
+        name = check.get("name") or check.get("context")
+        status = check.get("conclusion") or check.get("state") or check.get("status")
+        if name and status:
+            checks.append({"name": str(name), "status": str(status)})
+
+    changed_files = [
+        str(file["path"])
+        for file in (item.get("files") or [])
+        if isinstance(file, dict) and file.get("path")
+    ]
+    commits = [commit for commit in (item.get("commits") or []) if isinstance(commit, dict)]
+    latest_reviews = []
+    for review in item.get("latestReviews") or []:
+        if not isinstance(review, dict):
+            continue
+        author = _author_login(review)
+        state = review.get("state")
+        if author and state:
+            latest_reviews.append({"author": author, "state": str(state)})
+
+    return {
+        "head_sha": item.get("headRefOid") or None,
+        "review_state": item.get("reviewDecision") or None,
+        "checks": checks,
+        "changed_files": changed_files,
+        "commit_count": len(commits),
+        "latest_reviews": latest_reviews,
+    }
+
+
 def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> dict:
     ts = _parse_ts(item.get(ts_field))
     return {
@@ -379,6 +415,7 @@ def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> 
             if isinstance(lab, dict) and lab.get("name")
         ],
         "agent_evidence": _agent_shipped_evidence(item) if kind == "pr" else [],
+        "github_evidence": _github_evidence(item) if kind == "pr" else None,
     }
 
 
@@ -408,7 +445,8 @@ def _fetch_repo(
             "--limit",
             str(limit),
             "--json",
-            "number,title,url,author,state,createdAt,mergedAt,isDraft,labels,headRefName",
+            "number,title,url,author,state,createdAt,mergedAt,isDraft,labels,headRefName,"
+            "headRefOid,reviewDecision,statusCheckRollup,files,commits,latestReviews",
         ]
     )
     if prs is None:

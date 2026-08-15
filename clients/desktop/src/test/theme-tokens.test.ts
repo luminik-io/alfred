@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // reads index.css, treats the base :root block as the canonical token set, and
 // fails CI if any theme block drops one of those tokens.
 //
-// The base :root block is Mineral Dark (the default), so it doubles as the
+// The base :root block is Signal Edge Light (the default), so it doubles as the
 // reference set. Theme blocks may add tokens, but must never define fewer color
 // tokens than the base.
 
@@ -55,29 +55,33 @@ function declaredTokens(body: string): Set<string> {
   return names;
 }
 
-// Color tokens whose absence would visibly break a surface. Drawn from the base
-// set; non-color structural tokens (radius, blur, saturate, ambient) are checked
-// separately because a theme may legitimately inherit them from :root.
-const COLOR_TOKEN_PREFIXES = [
-  "--background",
-  "--foreground",
-  "--card",
-  "--popover",
-  "--primary",
-  "--secondary",
-  "--muted",
-  "--accent",
-  "--destructive",
-  "--border",
-  "--input",
-  "--ring",
-  "--surface",
-  "--hairline",
-  "--glass",
-  "--ok",
-  "--warn",
-  "--error",
-  "--sidebar",
+const THEME_PRIMITIVES = [
+  "--theme-background",
+  "--theme-foreground",
+  "--theme-surface",
+  "--theme-surface-2",
+  "--theme-surface-3",
+  "--theme-primary",
+  "--theme-primary-foreground",
+  "--theme-muted-foreground",
+  "--theme-border",
+  "--theme-border-strong",
+  "--theme-glass",
+  "--theme-glass-strong",
+  "--theme-glass-highlight",
+  "--theme-glass-shadow",
+  "--theme-ok",
+  "--theme-warn",
+  "--theme-error",
+  "--theme-sidebar",
+  "--theme-sidebar-accent",
+  "--signal-mint",
+  "--signal-rose",
+  "--signal-violet",
+  "--fold-line",
+  "--theme-glass-blur",
+  "--theme-glass-saturate",
+  "--theme-radius",
 ];
 
 const css = readIndexCss();
@@ -92,14 +96,14 @@ const foregroundVariants = [
 ].join("\n");
 
 // The color tokens the base defines (the canonical required set).
-const requiredColorTokens = [...baseTokens].filter((token) =>
-  COLOR_TOKEN_PREFIXES.some((prefix) => token.startsWith(prefix)),
-);
+const requiredColorTokens = THEME_PRIMITIVES;
 
 const THEME_BLOCKS: Array<{ name: string; selector: string }> = [
-  { name: "Mineral Light", selector: ':root[data-theme="mineral"].light {' },
-  { name: "Carbon Dark", selector: ':root[data-theme="carbon"],' },
-  { name: "Carbon Light", selector: ':root[data-theme="carbon"].light {' },
+  { name: "Signal Edge Dark", selector: ':root[data-theme="signal-edge"].dark {' },
+  { name: "Category Standard Light", selector: ':root[data-theme="category-standard"].light {' },
+  { name: "Category Standard Dark", selector: ':root[data-theme="category-standard"].dark {' },
+  { name: "Linked Fold Light", selector: ':root[data-theme="linked-fold"].light {' },
+  { name: "Linked Fold Dark", selector: ':root[data-theme="linked-fold"].dark {' },
 ];
 
 describe("theme token completeness (do not revert)", () => {
@@ -107,6 +111,7 @@ describe("theme token completeness (do not revert)", () => {
     // Sanity: the reference set should be large; a tiny set means the base block
     // was gutted and every other assertion would pass vacuously.
     expect(requiredColorTokens.length).toBeGreaterThan(20);
+    expect(requiredColorTokens.filter((token) => !baseTokens.has(token))).toEqual([]);
   });
 
   for (const block of THEME_BLOCKS) {
@@ -118,20 +123,25 @@ describe("theme token completeness (do not revert)", () => {
     });
   }
 
-  it("each theme sets a glass-blur token so glass dials per theme", () => {
-    // Mineral uses the base --glass-blur; Carbon defines its own denser glass.
-    expect(baseTokens.has("--glass-blur")).toBe(true);
-    const carbonBody = blockBody(css, ':root[data-theme="carbon"],');
-    expect(declaredTokens(carbonBody).has("--glass-blur")).toBe(true);
+  it("each theme and mode sets its own glass material", () => {
+    expect(baseTokens.has("--theme-glass-blur")).toBe(true);
+    for (const block of THEME_BLOCKS) {
+      expect(declaredTokens(blockBody(css, block.selector)).has("--theme-glass-blur")).toBe(true);
+    }
   });
 
-  it("keeps the Mineral default cool-neutral with a cyan signal", () => {
+  it("keeps Signal Edge light as the warm-neutral default with spectral edges", () => {
     const body = blockBody(css, ":root {");
-    expect(body).toMatch(/--background:\s*oklch\(0\.145 0\.008 235\)/);
-    expect(body).toMatch(/--accent:\s*oklch\(0\.76 0\.105 210\)/);
-    expect(body).toMatch(/--ring:\s*oklch\(0\.70 0\.12 215\)/);
-    expect(body).toMatch(/--accent-glow:/);
-    expect(body).toMatch(/--accent-glow-soft:/);
+    expect(body).toMatch(/color-scheme:\s*light/);
+    expect(body).toMatch(/--background:\s*oklch\(0\.975/);
+    expect(body).toMatch(/--signal-mint:/);
+    expect(body).toMatch(/--signal-rose:/);
+    expect(body).toMatch(/--signal-violet:/);
+  });
+
+  it("removes the legacy Mineral and Carbon selectors", () => {
+    expect(css).not.toContain('data-theme="mineral"');
+    expect(css).not.toContain('data-theme="carbon"');
   });
 
   it("does not use decorative radial blooms in app chrome", () => {

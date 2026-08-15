@@ -138,6 +138,49 @@ def test_cards_have_human_context(monkeypatch):
     assert card["is_draft"] is True
 
 
+def test_pr_cards_include_verifiable_github_evidence(monkeypatch):
+    prs = [
+        {
+            "number": 1,
+            "title": "ship it",
+            "url": "u1",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": True,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": "senior-dev/ship-it",
+            "headRefOid": "a" * 40,
+            "reviewDecision": "REVIEW_REQUIRED",
+            "statusCheckRollup": [
+                {"name": "Desktop client", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                {"context": "policy", "state": "PENDING"},
+            ],
+            "files": [{"path": "client.tsx"}, {"path": "client.test.tsx"}],
+            "commits": [{"oid": "b" * 40}, {"oid": "a" * 40}],
+            "latestReviews": [
+                {"author": {"login": "reviewer"}, "state": "COMMENTED"}
+            ],
+        }
+    ]
+    monkeypatch.setattr(sb, "_gh_json", _fake_gh(prs, []))
+
+    card = sb.build_board(["acme/api"], now=NOW)["columns"]["in_progress"][0]
+
+    assert card["github_evidence"] == {
+        "head_sha": "a" * 40,
+        "review_state": "REVIEW_REQUIRED",
+        "checks": [
+            {"name": "Desktop client", "status": "SUCCESS"},
+            {"name": "policy", "status": "PENDING"},
+        ],
+        "changed_files": ["client.tsx", "client.test.tsx"],
+        "commit_count": 2,
+        "latest_reviews": [{"author": "reviewer", "state": "COMMENTED"}],
+    }
+
+
 def test_parked_issues_excluded_from_queued(monkeypatch):
     # Open issues that are PR-backed or parked must not show as queued (Codex P2).
     issues = [

@@ -46,10 +46,14 @@ test("approving a plan sends an authenticated mutation and refreshes the queue",
   const api = await installAlfredApi(page);
 
   await page.goto("/");
-  await expect(page.getByText("Add browser protocol coverage")).toBeVisible();
+  await expect(
+    page.getByText("Make the memory benchmark use the shipped provider chain"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).click();
 
-  await expect(page.getByText("Add browser protocol coverage")).toHaveCount(0);
+  await expect(
+    page.getByText("Make the memory benchmark use the shipped provider chain"),
+  ).toHaveCount(0);
   const request = api.find("POST", "/api/plans/42-plan/decision");
   expect(request?.headers["x-alfred-token"]).toBe(CONTRACT_TOKEN);
   expect(request?.body).toEqual({ decision: "approve" });

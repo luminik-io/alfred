@@ -240,6 +240,146 @@
   gap: 0.9rem;
 }
 
+.inspector-evidence {
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.75rem 0;
+}
+
+.inspector-evidence h4 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.inspector-evidence ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspector-evidence li {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.inspector-evidence--github,
+.inspector-evidence--files {
+  gap: 0.7rem;
+}
+
+.evidence-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.evidence-summary div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  background: color-mix(in oklch, var(--muted), transparent 52%);
+  padding: 0.4rem 0.5rem;
+}
+
+.evidence-summary dt,
+.evidence-summary dd {
+  margin: 0;
+}
+
+.evidence-summary dt {
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidence-summary dd {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.7rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidence-mono {
+  font-family: var(--font-mono);
+}
+
+.evidence-block {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.evidence-block h5 {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidence-block li,
+.inspector-evidence--files li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.evidence-block li svg,
+.inspector-evidence--files li svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--muted-foreground);
+}
+
+.evidence-block li[data-state="passed"] svg {
+  color: var(--ok);
+}
+
+.evidence-block small {
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+}
+
+.evidence-block p,
+.inspector-evidence--files p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+}
+
+.inspector-evidence--files h4 {
+  display: flex;
+  justify-content: space-between;
+}
+
+.inspector-evidence--files h4 span {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.inspector-evidence--files li {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .detail-panel__head {
   display: flex;
   flex-direction: column;
@@ -260,5 +400,16 @@
 
 .plan-detail-sheet {
   width: min(36rem, calc(100vw - 2rem));
+  border-color: color-mix(in oklch, var(--primary), var(--border) 74%);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 18%),
+    var(--glass-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .plan-detail-sheet {
+    background: var(--surface);
+  }
+}

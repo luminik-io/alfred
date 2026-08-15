@@ -4,19 +4,27 @@ import { useCallback, useEffect, useState } from "react";
 // the light/dark twin within that theme. They are independent dimensions:
 // data-theme on :root selects the theme; the .dark/.light class selects the
 // mode. See docs/THEME_SYSTEM.md.
-export type ThemeName = "mineral" | "carbon";
+export type ThemeName = "signal-edge" | "category-standard" | "linked-fold";
 export type ThemeMode = "dark" | "light";
 
-export const THEME_NAMES: ThemeName[] = ["mineral", "carbon"];
+export const THEME_NAMES: ThemeName[] = [
+  "signal-edge",
+  "category-standard",
+  "linked-fold",
+];
 
 export const THEME_META: Record<ThemeName, { label: string; blurb: string }> = {
-  mineral: {
-    label: "Mineral",
-    blurb: "Cool graphite, clear glass, and a restrained cyan signal.",
+  "signal-edge": {
+    label: "Signal Edge",
+    blurb: "Quiet glass with spectral edges reserved for live state.",
   },
-  carbon: {
-    label: "Carbon",
-    blurb: "Dense neutral surfaces with a warm operational accent.",
+  "category-standard": {
+    label: "The category standard",
+    blurb: "Dense operations surfaces with familiar status semantics.",
+  },
+  "linked-fold": {
+    label: "Linked Fold",
+    blurb: "Warm material, precise folds, and decision-first color.",
   },
 };
 
@@ -24,7 +32,7 @@ const THEME_KEY = "alfred-theme-name";
 const MODE_KEY = "alfred-theme";
 
 function isThemeName(value: string | null): value is ThemeName {
-  return value === "mineral" || value === "carbon";
+  return THEME_NAMES.includes(value as ThemeName);
 }
 
 function isThemeMode(value: string | null): value is ThemeMode {
@@ -38,7 +46,7 @@ function initialThemeName(): ThemeName {
   } catch {
     // localStorage may be unavailable; fall back to the default.
   }
-  return "mineral";
+  return "signal-edge";
 }
 
 function initialMode(): ThemeMode {
@@ -48,7 +56,7 @@ function initialMode(): ThemeMode {
   } catch {
     // localStorage may be unavailable; fall back to the default.
   }
-  return "dark";
+  return "light";
 }
 
 /** Theme system state: a named theme (data-theme) and a light/dark mode

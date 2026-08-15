@@ -1,4 +1,16 @@
-import { Ban, Check, ExternalLink, FilePlus2, GitPullRequest, MessageSquare, X } from "lucide-react";
+import {
+  Ban,
+  Check,
+  CheckCircle2,
+  CircleDotDashed,
+  ExternalLink,
+  FileCode2,
+  FilePlus2,
+  GitCommitHorizontal,
+  GitPullRequest,
+  MessageSquare,
+  X,
+} from "lucide-react";
 
 import { exactTime, friendlyTime } from "../../format";
 import type { BoardColumn } from "../../lib/chips";
@@ -192,6 +204,36 @@ export function CardInspector({
   const holding = busyQueue === `hold:${card.repo}#${card.number}`;
   const closing = busyQueue === `done:${card.repo}#${card.number}`;
   const approving = busyQueue === `queue:${card.repo}#${card.number}`;
+  const reviewState =
+    card.kind === "pr"
+      ? column === "shipped"
+        ? "Shipped"
+        : card.is_draft
+          ? "In review"
+          : "Open PR"
+      : column === "awaiting_approval"
+        ? "Awaiting approval"
+        : column === "queued"
+          ? "Queued"
+          : "Issue";
+  const evidence = (card.agent_evidence || []).map((entry) => {
+    const separator = entry.indexOf(":");
+    if (separator < 0) return entry;
+    const kind = entry.slice(0, separator);
+    const value = entry.slice(separator + 1);
+    return `${kind === "label" ? "Label" : kind === "branch" ? "Branch" : kind} ${value}`;
+  });
+  const github = card.github_evidence;
+  const harnessLabel = card.labels.find((label) => label.toLowerCase().startsWith("harness:"));
+  const harness = harnessLabel
+    ? harnessLabel.slice("harness:".length).replace(/(^|[-_])([a-z])/g, (_, space, letter: string) => `${space ? " " : ""}${letter.toUpperCase()}`)
+    : null;
+  const humanState = (value: string | null) =>
+    value
+      ? value.toLowerCase().replace(/_/g, " ").replace(/^./, (letter: string) => letter.toUpperCase())
+      : "Not reported";
+  const visibleChecks = github?.checks.slice(0, 6) || [];
+  const visibleFiles = github?.changed_files.slice(0, 6) || [];
   return (
     <div className="detail-panel detail-panel--sheet" aria-label="Selected pipeline item">
       <div className="detail-panel__head">
@@ -199,6 +241,10 @@ export function CardInspector({
         <h3>{cardOutcome(card)}</h3>
       </div>
       <dl className="compact-meta">
+        <div>
+          <dt>State</dt>
+          <dd>{reviewState}</dd>
+        </div>
         {card.timestamp ? (
           <div>
             <dt>Updated</dt>
@@ -212,6 +258,94 @@ export function CardInspector({
           </div>
         ) : null}
       </dl>
+      {evidence.length ? (
+        <section className="inspector-evidence" aria-label="Agent evidence">
+          <h4>Agent evidence</h4>
+          <ul>
+            {evidence.map((entry) => (
+              <li key={entry}>{entry}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {github ? (
+        <section className="inspector-evidence inspector-evidence--github" aria-label="GitHub evidence">
+          <h4>GitHub evidence</h4>
+          <dl className="evidence-summary">
+            {harness ? (
+              <div>
+                <dt>Harness</dt>
+                <dd>{harness}</dd>
+              </div>
+            ) : null}
+            {github.head_sha ? (
+              <div>
+                <dt>Head commit</dt>
+                <dd className="evidence-mono" title={github.head_sha}>{github.head_sha.slice(0, 12)}</dd>
+              </div>
+            ) : null}
+            <div>
+              <dt>Review</dt>
+              <dd>{humanState(github.review_state)}</dd>
+            </div>
+            <div>
+              <dt>Commits</dt>
+              <dd>{github.commit_count}</dd>
+            </div>
+            <div>
+              <dt>Signature</dt>
+              <dd>Not included</dd>
+            </div>
+          </dl>
+          {visibleChecks.length ? (
+            <div className="evidence-block" aria-label="Check results">
+              <h5>Checks</h5>
+              <ul>
+                {visibleChecks.map((check) => {
+                  const passed = check.status.toUpperCase() === "SUCCESS";
+                  return (
+                    <li key={`${check.name}:${check.status}`} data-state={passed ? "passed" : "pending"}>
+                      {passed ? <CheckCircle2 aria-hidden="true" /> : <CircleDotDashed aria-hidden="true" />}
+                      <span>{check.name}</span>
+                      <small>{humanState(check.status)}</small>
+                    </li>
+                  );
+                })}
+              </ul>
+              {github.checks.length > visibleChecks.length ? (
+                <p>{github.checks.length - visibleChecks.length} more checks on GitHub</p>
+              ) : null}
+            </div>
+          ) : null}
+          {github.latest_reviews.length ? (
+            <div className="evidence-block" aria-label="Latest reviews">
+              <h5>Latest reviews</h5>
+              <ul>
+                {github.latest_reviews.slice(0, 4).map((review) => (
+                  <li key={`${review.author}:${review.state}`}>
+                    <GitCommitHorizontal aria-hidden="true" />
+                    <span>{review.author}</span>
+                    <small>{humanState(review.state)}</small>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {github && visibleFiles.length ? (
+        <section className="inspector-evidence inspector-evidence--files" aria-label="Changed files">
+          <h4>Changed files <span>{github.changed_files.length}</span></h4>
+          <ul>
+            {visibleFiles.map((file) => (
+              <li key={file}><FileCode2 aria-hidden="true" />{file}</li>
+            ))}
+          </ul>
+          {github.changed_files.length > visibleFiles.length ? (
+            <p>{github.changed_files.length - visibleFiles.length} more files on GitHub</p>
+          ) : null}
+        </section>
+      ) : null}
       <div className="card-actions card-actions--start">
         {canGiveGoAhead && card.number ? (
           <button

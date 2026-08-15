@@ -3,11 +3,13 @@ import {
   CheckCircle2,
   ChevronDown,
   RefreshCw,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { supportsMutations } from "../api/client";
 import { exactTime, friendlyTime } from "../format";
+import { useIsMobile } from "../hooks/use-mobile";
 import { type BoardColumn } from "../lib/chips";
 import {
   type CustomRosterNames,
@@ -91,6 +93,7 @@ export function PipelineView({
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showLowSignal, setShowLowSignal] = useState(false);
+  const isMobile = useIsMobile();
 
   const loading = state === "loading";
   const columns = board?.columns;
@@ -160,6 +163,43 @@ export function PipelineView({
       : generatedAt
         ? `updated ${friendlyTime(generatedAt)}`
         : null;
+  const hasSelection = Boolean(selectedPlan || selectedCard);
+  const selectedCardColumn: BoardColumn = selectedCard
+    ? (columns?.shipped || []).some((card) => cardKey(card) === cardKey(selectedCard))
+      ? "shipped"
+      : (columns?.in_progress || []).some((card) => cardKey(card) === cardKey(selectedCard))
+        ? "in_progress"
+        : awaitingApproval.some((card) => cardKey(card) === cardKey(selectedCard))
+          ? "awaiting_approval"
+          : "queued"
+    : "queued";
+  const inspectorTitle = selectedPlan ? "Review plan" : "Work item";
+  const inspectorDescription = selectedPlan
+    ? "Approve, file, or open the GitHub evidence."
+    : "Open the GitHub record or change the queue state.";
+  const inspectorBody = (
+    <>
+      {selectedPlan ? (
+        <PlanInspector
+          plan={selectedPlan}
+          busyPlanAction={busyPlanAction}
+          onDecision={onDecision}
+          onDiscardPlan={onDiscardPlan}
+          onFileIssue={onFileIssue}
+          onFollowupAction={onFollowupAction}
+        />
+      ) : null}
+      {selectedCard ? (
+        <CardInspector
+          card={selectedCard}
+          column={selectedCardColumn}
+          busyQueue={busyQueue}
+          canQueue={canQueue}
+          onQueueAction={onQueueAction}
+        />
+      ) : null}
+    </>
+  );
 
   return (
     <section className="alfred-pipeline" aria-label="Work">
@@ -215,6 +255,12 @@ export function PipelineView({
         <QueueComposer onQueueAction={onQueueAction} busy={Boolean(busyQueue)} />
       ) : null}
 
+      {board?.sample ? (
+        <p className="sample-board-notice" role="note">
+          Sample data for visual review
+        </p>
+      ) : null}
+
       {hardError && !hasAnything ? (
         <div className="inline-notice inline-notice--error">
           <AlertTriangle size={18} aria-hidden="true" />
@@ -231,7 +277,8 @@ export function PipelineView({
           body="When you ask Alfred for something, it appears here first as a plan for you to approve, then as work in progress, then as shipped."
         />
       ) : (
-        <div className="alfred-pipeline__columns motion-rise">
+        <div className={`alfred-pipeline__workspace${hasSelection && !isMobile ? " has-inspector" : ""}`}>
+          <div className="alfred-pipeline__columns motion-rise">
           <PipelineColumn label="Needs your go-ahead" count={goAheadCount} lane="needs">
             {visiblePlans.map((entry) => (
               <PlanLifecycleCard
@@ -320,55 +367,46 @@ export function PipelineView({
               </PipelineColumn>
             );
           })}
+          </div>
+          {hasSelection && !isMobile ? (
+            <aside className="pipeline-inspector motion-rise" aria-label={`${inspectorTitle} inspector`}>
+              <header className="pipeline-inspector__header">
+                <div>
+                  <h2>{inspectorTitle}</h2>
+                  <p>{inspectorDescription}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  type="button"
+                  aria-label="Close inspector"
+                  onClick={() => setSelection(null)}
+                >
+                  <X size={16} aria-hidden="true" />
+                </Button>
+              </header>
+              {inspectorBody}
+            </aside>
+          ) : null}
         </div>
       )}
 
-      <Sheet
-        open={Boolean(selectedPlan || selectedCard)}
-        onOpenChange={(open) => {
-          if (!open) setSelection(null);
-        }}
-      >
-        <SheetContent className="plan-detail-sheet">
-          <SheetHeader>
-            <SheetTitle>
-              {selectedPlan ? "Review plan" : "Work item"}
-            </SheetTitle>
-            <SheetDescription>
-              {selectedPlan
-                ? "Approve, file, or open the GitHub evidence."
-                : "Open the GitHub record or change the queue state."}
-            </SheetDescription>
-          </SheetHeader>
-          {selectedPlan ? (
-            <PlanInspector
-              plan={selectedPlan}
-              busyPlanAction={busyPlanAction}
-              onDecision={onDecision}
-              onDiscardPlan={onDiscardPlan}
-              onFileIssue={onFileIssue}
-              onFollowupAction={onFollowupAction}
-            />
-          ) : null}
-          {selectedCard ? (
-            <CardInspector
-              card={selectedCard}
-              column={
-                (columns?.shipped || []).some((c) => cardKey(c) === cardKey(selectedCard))
-                  ? "shipped"
-                  : (columns?.in_progress || []).some((c) => cardKey(c) === cardKey(selectedCard))
-                    ? "in_progress"
-                    : awaitingApproval.some((c) => cardKey(c) === cardKey(selectedCard))
-                      ? "awaiting_approval"
-                      : "queued"
-              }
-              busyQueue={busyQueue}
-              canQueue={canQueue}
-              onQueueAction={onQueueAction}
-            />
-          ) : null}
-        </SheetContent>
-      </Sheet>
+      {isMobile ? (
+        <Sheet
+          open={hasSelection}
+          onOpenChange={(open) => {
+            if (!open) setSelection(null);
+          }}
+        >
+          <SheetContent className="plan-detail-sheet">
+            <SheetHeader>
+              <SheetTitle>{inspectorTitle}</SheetTitle>
+              <SheetDescription>{inspectorDescription}</SheetDescription>
+            </SheetHeader>
+            {inspectorBody}
+          </SheetContent>
+        </Sheet>
+      ) : null}
     </section>
   );
 }
