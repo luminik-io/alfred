@@ -16,24 +16,39 @@ const THEME_MODE_STORAGE_KEY = "alfred-theme";
 
 function parseWidths(value) {
   const widths = value.split(",").map((entry) => Number(entry.trim()));
-  if (widths.length === 0 || widths.some((width) => !Number.isInteger(width) || width <= 0)) {
-    throw new Error(`SWEEP_WIDTHS must be a comma-separated list of positive integers: ${value}`);
+  if (
+    widths.length === 0 ||
+    widths.some((width) => !Number.isInteger(width) || width <= 0)
+  ) {
+    throw new Error(
+      `SWEEP_WIDTHS must be a comma-separated list of positive integers: ${value}`,
+    );
   }
   return [...new Set(widths)];
 }
 
 function parsePalettes(value) {
-  const supported = new Set(["mineral", "carbon"]);
+  const supported = new Set([
+    "signal-edge",
+    "category-standard",
+    "linked-fold",
+  ]);
   const palettes = value.split(",").map((entry) => entry.trim());
   const invalid = palettes.filter((palette) => !supported.has(palette));
   if (palettes.length === 0 || invalid.length > 0) {
-    throw new Error(`SWEEP_PALETTES must contain only mineral or carbon: ${value}`);
+    throw new Error(
+      `SWEEP_PALETTES must contain only signal-edge, category-standard, or linked-fold: ${value}`,
+    );
   }
   return [...new Set(palettes)];
 }
 
-const WIDTHS = parseWidths(process.env.SWEEP_WIDTHS || "375,390,768,1024,1280,1680");
-const PALETTES = parsePalettes(process.env.SWEEP_PALETTES || "mineral,carbon");
+const WIDTHS = parseWidths(
+  process.env.SWEEP_WIDTHS || "375,390,768,1024,1280,1680",
+);
+const PALETTES = parsePalettes(
+  process.env.SWEEP_PALETTES || "signal-edge,category-standard,linked-fold",
+);
 const MODES = ["dark", "light"];
 const HEIGHT = 900;
 const STEPS = [
@@ -48,11 +63,17 @@ const STEPS = [
 ];
 const PROBE = () => {
   const out = [];
-  const srOnly = (el) => el.closest(".sr-only, .visually-hidden, [data-sr-only]") !== null;
+  const srOnly = (el) =>
+    el.closest(".sr-only, .visually-hidden, [data-sr-only]") !== null;
   const vis = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
-    return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+    return (
+      r.width > 0 &&
+      r.height > 0 &&
+      s.visibility !== "hidden" &&
+      s.display !== "none"
+    );
   };
   const label = (el) => {
     const cls =
@@ -63,10 +84,13 @@ const PROBE = () => {
     return `${el.tagName.toLowerCase()}${cls ? "." + cls : ""}${aria ? `[aria-label="${aria}"]` : ""}`;
   };
 
-  const docOverflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
-  if (docOverflow > 1) out.push({ kind: "doc-hscroll", detail: `+${docOverflow}px` });
+  const docOverflow =
+    document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  if (docOverflow > 1)
+    out.push({ kind: "doc-hscroll", detail: `+${docOverflow}px` });
   const bodyOverflow = document.body.scrollWidth - window.innerWidth;
-  if (bodyOverflow > 1) out.push({ kind: "body-hscroll", detail: `+${bodyOverflow}px` });
+  if (bodyOverflow > 1)
+    out.push({ kind: "body-hscroll", detail: `+${bodyOverflow}px` });
 
   const chromeSel = [
     ".alfred-onboarding-shell",
@@ -84,7 +108,10 @@ const PROBE = () => {
       const scrolls = /(auto|scroll)/.test(s.overflowX);
       const over = el.scrollWidth - el.clientWidth;
       if (over > 1 && !scrolls) {
-        out.push({ kind: "chrome-overflow", detail: `${label(el)} +${over}px overflow-x:${s.overflowX}` });
+        out.push({
+          kind: "chrome-overflow",
+          detail: `${label(el)} +${over}px overflow-x:${s.overflowX}`,
+        });
       }
     }
   }
@@ -104,19 +131,28 @@ const PROBE = () => {
       s.webkitLineClamp !== "none" ||
       s.display === "-webkit-box";
     if (clipsY && r.height > 0 && r.height < lh - 1.5) {
-      out.push({ kind: "subline-clip", detail: `${label(el)} ${r.height.toFixed(0)}<${lh.toFixed(0)} "${txt.slice(0, 30)}"` });
+      out.push({
+        kind: "subline-clip",
+        detail: `${label(el)} ${r.height.toFixed(0)}<${lh.toFixed(0)} "${txt.slice(0, 30)}"`,
+      });
     }
   }
 
   if (window.innerWidth <= 390) {
-    const tapSel = "button, a[href], [role='button'], input[type='checkbox'], input[type='radio']";
+    const tapSel =
+      "button, a[href], [role='button'], input[type='checkbox'], input[type='radio']";
     for (const el of document.querySelectorAll(tapSel)) {
       if (!vis(el) || el.closest("[aria-hidden='true']")) continue;
       const r = el.getBoundingClientRect();
       const min = Math.min(r.width, r.height);
       if (min > 0 && min < 36) {
-        const t = (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 24);
-        out.push({ kind: "small-tap", detail: `${label(el)} ${r.width.toFixed(0)}x${r.height.toFixed(0)} "${t}"` });
+        const t = (el.getAttribute("aria-label") || el.textContent || "")
+          .trim()
+          .slice(0, 24);
+        out.push({
+          kind: "small-tap",
+          detail: `${label(el)} ${r.width.toFixed(0)}x${r.height.toFixed(0)} "${t}"`,
+        });
       }
     }
   }
@@ -147,7 +183,9 @@ async function applyTheme(page, palette, mode) {
 async function gotoStep(page, step) {
   const btn = page.locator(`[data-onboarding-step="${step}"]`).first();
   if (await btn.isDisabled()) {
-    await page.getByRole("button", { name: /^I have a server running$/i }).click();
+    await page
+      .getByRole("button", { name: /^I have a server running$/i })
+      .click();
   }
   await btn.click({ timeout: 2000 });
   await page.waitForTimeout(250);
@@ -213,7 +251,9 @@ async function run() {
         });
         await applyTheme(page, palette, mode);
         await page.waitForTimeout(600);
-        await page.waitForSelector(".alfred-onboarding-shell", { timeout: 5000 });
+        await page.waitForSelector(".alfred-onboarding-shell", {
+          timeout: 5000,
+        });
 
         for (const step of STEPS) {
           await gotoStep(page, step);
@@ -222,7 +262,11 @@ async function run() {
           const violations = [...(await page.evaluate(PROBE)), ...runtime];
           const shot = `${step}_${width}_${palette}_${mode}.png`;
           try {
-            await page.screenshot({ path: join(OUT_DIR, shot), fullPage: false, timeout: 8000 });
+            await page.screenshot({
+              path: join(OUT_DIR, shot),
+              fullPage: false,
+              timeout: 8000,
+            });
           } catch {}
           total += violations.length;
           results.push({ step, width, palette, mode, violations });
@@ -241,10 +285,14 @@ async function run() {
       );
     }
   }
-  console.log(`\n=== ONBOARDING SWEEP: ${results.length} step renders, ${total} violations ===\n`);
+  console.log(
+    `\n=== ONBOARDING SWEEP: ${results.length} step renders, ${total} violations ===\n`,
+  );
   const kinds = Object.keys(byKind).sort();
   if (!kinds.length) {
-    console.log("CLEAN: no violations across all steps / widths / palettes / modes.");
+    console.log(
+      "CLEAN: no violations across all steps / widths / palettes / modes.",
+    );
   } else {
     for (const k of kinds) {
       console.log(`## ${k} (${byKind[k].length})`);
