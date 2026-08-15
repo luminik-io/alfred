@@ -1586,6 +1586,7 @@ def test_workflow_runs_only_by_trusted_dispatch() -> None:
     assert "pull_request_target" not in content
     assert "ref: ${{ inputs.sha }}" in content
     assert 'labels: "${{ inputs.runner_label }}"' in content
+    assert "enable-cache: false" in content
     assert "self-hosted" not in content
     assert "luminik-disposable" not in content
     assert "group: mac-mini-disposable" in content
