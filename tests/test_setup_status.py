@@ -19,6 +19,9 @@ from server import setup as setup_mod  # noqa: E402
 
 
 def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Setup-status tests model a clean host unless a case explicitly installs
+    # a fake binary. Do not let the developer machine's PATH alter that model.
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
