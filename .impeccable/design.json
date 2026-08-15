@@ -44,7 +44,7 @@
       { "name": "board-scroll", "value": "899px" },
       { "name": "compact-assignment", "value": "920px" },
       { "name": "two-lane", "value": "1024px" },
-      { "name": "docked-inspector", "value": "1100px" }
+      { "name": "docked-inspector", "value": "1280px" }
     ]
   },
   "components": [
