@@ -139,7 +139,8 @@ def test_probe_process_receives_only_non_secret_runtime_context(fresh_agent_runn
             ("--version",): "codex 1.2.3\n",
             ("exec", "--help"): (
                 "--output-last-message --sandbox --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral -c\n"
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n"
             ),
             ("login", "status"): "signed in\n",
         }
@@ -207,7 +208,8 @@ def test_codex_api_key_never_bypasses_cli_auth_probe(fresh_agent_runner, tmp_pat
             ("--version",): "codex 1.2.3\n",
             ("exec", "--help"): (
                 "--output-last-message --sandbox --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral -c\n"
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n"
             ),
             ("login", "status"): "signed in\n",
         }
@@ -241,7 +243,8 @@ def test_invalid_codex_api_key_cannot_make_engine_ready(fresh_agent_runner, tmp_
             ("exec", "--help"): (
                 0,
                 "--output-last-message --sandbox --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral -c\n",
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n",
                 "",
             ),
             ("login", "status"): (1, "", "not signed in"),
@@ -342,7 +345,8 @@ def test_protocol_probe_transport_failure_is_retryable_and_not_cached(
             ("--version",): "codex 1.2.3\n",
             ("exec", "--help"): (
                 "--output-last-message --sandbox --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral -c\n"
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n"
             ),
             ("login", "status"): "signed in\n",
         }
@@ -376,6 +380,9 @@ def test_protocol_probe_transport_failure_is_retryable_and_not_cached(
         "--ignore-user-config",
         "--ephemeral",
         "-c",
+        "--model",
+        "--add-dir",
+        "--dangerously-bypass-approvals-and-sandbox",
     ),
 )
 def test_codex_probe_requires_every_dispatch_flag(
@@ -393,6 +400,9 @@ def test_codex_probe_requires_every_dispatch_flag(
         "--ignore-user-config",
         "--ephemeral",
         "-c",
+        "--model",
+        "--add-dir",
+        "--dangerously-bypass-approvals-and-sandbox",
     }
     help_output = " ".join(sorted(dispatch_flags - {missing_marker}))
     runner, calls = _runner(
@@ -426,7 +436,8 @@ def test_codex_probe_does_not_treat_other_config_or_directory_flags_as_short_con
             ("exec", "--help"): (
                 0,
                 "--output-last-message --sandbox -C --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral --strict-config\n",
+                "--ignore-user-config --ephemeral --strict-config --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n",
                 "",
             ),
         }
@@ -453,7 +464,8 @@ def test_probe_reports_auth_required_without_leaking_output(fresh_agent_runner, 
             ("exec", "--help"): (
                 0,
                 "--output-last-message --sandbox --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral -c\n",
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n",
                 "",
             ),
             ("login", "status"): (1, "private account details", "expired token"),
@@ -561,7 +573,8 @@ def test_cached_protocol_still_rechecks_auth(fresh_agent_runner, tmp_path: Path)
                 command,
                 0,
                 "--output-last-message --sandbox --cd --skip-git-repo-check "
-                "--ignore-user-config --ephemeral -c\n",
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n",
                 "",
             )
         if args == ("login", "status"):
