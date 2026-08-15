@@ -23,6 +23,7 @@ import stat
 import subprocess
 import sys
 import textwrap
+import time
 import tomllib
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -37,6 +38,9 @@ MINIMUM_LIMA_VERSION = (2, 0, 0)
 STATE_DIRECTORY = Path.home() / ".local" / "state" / "alfred-ci-runner"
 CI_REQUEST_LABEL = "mac-mini-ci"
 CI_JOB_LABEL_PREFIX = "alfred-job"
+LABEL_REQUEST_ATTEMPTS = 3
+LABEL_EVENT_POLL_ATTEMPTS = 5
+LABEL_EVENT_POLL_SECONDS = 1.0
 
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,38})/[A-Za-z0-9_.-]{1,100}$")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -636,11 +640,10 @@ def _verified_pull_request(config: RunnerConfig, number: int) -> PullRequestTarg
     return PullRequestTarget(number=number, sha=sha)
 
 
-def _request_pull_request_workflow(
+def _pull_request_label_names(
     config: RunnerConfig,
     target: PullRequestTarget,
-) -> None:
-    """Emit a low-privilege pull_request:labeled event for the verified PR."""
+) -> set[str]:
     labels_result = _run(
         [
             "gh",
@@ -666,40 +669,103 @@ def _request_pull_request_workflow(
         isinstance(record, dict) and isinstance(record.get("name"), str) for record in label_records
     ):
         raise ControlPlaneError("GitHub returned invalid pull-request labels")
-    labels = [record["name"] for record in label_records]
+    return {record["name"] for record in label_records}
 
-    if CI_REQUEST_LABEL in labels:
+
+def _pull_request_label_event_ids(
+    config: RunnerConfig,
+    target: PullRequestTarget,
+) -> set[int]:
+    events_result = _run(
+        [
+            "gh",
+            "api",
+            "--paginate",
+            "--slurp",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+            f"repos/{config.repository}/issues/{target.number}/events?per_page=100",
+        ],
+        capture_output=True,
+    )
+    try:
+        pages = json.loads(events_result.stdout)
+    except json.JSONDecodeError as exc:
+        raise ControlPlaneError("GitHub returned invalid pull-request events") from exc
+    if not isinstance(pages, list) or not all(isinstance(page, list) for page in pages):
+        raise ControlPlaneError("GitHub returned invalid pull-request events")
+
+    event_ids: set[int] = set()
+    for record in (record for page in pages for record in page):
+        if not isinstance(record, dict):
+            raise ControlPlaneError("GitHub returned invalid pull-request events")
+        event_id = record.get("id")
+        if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id < 1:
+            raise ControlPlaneError("GitHub returned invalid pull-request events")
+        if record.get("event") != "labeled":
+            continue
+        label = record.get("label")
+        if not isinstance(label, dict) or not isinstance(label.get("name"), str):
+            raise ControlPlaneError("GitHub returned invalid pull-request events")
+        if label["name"] == CI_REQUEST_LABEL:
+            event_ids.add(event_id)
+    return event_ids
+
+
+def _request_pull_request_workflow(
+    config: RunnerConfig,
+    target: PullRequestTarget,
+) -> None:
+    """Emit and verify a fresh low-privilege pull_request:labeled event."""
+    baseline_event_ids = _pull_request_label_event_ids(config, target)
+
+    for request_attempt in range(LABEL_REQUEST_ATTEMPTS):
+        labels = _pull_request_label_names(config, target)
+
+        if CI_REQUEST_LABEL in labels:
+            _run(
+                [
+                    "gh",
+                    "api",
+                    "--method",
+                    "DELETE",
+                    "-H",
+                    "Accept: application/vnd.github+json",
+                    "-H",
+                    f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
+                    f"repos/{config.repository}/issues/{target.number}/labels/{CI_REQUEST_LABEL}",
+                ]
+            )
+
+        payload = json.dumps({"labels": [CI_REQUEST_LABEL]}, separators=(",", ":"))
         _run(
             [
                 "gh",
                 "api",
                 "--method",
-                "DELETE",
+                "POST",
                 "-H",
                 "Accept: application/vnd.github+json",
                 "-H",
                 f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
-                f"repos/{config.repository}/issues/{target.number}/labels/{CI_REQUEST_LABEL}",
-            ]
+                f"repos/{config.repository}/issues/{target.number}/labels",
+                "--input",
+                "-",
+            ],
+            input_text=payload,
         )
 
-    payload = json.dumps({"labels": [CI_REQUEST_LABEL]}, separators=(",", ":"))
-    _run(
-        [
-            "gh",
-            "api",
-            "--method",
-            "POST",
-            "-H",
-            "Accept: application/vnd.github+json",
-            "-H",
-            f"X-GitHub-Api-Version: {GITHUB_API_VERSION}",
-            f"repos/{config.repository}/issues/{target.number}/labels",
-            "--input",
-            "-",
-        ],
-        input_text=payload,
-    )
+        for poll_attempt in range(LABEL_EVENT_POLL_ATTEMPTS):
+            if _pull_request_label_event_ids(config, target) - baseline_event_ids:
+                return
+            if poll_attempt + 1 < LABEL_EVENT_POLL_ATTEMPTS:
+                time.sleep(LABEL_EVENT_POLL_SECONDS)
+
+        if request_attempt + 1 < LABEL_REQUEST_ATTEMPTS:
+            continue
+        raise ControlPlaneError("GitHub did not emit a fresh pull_request:labeled event")
 
 
 def _job_label_for_target(prefix: str, target: PullRequestTarget) -> str:

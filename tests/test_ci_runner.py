@@ -671,6 +671,7 @@ def test_request_pull_request_workflow_relabels_verified_pr(
     config = ci_runner.load_config(write_config(tmp_path))
     target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
     calls: list[tuple[list[str], str | None]] = []
+    event_reads = 0
 
     def fake_run(
         arguments: list[str],
@@ -678,7 +679,22 @@ def test_request_pull_request_workflow_relabels_verified_pr(
         input_text: str | None = None,
         **kwargs: object,
     ) -> subprocess.CompletedProcess[str]:
+        nonlocal event_reads
         calls.append((list(arguments), input_text))
+        if any("/events?per_page=100" in argument for argument in arguments):
+            event_reads += 1
+            pages = (
+                [[]]
+                if event_reads == 1
+                else [
+                    [{"id": 99, "event": "unlabeled", "label": {"name": "mac-mini-ci"}}],
+                    [
+                        {"id": 100, "event": "labeled", "label": {"name": "other"}},
+                        {"id": 101, "event": "labeled", "label": {"name": "mac-mini-ci"}},
+                    ],
+                ]
+            )
+            return completed(arguments, stdout=json.dumps(pages))
         if "--paginate" in arguments:
             first_page = [{"name": f"label-{index}"} for index in range(30)]
             second_page = [{"name": "label-30"}, {"name": "mac-mini-ci"}]
@@ -689,19 +705,139 @@ def test_request_pull_request_workflow_relabels_verified_pr(
 
     ci_runner._request_pull_request_workflow(config, target)
 
-    assert len(calls) == 3
-    assert "repos/luminik-io/alfred/issues/598/labels" in calls[0][0]
-    assert "--paginate" in calls[0][0]
-    assert "--slurp" in calls[0][0]
-    assert "--jq" not in calls[0][0]
-    assert "--method" in calls[1][0]
-    assert "DELETE" in calls[1][0]
-    assert "repos/luminik-io/alfred/issues/598/labels/mac-mini-ci" in calls[1][0]
-    arguments, payload = calls[2]
+    assert len(calls) == 5
+    assert "repos/luminik-io/alfred/issues/598/events?per_page=100" in calls[0][0]
+    assert "repos/luminik-io/alfred/issues/598/labels" in calls[1][0]
+    assert "--paginate" in calls[1][0]
+    assert "--slurp" in calls[1][0]
+    assert "--jq" not in calls[1][0]
+    assert "--method" in calls[2][0]
+    assert "DELETE" in calls[2][0]
+    assert "repos/luminik-io/alfred/issues/598/labels/mac-mini-ci" in calls[2][0]
+    arguments, payload = calls[3]
     assert "repos/luminik-io/alfred/issues/598/labels" in arguments
     assert payload is not None
     assert payload == '{"labels":["mac-mini-ci"]}'
     assert all("actions/workflows" not in argument for argument in arguments)
+    assert "repos/luminik-io/alfred/issues/598/events?per_page=100" in calls[4][0]
+
+
+def test_request_pull_request_workflow_retries_when_label_add_has_no_fresh_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+    calls: list[tuple[list[str], str | None]] = []
+    label_reads = 0
+    event_reads = 0
+
+    monkeypatch.setattr(ci_runner, "LABEL_EVENT_POLL_ATTEMPTS", 1)
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        input_text: str | None = None,
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal event_reads, label_reads
+        calls.append((list(arguments), input_text))
+        if any("/events?per_page=100" in argument for argument in arguments):
+            event_reads += 1
+            events = (
+                []
+                if event_reads < 3
+                else [{"id": 101, "event": "labeled", "label": {"name": "mac-mini-ci"}}]
+            )
+            return completed(arguments, stdout=json.dumps([events]))
+        if "--paginate" in arguments:
+            label_reads += 1
+            labels = [] if label_reads == 1 else [{"name": "mac-mini-ci"}]
+            return completed(arguments, stdout=json.dumps([labels]))
+        return completed(arguments)
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    ci_runner._request_pull_request_workflow(config, target)
+
+    post_calls = [
+        call for call in calls if "POST" in call[0] and call[1] == '{"labels":["mac-mini-ci"]}'
+    ]
+    delete_calls = [call for call in calls if "DELETE" in call[0]]
+    assert len(post_calls) == 2
+    assert len(delete_calls) == 1
+    assert event_reads == 3
+
+
+@pytest.mark.parametrize("event_id", [True, False, 0, -1, "101"])
+def test_pull_request_label_events_reject_invalid_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    event_id: object,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+    payload = [[{"id": event_id, "event": "labeled", "label": {"name": "mac-mini-ci"}}]]
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments, stdout=json.dumps(payload)),
+    )
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="invalid pull-request events"):
+        ci_runner._pull_request_label_event_ids(config, target)
+
+
+def test_request_pull_request_workflow_fails_after_retry_exhaustion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+    post_calls = 0
+
+    monkeypatch.setattr(ci_runner, "LABEL_REQUEST_ATTEMPTS", 2)
+    monkeypatch.setattr(ci_runner, "LABEL_EVENT_POLL_ATTEMPTS", 1)
+
+    def fake_run(
+        arguments: list[str],
+        *,
+        input_text: str | None = None,
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        nonlocal post_calls
+        if "POST" in arguments:
+            post_calls += 1
+            return completed(arguments)
+        if not any("/events?per_page=100" in argument for argument in arguments):
+            return completed(arguments, stdout="[[]]")
+        matching_baseline = [[{"id": 100, "event": "labeled", "label": {"name": "mac-mini-ci"}}]]
+        return completed(arguments, stdout=json.dumps(matching_baseline))
+
+    monkeypatch.setattr(ci_runner, "_run", fake_run)
+
+    with pytest.raises(ci_runner.ControlPlaneError, match="fresh pull_request:labeled"):
+        ci_runner._request_pull_request_workflow(config, target)
+    assert post_calls == 2
+
+
+def test_pull_request_label_events_ignore_unrelated_events_and_labels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = ci_runner.load_config(write_config(tmp_path))
+    target = ci_runner.PullRequestTarget(number=598, sha="a" * 40)
+    payload = [
+        [{"id": 99, "event": "unlabeled", "label": {"name": "mac-mini-ci"}}],
+        [{"id": 100, "event": "labeled", "label": {"name": "other"}}],
+    ]
+    monkeypatch.setattr(
+        ci_runner,
+        "_run",
+        lambda arguments, **kwargs: completed(arguments, stdout=json.dumps(payload)),
+    )
+
+    assert ci_runner._pull_request_label_event_ids(config, target) == set()
 
 
 def test_guest_lockdown_uses_guest_only_password_and_invalidates_sudo(
