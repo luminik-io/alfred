@@ -380,19 +380,27 @@ def _with_memory_mcp_tools(
 # codebase-memory-mcp (DeusData, MIT) is a STANDALONE external binary invoked
 # over MCP -- it is never vendored into this tree, so the repo stays OSS-clean
 # and passes scrub-check. It indexes the in-scope repos into a code graph and
-# exposes read-only structure tools (search, call graph, impact / blast radius,
-# who-owns) so fleet agents can reason about code structure instead of grepping
-# blind. This is a capability, on by default when the binary is installed;
+# exposes read-only structure tools (symbol search, call traces, change impact,
+# schema, snippets, and architecture) so fleet agents can reason about code
+# structure instead of grepping blind. This capability is on by default when the binary is installed;
 # disable with ALFRED_CODE_MEMORY_MCP=0. The bin/code-memory-mcp launcher
 # resolves and (on first run) fetches the pinned upstream binary.
 CODE_MEMORY_MCP_SERVER = "code_memory"
-# Tools the upstream server exposes. Kept as an allowlist so a future upstream
-# tool cannot silently widen agent capability without a code change here.
+# Read-only tools exposed by the pinned v0.8.1 server. Kept as an allowlist so a
+# future upstream tool cannot silently widen agent capability without a code
+# change here. Mutating tools such as index_repository, delete_project,
+# manage_adr, and ingest_traces stay unavailable to firings.
 _CODE_MEMORY_TOOLS = (
+    "index_status",
+    "list_projects",
+    "search_graph",
     "search_code",
-    "call_graph",
-    "impact_analysis",
-    "who_owns",
+    "trace_path",
+    "detect_changes",
+    "query_graph",
+    "get_graph_schema",
+    "get_code_snippet",
+    "get_architecture",
 )
 
 
