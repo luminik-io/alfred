@@ -5,11 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 import { PipelineView } from "./PipelineView";
 import type { PlanDraft, ShippedBoard, ShippedCard } from "../types";
 
-const viewport = vi.hoisted(() => ({ wide: true }));
+const viewport = vi.hoisted(() => ({ wide: true, query: "" }));
 
 vi.mock("../hooks/use-mobile", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/use-mobile")>()),
-  useMediaQuery: () => viewport.wide,
+  useMediaQuery: (query: string) => {
+    viewport.query = query;
+    return viewport.wide;
+  },
 }));
 
 // PipelineView merges the old Work board and Plans page into the single
@@ -589,6 +592,8 @@ describe("PipelineView", () => {
                   { name: "policy", status: "PENDING" },
                   { name: "Integration", status: "FAILURE" },
                   { name: "Legacy policy", status: "ERROR" },
+                  { name: "Informational", status: "NEUTRAL" },
+                  { name: "Not applicable", status: "SKIPPED" },
                 ],
                 changed_files: ["client.tsx", "client.test.tsx"],
                 changed_file_count: 240,
@@ -642,6 +647,14 @@ describe("PipelineView", () => {
       "data-state",
       "failed",
     );
+    expect(within(inspector).getByText("Informational").closest("li")).toHaveAttribute(
+      "data-state",
+      "passed",
+    );
+    expect(within(inspector).getByText("Not applicable").closest("li")).toHaveAttribute(
+      "data-state",
+      "passed",
+    );
     expect(screen.getByRole("region", { name: /working now/i })).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -664,6 +677,12 @@ describe("PipelineView", () => {
     } finally {
       viewport.wide = true;
     }
+  });
+
+  it("keeps the inspector in a sheet until four lanes and the dock fit", () => {
+    renderPipeline();
+
+    expect(viewport.query).toBe("(min-width: 1280px)");
   });
 
   it("routes an existing issue from the Work assignment strip", async () => {

@@ -31,6 +31,7 @@ const FAILED_CHECK_STATES = new Set([
   "STARTUP_FAILURE",
   "TIMED_OUT",
 ]);
+const PASSED_CHECK_STATES = new Set(["NEUTRAL", "SKIPPED", "SUCCESS"]);
 
 // The plan detail sheet body: metadata, the go/no-go decision block, file /
 // discard / follow-up actions, and the rendered plan markdown.
@@ -315,7 +316,7 @@ export function CardInspector({
               <ul>
                 {visibleChecks.map((check) => {
                   const status = check.status.toUpperCase();
-                  const passed = status === "SUCCESS";
+                  const passed = PASSED_CHECK_STATES.has(status);
                   const failed = FAILED_CHECK_STATES.has(status);
                   const state = passed ? "passed" : failed ? "failed" : "pending";
                   return (

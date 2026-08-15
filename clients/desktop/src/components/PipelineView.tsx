@@ -93,7 +93,7 @@ export function PipelineView({
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showLowSignal, setShowLowSignal] = useState(false);
-  const dockInspector = useMediaQuery("(min-width: 1100px)");
+  const dockInspector = useMediaQuery("(min-width: 1280px)");
 
   const loading = state === "loading";
   const columns = board?.columns;
