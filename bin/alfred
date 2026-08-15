@@ -1848,9 +1848,18 @@ def _engine_mode_readiness(
 
     def probe(engine: str):
         if engine not in probes:
+            probe_options: dict[str, Any] = {"use_cache": False}
+            if engine == "claude":
+                probe_env = dict(os.environ)
+                selected_profile = _current_claude_dir()
+                if selected_profile:
+                    probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
+                else:
+                    probe_env.pop("CLAUDE_CONFIG_DIR", None)
+                probe_options["environ"] = probe_env
             probes[engine] = agent_runner.probe_engine(
                 agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine),
-                use_cache=False,
+                **probe_options,
             )
         return probes[engine]
 
