@@ -286,10 +286,7 @@ export type DeleteCustomAgentResponse = {
 export type AgentModelProvider = "claude" | "codex";
 
 export type AgentModelSource =
-  | "agent-environment"
-  | "fleet-environment"
-  | "state"
-  | "provider-default";
+  "agent-environment" | "fleet-environment" | "state" | "provider-default";
 
 export type AgentModelSelection = {
   resolved: string | null;
@@ -374,6 +371,7 @@ export type ShippedCard = {
     head_sha: string | null;
     review_state: string | null;
     checks: Array<{ name: string; status: string }>;
+    check_count_incomplete?: boolean;
     changed_files: string[];
     changed_file_count: number;
     changed_file_count_incomplete: boolean;
@@ -754,7 +752,14 @@ export type SetupCapability = {
   title: string;
   category: string;
   recommended: boolean;
-  state: "ready" | "needs_index" | "installable" | "available" | "missing" | "disabled" | string;
+  state:
+    | "ready"
+    | "needs_index"
+    | "installable"
+    | "available"
+    | "missing"
+    | "disabled"
+    | string;
   installed: boolean;
   enabled: boolean;
   detail: string;
@@ -920,7 +925,12 @@ export type SetupRepoCheckout = SetupRepoCheckoutInput & {
   github_remote_repo: string | null;
   identity_matches: boolean;
   ready: boolean;
-  reason: "missing" | "not_git_repo" | "missing_github_remote" | "remote_mismatch" | null;
+  reason:
+    | "missing"
+    | "not_git_repo"
+    | "missing_github_remote"
+    | "remote_mismatch"
+    | null;
 };
 
 export type SetupReposResponse = {

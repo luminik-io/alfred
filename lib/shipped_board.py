@@ -393,6 +393,7 @@ def _github_evidence(item: dict) -> dict:
         "head_sha": item.get("headRefOid") or None,
         "review_state": item.get("reviewDecision") or None,
         "checks": checks,
+        "check_count_incomplete": len(checks) >= 100,
         "changed_files": changed_files,
         "changed_file_count": changed_file_total
         if has_exact_changed_file_total

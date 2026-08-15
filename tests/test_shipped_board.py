@@ -173,6 +173,7 @@ def test_pr_cards_include_verifiable_github_evidence(monkeypatch):
             {"name": "Desktop client", "status": "SUCCESS"},
             {"name": "policy", "status": "PENDING"},
         ],
+        "check_count_incomplete": False,
         "changed_files": ["client.tsx", "client.test.tsx"],
         "changed_file_count": 2,
         "changed_file_count_incomplete": False,
@@ -187,6 +188,9 @@ def test_github_evidence_marks_capped_connections_without_guessing_totals():
         "changedFiles": 240,
         "files": [{"path": f"src/file-{index}.py"} for index in range(100)],
         "commits": [{"oid": str(index)} for index in range(100)],
+        "statusCheckRollup": [
+            {"name": f"check-{index}", "conclusion": "SUCCESS"} for index in range(100)
+        ],
     }
 
     evidence = sb._github_evidence(item)
@@ -195,6 +199,7 @@ def test_github_evidence_marks_capped_connections_without_guessing_totals():
     assert evidence["changed_file_count_incomplete"] is False
     assert evidence["commit_count"] == 100
     assert evidence["commit_count_incomplete"] is True
+    assert evidence["check_count_incomplete"] is True
 
 
 def test_parked_issues_excluded_from_queued(monkeypatch):
