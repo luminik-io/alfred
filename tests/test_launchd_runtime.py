@@ -384,7 +384,7 @@ def test_doctor_fails_when_configured_engine_is_not_registry_ready(tmp_path):
         """#!/usr/bin/env sh
 case "$1 $2" in
   "--version ") echo "codex-cli 9.9.9" ;;
-  "exec --help") echo "--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c" ;;
+  "exec --help") echo "--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox" ;;
   "login status") exit 1 ;;
   *) exit 2 ;;
 esac
@@ -505,7 +505,7 @@ def test_doctor_scheduler_fallback_shares_engine_and_preflight_roster(
         """#!/usr/bin/env sh
 case "$1 $2" in
   "--version ") echo "codex-cli 9.9.9" ;;
-  "exec --help") echo "--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c" ;;
+  "exec --help") echo "--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox" ;;
   "login status") exit 0 ;;
   *) exit 2 ;;
 esac
