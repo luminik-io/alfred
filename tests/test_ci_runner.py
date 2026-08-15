@@ -73,6 +73,67 @@ def completed(
     return subprocess.CompletedProcess(arguments, returncode, stdout, stderr)
 
 
+def workflow_action_with_values(content: str, action_prefix: str) -> dict[str, str]:
+    """Read the scalar ``with`` values for one action step from workflow YAML."""
+    lines = content.splitlines()
+    matching_steps: list[tuple[int, int]] = []
+
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        if not stripped.startswith("- uses: "):
+            continue
+        action = stripped.removeprefix("- uses: ").split(" #", maxsplit=1)[0].strip()
+        if not action.startswith(f"{action_prefix}@"):
+            continue
+
+        step_indent = len(line) - len(stripped)
+        end = index + 1
+        while end < len(lines):
+            candidate = lines[end]
+            candidate_stripped = candidate.lstrip()
+            candidate_indent = len(candidate) - len(candidate_stripped)
+            if candidate_stripped and (
+                candidate_indent < step_indent
+                or (candidate_indent == step_indent and candidate_stripped.startswith("- "))
+            ):
+                break
+            end += 1
+        matching_steps.append((index, end))
+
+    assert len(matching_steps) == 1, (
+        f"expected one {action_prefix} step, found {len(matching_steps)}"
+    )
+    start, end = matching_steps[0]
+    step_indent = len(lines[start]) - len(lines[start].lstrip())
+
+    with_index = next(
+        (
+            index
+            for index in range(start + 1, end)
+            if lines[index].strip() == "with:"
+            and len(lines[index]) - len(lines[index].lstrip()) == step_indent + 2
+        ),
+        None,
+    )
+    if with_index is None:
+        return {}
+
+    values: dict[str, str] = {}
+    value_indent = step_indent + 4
+    for line in lines[with_index + 1 : end]:
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(stripped)
+        if indent <= step_indent + 2:
+            break
+        if indent != value_indent or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", maxsplit=1)
+        values[key.strip()] = value.split(" #", maxsplit=1)[0].strip()
+    return values
+
+
 def test_load_config_accepts_bounded_allowlisted_values(tmp_path: Path) -> None:
     config = ci_runner.load_config(write_config(tmp_path))
 
@@ -1586,7 +1647,20 @@ def test_workflow_runs_only_by_trusted_dispatch() -> None:
     assert "pull_request_target" not in content
     assert "ref: ${{ inputs.sha }}" in content
     assert 'labels: "${{ inputs.runner_label }}"' in content
-    assert "enable-cache: false" in content
+    setup_uv_values = workflow_action_with_values(content, "astral-sh/setup-uv")
+    assert setup_uv_values["enable-cache"] == "false"
+    cache_setting_only_in_a_comment = content.replace(
+        "          enable-cache: false",
+        "          # enable-cache: false",
+        1,
+    )
+    assert (
+        workflow_action_with_values(
+            cache_setting_only_in_a_comment,
+            "astral-sh/setup-uv",
+        ).get("enable-cache")
+        is None
+    )
     assert "self-hosted" not in content
     assert "luminik-disposable" not in content
     assert "group: mac-mini-disposable" in content
