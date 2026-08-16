@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterator
-from ipaddress import AddressValueError, IPv4Address
+from ipaddress import AddressValueError, IPv4Address, IPv6Address
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _MIN_LANGUAGE_STANDARD_DIGITS = 2
@@ -45,6 +45,12 @@ _DOTTED_VERSION_RE = re.compile(
 _IPV4_CANDIDATE_RE = re.compile(
     r"(?<![A-Za-z0-9./:])(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
     r"(?![A-Za-z0-9/:]|\.[A-Za-z0-9])"
+)
+_IPV6_CANDIDATE_RE = re.compile(
+    r"(?<![A-Za-z0-9:%])"
+    r"(?:[0-9A-Fa-f]{0,4}:){2,8}"
+    r"(?:[0-9A-Fa-f]{0,4}|(?:[0-9]{1,3}\.){3}[0-9]{1,3})"
+    r"(?![A-Za-z0-9:%/]|\.[A-Za-z0-9])"
 )
 _MIN_MAJOR_VERSION_DIGITS = 1
 _MAX_MAJOR_VERSION_DIGITS = 2
@@ -169,6 +175,34 @@ def _is_ipv4_identity(token: str) -> bool:
     return True
 
 
+def _canonical_ipv6_identity(token: str) -> str | None:
+    """Return the compressed canonical form of one bounded IPv6 literal."""
+
+    if _IPV6_CANDIDATE_RE.fullmatch(token) is None:
+        return None
+    try:
+        return IPv6Address(token).compressed.lower()
+    except AddressValueError:
+        return None
+
+
+def _iter_ipv6_matches(text: str) -> Iterator[re.Match[str]]:
+    """Yield validated IPv6 literals, excluding bracketed host-port syntax."""
+
+    for match in _IPV6_CANDIDATE_RE.finditer(text):
+        if _canonical_ipv6_identity(match.group(0)) is None:
+            continue
+        suffix = text[match.end() :]
+        if (
+            match.start() > 0
+            and text[match.start() - 1] == "["
+            and suffix.startswith("]:")
+            and suffix[2:3].isdigit()
+        ):
+            continue
+        yield match
+
+
 def _version_identity_base(token: str) -> str | None:
     """Return the non-versioned technology named by a version identity."""
 
@@ -188,6 +222,7 @@ def _compound_matches(text: str) -> list[re.Match[str]]:
             for match in _IPV4_CANDIDATE_RE.finditer(text)
             if _is_ipv4_identity(match.group(0))
         ),
+        *_iter_ipv6_matches(text),
         *_DOTTED_VERSION_RE.finditer(text),
         *_CONTEXTUAL_MAJOR_VERSION_RE.finditer(text),
         *_LANGUAGE_IDENTITY_RE.finditer(text),
@@ -201,6 +236,7 @@ def is_identity_token(token: str) -> bool:
     return (
         bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
         or _is_ipv4_identity(token)
+        or _canonical_ipv6_identity(token) is not None
         or bool(_DOTTED_VERSION_RE.fullmatch(token))
         or bool(_CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token))
         or bool(_LANGUAGE_IDENTITY_RE.fullmatch(token))
@@ -280,6 +316,10 @@ def _english_plural_form(token: str) -> str:
 def _retrieval_variants(raw: str, canonical: str) -> tuple[str, ...]:
     """Return bounded spellings that retrieve one canonical concept."""
 
+    ipv6 = _canonical_ipv6_identity(canonical)
+    if ipv6 is not None:
+        exploded = IPv6Address(ipv6).exploded.lower()
+        return (ipv6,) if exploded == ipv6 else (ipv6, exploded)
     node_major = _CANONICAL_NODE_MAJOR_RE.fullmatch(canonical)
     if node_major is not None:
         major = node_major.group(1)
@@ -379,8 +419,9 @@ def meaningful_tokens(
     components of one to three digits each, such as ``1.3`` or ``10.20.30``.
     Explicit Python, Node, and Node.js major versions have one or two digits
     and stay bound to their runtime context, such as ``Python 3`` or ``Node
-    22``. Valid dotted-quad IPv4 addresses stay intact. Words inside a compound
-    span are not yielded a second time. A lesson containing only ``HTTP/2``
+    22``. Valid IPv4 and IPv6 addresses stay intact; IPv6 uses compressed
+    lowercase canonical form. Words inside a compound span are not yielded a
+    second time. A lesson containing only ``HTTP/2``
     therefore contributes one overlap concept, not both ``http/2`` and
     ``http``. Candidate overlap can request one non-identity base technology
     companion for a contextual runtime version or C++/C# standard. Ordinary
@@ -393,6 +434,7 @@ def meaningful_tokens(
     unicode_words = [span for span in _unicode_word_spans(text) if not span[2].isascii()]
     for match in compounds:
         compound = re.sub(r"\s+", " ", match.group(0))
+        compound = _canonical_ipv6_identity(compound) or compound
         yield compound
         if include_version_companions:
             companion = _version_identity_base(compound)
@@ -514,6 +556,11 @@ def identity_regex_pattern(value: str) -> str:
             rf"(^|[^A-Za-z0-9./:]){literal}"
             rf"($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])"
         )
+    if _canonical_ipv6_identity(value) is not None:
+        return (
+            rf"(^|[^A-Za-z0-9:%]){literal}"
+            rf"($|[^A-Za-z0-9:%/\]]|\]($|[^:]))"
+        )
     if _DOTTED_VERSION_RE.fullmatch(value):
         return (
             rf"(^|[^A-Za-z0-9./]){literal}"
@@ -534,6 +581,12 @@ def identity_variant_matches(text: str | None, identity: str | None) -> bool:
 
     if not isinstance(text, str) or not isinstance(identity, str):
         return False
+    canonical_ipv6 = _canonical_ipv6_identity(identity)
+    if canonical_ipv6 is not None:
+        return any(
+            _canonical_ipv6_identity(match.group(0)) == canonical_ipv6
+            for match in _iter_ipv6_matches(lexical_surface(text))
+        )
     return re.search(identity_regex_pattern(identity), lexical_surface(text)) is not None
 
 

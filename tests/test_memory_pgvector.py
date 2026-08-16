@@ -633,6 +633,18 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
             r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
         ),
         (
+            "2001:db8::1",
+            "[2001:db8::1]:443",
+            "address=[2001:0db8:0000:0000:0000:0000:0000:0001],",
+            r"(^|[^A-Za-z0-9:%])2001:db8::1($|[^A-Za-z0-9:%/\]]|\]($|[^:]))",
+        ),
+        (
+            "2001:db8::1",
+            "2001:db8::10",
+            "address=(2001:db8::1).",
+            r"(^|[^A-Za-z0-9:%])2001:db8::1($|[^A-Za-z0-9:%/\]]|\]($|[^:]))",
+        ),
+        (
             "HTTP/2.1",
             "HTTP/2.1/path",
             "protocol [http/2.1],",
@@ -1156,6 +1168,67 @@ def test_lexical_like_fallback_requires_ipv4_identity() -> None:
     )
 
     assert ids == ["matching"]
+
+
+def test_lexical_like_fallback_requires_canonical_ipv6_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", "connect 2001:db8::2 database guidance", _NOW),
+                (
+                    "matching",
+                    "connect 2001:0db8:0000:0000:0000:0000:0000:0001 database guidance",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert any("2001:db8::1" in str(param) for param in params)
+            assert any("2001:0db8:0000:0000:0000:0000:0000:0001" in str(param) for param in params)
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Connect 2001:db8::1 database",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    ("text", "matches"),
+    [
+        ("2001:db8::1", True),
+        ("address=(2001:db8::1).", True),
+        ("address=[2001:db8::1].", True),
+        ("2001:0db8:0000:0000:0000:0000:0000:0001", True),
+        ("2001:db8::2", False),
+        ("2001:db8::10", False),
+        ("[2001:db8::1]:443", False),
+        ("2001:db8::1/64", False),
+        ("fe80::1%en0", False),
+    ],
+)
+def test_ipv6_identity_regex_variants_preserve_exact_boundaries(
+    text: str,
+    matches: bool,
+) -> None:
+    patterns = [
+        mod._identity_regex_pattern(variant)
+        for variant in mod._query_token_groups("2001:db8::1")[0]
+    ]
+
+    assert any(re.search(pattern, text.casefold()) for pattern in patterns) is matches
 
 
 @pytest.mark.parametrize(
@@ -2241,6 +2314,11 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
             "Connect 192.168.1.2 database",
             "connect 192.168.1.3 database",
             "connect 192.168.1.2 database",
+        ),
+        (
+            "Connect 2001:db8::1 database",
+            "connect 2001:db8::2 database",
+            "connect 2001:0db8:0000:0000:0000:0000:0000:0001 database",
         ),
     ],
 )

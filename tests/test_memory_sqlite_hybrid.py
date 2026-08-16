@@ -370,6 +370,29 @@ def test_default_chain_requires_ipv4_identity(tmp_path: Path) -> None:
     assert [item.id for item in out] == [relevant.id]
 
 
+def test_default_chain_requires_canonical_ipv6_identity(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Connect 2001:db8::2 database guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 2001:0DB8:0000:0000:0000:0000:0000:0001 database guidance",
+    )
+
+    out = load_provider(env).recall(
+        query="Connect 2001:db8::1 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 @pytest.mark.parametrize(
     ("query_context", "lesson_context", "wrong_context"),
     [
@@ -972,6 +995,12 @@ def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
         ("192.168.1.2", "/192.168.1.2", "address=(192.168.1.2),"),
         ("192.168.1.2", "192.168.1.2:443", "address=(192.168.1.2),"),
         ("192.168.1.2", "192.168.1.2.9", "address=(192.168.1.2)."),
+        (
+            "2001:db8::1",
+            "[2001:db8::1]:443",
+            "address=[2001:0db8:0000:0000:0000:0000:0000:0001],",
+        ),
+        ("2001:db8::1", "2001:db8::10", "address=(2001:db8::1)."),
         ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
         ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
     ],
@@ -1019,6 +1048,9 @@ def test_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
         ("Node 2", "Node 2 starts the lesson"),
         ("192.168.1.2", "192.168.1.2 starts the lesson"),
         ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("2001:db8::1", "2001:db8::1 starts the lesson"),
+        ("2001:db8::1", "the lesson ends at 2001:db8::1"),
+        ("2001:db8::1", "the lesson uses [2001:db8::1], here"),
         ("1.3", "1.3 starts the lesson"),
         ("1.3", "the lesson ends at 1.3"),
         ("TLS 1.3", "TLS uses (1.3), here"),
@@ -1583,6 +1615,26 @@ def test_like_recall_requires_ipv4_identity(monkeypatch: pytest.MonkeyPatch) -> 
         codename="c",
         repo="r",
     )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize("force_like", [False, True])
+def test_sqlite_lexical_recall_requires_canonical_ipv6_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    force_like: bool,
+) -> None:
+    if force_like:
+        monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body="Connect 2001:db8::2 database guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 2001:0DB8:0000:0000:0000:0000:0000:0001 database guidance",
+    )
+
+    out = provider.recall(query="Connect 2001:db8::1 database", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -2174,6 +2226,65 @@ def test_ipv4_identity_rejects_invalid_octets_and_compound_boundaries(
     )
 
 
+def test_ipv6_is_a_canonical_bounded_mandatory_identity() -> None:
+    expanded = "2001:0DB8:0000:0000:0000:0000:0000:0001"
+    query_tokens = mod._tokenize(f"Connect {expanded} database")
+
+    assert "2001:db8::1" in query_tokens
+    assert "2001" not in query_tokens
+    assert "db8" not in query_tokens
+    assert token_mod.is_identity_token("2001:db8::1")
+    assert token_mod.query_token_groups(expanded) == [
+        ("2001:db8::1", "2001:0db8:0000:0000:0000:0000:0000:0001")
+    ]
+    assert not mod._has_meaningful_lexical_overlap(
+        "Connect 2001:db8::2 database guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        "Connect 2001:db8::1 database guidance",
+        query_tokens,
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2001:db8::1",
+        "Connect 2001:db8::1.",
+        "Connect (2001:db8::1),",
+        "Connect [2001:db8::1].",
+    ],
+)
+def test_ipv6_identity_accepts_sentence_boundaries_and_brackets(text: str) -> None:
+    assert "2001:db8::1" in mod._tokenize(text)
+
+
+@pytest.mark.parametrize(
+    "invalid_or_compound",
+    [
+        "2001:db8:::1",
+        "2001:db8::1/64",
+        "fe80::1%en0",
+        "[2001:db8::1]:443",
+        "host2001:db8::1",
+        "2001:db8::1host",
+    ],
+)
+def test_ipv6_identity_rejects_invalid_and_unsupported_compounds(
+    invalid_or_compound: str,
+) -> None:
+    assert token_mod._canonical_ipv6_identity(invalid_or_compound) is None
+    assert not token_mod.identity_variant_matches(
+        f"Connect {invalid_or_compound} database",
+        "2001:db8::1",
+    )
+    assert not any(
+        token_mod.is_identity_token(token)
+        for token in mod._tokenize(f"Connect {invalid_or_compound} database")
+    )
+
+
 @pytest.mark.parametrize(
     ("query", "forbidden_identity"),
     [
@@ -2697,6 +2808,11 @@ def test_dense_requested_but_sqlite_vec_missing_falls_back_to_lexical(
             "Connect 192.168.1.2 database",
             "Connect 192.168.1.3 database",
             "Connect 192.168.1.2 database",
+        ),
+        (
+            "Connect 2001:db8::1 database",
+            "Connect 2001:db8::2 database",
+            "Connect 2001:0db8:0000:0000:0000:0000:0000:0001 database",
         ),
     ],
 )

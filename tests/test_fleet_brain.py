@@ -672,6 +672,24 @@ def test_recall_query_requires_ipv4_identity(brain: FleetBrain) -> None:
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+def test_recall_query_requires_canonical_ipv6_identity(brain: FleetBrain) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Connect 2001:db8::2 database guidance",
+    )
+    matching_body = "Connect 2001:0DB8:0000:0000:0000:0000:0000:0001 database guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Connect 2001:db8::1 database",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 @pytest.mark.parametrize(
     ("query", "prefix_collision", "matching_body"),
     [
@@ -680,6 +698,12 @@ def test_recall_query_requires_ipv4_identity(brain: FleetBrain) -> None:
         ("192.168.1.2", "/192.168.1.2", "address=(192.168.1.2),"),
         ("192.168.1.2", "192.168.1.2:443", "address=(192.168.1.2),"),
         ("192.168.1.2", "192.168.1.2.9", "address=(192.168.1.2)."),
+        (
+            "2001:db8::1",
+            "[2001:db8::1]:443",
+            "address=[2001:0db8:0000:0000:0000:0000:0000:0001],",
+        ),
+        ("2001:db8::1", "2001:db8::10", "address=(2001:db8::1)."),
         ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
         ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
     ],
@@ -728,6 +752,9 @@ def test_recall_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
         ("Node 2", "Node 2 starts the lesson"),
         ("192.168.1.2", "192.168.1.2 starts the lesson"),
         ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("2001:db8::1", "2001:db8::1 starts the lesson"),
+        ("2001:db8::1", "the lesson ends at 2001:db8::1"),
+        ("2001:db8::1", "the lesson uses [2001:db8::1], here"),
         ("1.3", "1.3 starts the lesson"),
         ("1.3", "the lesson ends at 1.3"),
         ("TLS 1.3", "TLS uses (1.3), here"),
