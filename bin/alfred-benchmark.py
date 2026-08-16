@@ -240,7 +240,8 @@ def render_memory_report_table(report: MemoryABReport) -> str:
     lines: list[str] = []
     lines.append(f"alfred benchmark memory - label={report.label!r} @ {ts}")
     lines.append(
-        f"suite: {len(report.suite)} tasks   seed repo: {report.repo}   solver: {report.solver_kind}"
+        f"suite: {len(report.suite)} tasks   seed repo: {report.repo}   "
+        f"solver: {report.solver_kind}   memory: {report.memory_provider}"
     )
     lines.append("")
     lines.append(
