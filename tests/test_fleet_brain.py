@@ -323,6 +323,62 @@ def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query:
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        ("Fix cold-start handling", "Use cold start handling in the request path."),
+        ("Fix cold start handling", "Use cold-start handling in the request path."),
+    ],
+)
+def test_recall_query_matches_hyphenated_spelling_variants(
+    brain: FleetBrain,
+    query: str,
+    lesson_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=lesson_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [lesson_body]
+
+
+def test_recall_query_hyphen_variant_is_not_crowded_out_by_substrings(
+    brain: FleetBrain,
+) -> None:
+    now = datetime.now(UTC)
+    matching_body = "Use cold start handling in the request path."
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body=matching_body,
+        created_at=now - timedelta(minutes=1),
+    )
+    for index in range(55):
+        brain.reflect(
+            codename="lucius",
+            repo="org/api",
+            body=f"scold startup handling note {index}",
+            created_at=now + timedelta(seconds=index),
+        )
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix cold-start handling",
+        limit=2,
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_rejects_literal_substring_false_positive(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Prefer the rapid transport path")
+
+    out = brain.recall(codename="lucius", repo="org/api", query="api")
+
+    assert out == []
+
+
 @pytest.mark.parametrize("query", ["fix", "%", "_", r"\\"])
 def test_recall_query_rejects_low_signal_words_and_punctuation(
     brain: FleetBrain,

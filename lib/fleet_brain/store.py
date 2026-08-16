@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal, Protocol
 
-from memory_tokens import has_meaningful_memory_query
+from memory_tokens import has_meaningful_lexical_overlap, required_lexical_overlap, tokenize
 
 from . import schema as schema_mod
 from .taxonomy import (
@@ -565,6 +565,8 @@ AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "triage/",
 )
 NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("architect:fanout-complete",)
+_MEMORY_QUERY_PAGE_SIZE: Final[int] = 50
+_MAX_MEMORY_QUERY_PAGES: Final[int] = 8
 
 
 def _to_iso(dt: datetime) -> str:
@@ -589,12 +591,6 @@ def _from_iso(s: str) -> datetime:
 def _escape_like_literal(value: str) -> str:
     """Escape SQLite LIKE metacharacters for literal substring matching."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
-def _has_meaningful_memory_query(value: str) -> bool:
-    """Apply the canonical memory query gate without importing a provider."""
-
-    return has_meaningful_memory_query(value)
 
 
 @dataclass
@@ -693,11 +689,9 @@ class SQLiteStore:
     ) -> list[Lesson]:
         """Return the most relevant lessons, most-recent first.
 
-        The local SQLite ledger uses literal substring matching on ``body`` when
-        ``query`` is given. Redis Agent Memory provides semantic recall in the
-        default runtime provider chain.
-
-        ``query`` is a hard literal filter. A miss returns no lesson instead of
+        The local SQLite ledger ranks literal ``body`` matches first, then uses
+        canonical exact-concept overlap for spelling variants such as
+        ``cold-start`` and ``cold start``. A miss returns no lesson instead of
         backfilling recent scoped rows that do not match the task. Calling
         without a query is the explicit recency-ordered listing operation.
 
@@ -710,7 +704,8 @@ class SQLiteStore:
         """
         limit = int(limit)
         query_body = (query or "").strip() or None
-        if query_body is not None and not _has_meaningful_memory_query(query_body):
+        query_tokens = tokenize(query_body) if query_body is not None else []
+        if query_body is not None and not query_tokens:
             return []
         now_iso = _to_iso(datetime.now(UTC))
 
@@ -743,7 +738,76 @@ class SQLiteStore:
 
         with self._connect() as conn:
             rows = conn.execute(_scoped(query_body), _scope_params(query_body)).fetchall()
-            return [self._row_to_lesson(conn, row) for row in rows]
+            if query_body is None:
+                return [self._row_to_lesson(conn, row) for row in rows]
+
+            # Keep exact literal matches first. Queries containing SQLite LIKE
+            # metacharacters stay literal-only so escaping cannot broaden them.
+            matched_rows = [
+                row for row in rows if has_meaningful_lexical_overlap(str(row[3]), query_tokens)
+            ]
+            if len(matched_rows) >= limit or any(char in query_body for char in "%_\\"):
+                return [self._row_to_lesson(conn, row) for row in matched_rows]
+
+            # A literal miss can still be a spelling variant such as
+            # ``cold-start`` versus ``cold start``. Prefilter with bounded LIKE
+            # pages, then apply the shared exact-concept policy so substring
+            # false positives cannot crowd out a valid older lesson.
+            wheres = [
+                "superseded_by IS NULL",
+                "(valid_until IS NULL OR valid_until > ?)",
+            ]
+            params: list[object] = [now_iso]
+            if codename:
+                wheres.append("codename = ?")
+                params.append(codename)
+            if repo:
+                wheres.append("repo = ?")
+                params.append(repo)
+            like_clauses = ["body LIKE ? ESCAPE '\\'" for _token in query_tokens]
+            like_score = " + ".join(f"CAST({clause} AS INTEGER)" for clause in like_clauses)
+            wheres.append(f"({like_score}) >= ?")
+            params.extend(f"%{_escape_like_literal(token)}%" for token in query_tokens)
+            params.append(required_lexical_overlap(query_tokens))
+
+            seen = {str(row[0]) for row in matched_rows}
+            after: tuple[str, str] | None = None
+            for _page in range(_MAX_MEMORY_QUERY_PAGES):
+                page_wheres = list(wheres)
+                page_params = list(params)
+                if after is not None:
+                    created_at, lesson_id = after
+                    page_wheres.append("(created_at < ? OR (created_at = ? AND id > ?))")
+                    page_params.extend([created_at, created_at, lesson_id])
+                sql = (
+                    f"SELECT {_LESSON_COLUMNS} FROM lessons "
+                    f"WHERE {' AND '.join(page_wheres)} "
+                    "ORDER BY created_at DESC, id ASC LIMIT ?"
+                )
+                page_params.append(_MEMORY_QUERY_PAGE_SIZE)
+                candidate_rows = conn.execute(sql, page_params).fetchall()
+                if not candidate_rows:
+                    break
+                for row in candidate_rows:
+                    lesson_id = str(row[0])
+                    if lesson_id in seen:
+                        continue
+                    if not has_meaningful_lexical_overlap(str(row[3]), query_tokens):
+                        continue
+                    seen.add(lesson_id)
+                    matched_rows.append(row)
+                    if len(matched_rows) >= limit:
+                        break
+                if len(matched_rows) >= limit:
+                    break
+                next_after = (str(candidate_rows[-1][6]), str(candidate_rows[-1][0]))
+                if next_after == after:
+                    break
+                after = next_after
+                if len(candidate_rows) < _MEMORY_QUERY_PAGE_SIZE:
+                    break
+
+            return [self._row_to_lesson(conn, row) for row in matched_rows]
 
     def list_lessons(self, limit: int | None = None) -> list[Lesson]:
         sql = f"SELECT {_LESSON_COLUMNS} FROM lessons ORDER BY created_at DESC"

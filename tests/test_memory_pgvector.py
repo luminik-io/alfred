@@ -364,6 +364,42 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
     assert ids == ["match"]
 
 
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        ("Fix cold-start handling", "Use cold start handling in the request path."),
+        ("Fix cold start handling", "Use cold-start handling in the request path."),
+    ],
+)
+def test_lexical_like_fallback_matches_hyphenated_spelling_variants(
+    query: str,
+    lesson_body: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match", lesson_body, "[]", _NOW)]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["match"]
+
+
 def test_recency_query_is_scoped_and_ordered() -> None:
     sql, params = _recency_query(table="lessons", codename="c", repo="r", limit=4, now=_NOW)
     assert "ORDER BY l.created_at DESC" in sql

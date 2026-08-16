@@ -12,7 +12,6 @@ import re
 from collections.abc import Iterator
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
-_GENERAL_COMPOUND_RE = re.compile(r"\b[A-Za-z0-9]+(?:\s*[+/#-]\s*[A-Za-z0-9]+)+\b")
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:C\+\+|C#|N\+[0-9]+|O\([0-9]+\)|HTTP/[0-9]+(?:\.[0-9]+)?)"
     r"(?![A-Za-z0-9])",
@@ -64,27 +63,9 @@ _LOW_SIGNAL_QUERY_TOKENS = frozenset(
 
 
 def _compound_matches(text: str) -> list[re.Match[str]]:
-    """Return non-overlapping compounds, preferring explicit symbolic forms."""
+    """Return symbolic compounds whose constituents must not double-count."""
 
-    candidates = [
-        *((0, match) for match in _SYMBOLIC_TECHNICAL_TERM_RE.finditer(text)),
-        *((1, match) for match in _GENERAL_COMPOUND_RE.finditer(text)),
-    ]
-    candidates.sort(
-        key=lambda candidate: (
-            candidate[1].start(),
-            candidate[0],
-            -(candidate[1].end() - candidate[1].start()),
-        )
-    )
-    selected: list[re.Match[str]] = []
-    last_end = -1
-    for _priority, match in candidates:
-        if match.start() < last_end:
-            continue
-        selected.append(match)
-        last_end = match.end()
-    return selected
+    return list(_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text))
 
 
 def meaningful_tokens(text: str) -> Iterator[str]:
@@ -93,7 +74,9 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     Symbolic terms such as ``C++``, ``C#``, ``N+12``, ``O(42)``, and
     ``HTTP/2.1`` stay intact. Words inside any compound span are not yielded a
     second time. A lesson containing only ``HTTP/2`` therefore contributes one
-    overlap concept, not both ``http/2`` and ``http``.
+    overlap concept, not both ``http/2`` and ``http``. Ordinary punctuation is
+    only a spelling separator, so ``cold-start`` yields ``cold`` and ``start``
+    and can match the spelling ``cold start``.
     """
 
     compounds = _compound_matches(text)

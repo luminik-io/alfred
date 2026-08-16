@@ -135,6 +135,31 @@ def test_default_chain_keeps_generic_low_signal_queries_as_hard_misses(tmp_path:
     assert load_provider(env).recall(query="fix", codename="c", repo="r") == []
 
 
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        ("Fix cold-start handling", "Use cold start handling in the request path."),
+        ("Fix cold start handling", "Use cold-start handling in the request path."),
+    ],
+)
+def test_default_chain_matches_hyphenated_spelling_variants(
+    tmp_path: Path,
+    query: str,
+    lesson_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    lesson = writer.reflect(codename="c", repo="r", body=lesson_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
 @pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,
@@ -331,6 +356,29 @@ def test_compound_and_constituent_count_as_one_overlap_concept() -> None:
     assert "http/2" in query_tokens
     assert "http" not in query_tokens
     assert not mod._has_meaningful_lexical_overlap("Only HTTP/2 is supported", query_tokens)
+
+
+def test_tokenize_splits_ordinary_hyphens_but_keeps_symbolic_compounds() -> None:
+    tokens = mod._tokenize("cold-start HTTP/2 C++ C# N+1 O(1)")
+
+    assert {"cold", "start"}.issubset(tokens)
+    assert {"http/2", "c++", "c#", "n+1", "o(1)"}.issubset(tokens)
+    assert {"http", "1"}.isdisjoint(tokens)
+    assert len(tokens) == 7
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson"),
+    [
+        ("Fix cold-start handling", "Use cold start handling"),
+        ("Fix cold start handling", "Use cold-start handling"),
+    ],
+)
+def test_hyphenated_spelling_variants_share_constituent_overlap(
+    query: str,
+    lesson: str,
+) -> None:
+    assert mod._has_meaningful_lexical_overlap(lesson, mod._tokenize(query))
 
 
 def test_lexical_overlap_scans_lesson_terms_beyond_query_token_cap() -> None:
