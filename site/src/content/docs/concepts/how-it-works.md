@@ -92,7 +92,7 @@ sequenceDiagram
     git-->>runner: commit count
 ```
 
-`make_worktree` creates a throwaway git worktree under `$ALFRED_HOME/worktrees/eng-senior-dev-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The engine subprocess runs with its `cwd` pinned to that worktree, so it physically cannot touch your canonical checkout or another firing's branch.
+`make_worktree` creates a temporary git worktree under `$ALFRED_HOME/worktrees/eng-senior-dev-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The engine subprocess starts with that worktree as its current directory. This separates normal git changes and branches, but it is not an operating-system permission boundary.
 
 The runner builds the prompt from the issue body plus repo context such as the
 repo's `CLAUDE.md`, inlines it, and calls the configured engine with a hard
@@ -114,7 +114,7 @@ The runner inspects the result and the git state, then takes exactly one exit pa
 | `[LUCIUS-NO-COMMIT]` | Success returned but no commit landed | Inspect `git status`; salvage unstaged changes as a `do-not-review` draft PR, else count as failure |
 | `[SILENT]` | No `agent:implement` issue matched | Exit 0, no Slack post. The non-event is the signal |
 
-Whatever the path, `release_issue` runs so the issue never stays stuck in `agent:in-flight`, and `remove_worktree` cleans up the throwaway directory. Then the process exits and the host goes back to waiting for the next scheduler trigger.
+The runner releases the claimed issue on each handled exit path. Completed and failed runs clean up their temporary worktrees. A partial run can retain its worktree for the next bounded retry. Recovery checks handle state left by an interrupted process.
 
 ## Why this shape holds up unattended
 

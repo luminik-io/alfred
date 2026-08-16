@@ -115,7 +115,11 @@ Should print a one-line response and exit 0.
 
 ### Authenticating scheduled (launchd / systemd) firings
 
-The interactive auth above stores the OAuth token in your platform's credential store: macOS Keychain on Darwin, libsecret on Linux. That works from your shell because the shell session can read those stores. **It does not work from launchd or `systemd --user`-spawned agent processes.** Those run in a different security context and cannot read the same credential, so every `claude -p` call returns 401 even though the same token is on disk.
+The interactive auth above stores the OAuth token in your platform's credential
+store: macOS Keychain on Darwin or libsecret on Linux. A process started by
+`launchd` or `systemd --user` can have a different environment and credential
+session from your terminal. In that case, `claude -p` returns 401 even though
+the interactive shell is authenticated.
 
 The supported fix is a long-lived OAuth token that `claude` reads from an env var, bypassing the credential store entirely. Two ways to set it up:
 

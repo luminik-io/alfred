@@ -6,16 +6,16 @@ Alfred has two separate evidence paths:
 - Operators can generate a scrubbed feed from their own local Alfred state.
 
 The canonical site never reads an operator's repository list or local shipped
-state. Refresh its public repository proof with:
+state. Refresh its public repository dataset with:
 
 ```sh
 cd site
 npm run proof:update
 ```
 
-This command updates `site/src/data/impact-proof.json` and the marked proof line
-in `README.md`. Exact provenance labels qualify a merged PR. A role-like branch
-name does not qualify it, and Dependabot is excluded.
+This command updates `site/src/data/impact-proof.json`. Exact provenance labels
+qualify a merged PR. A role-like branch name does not qualify it, and
+Dependabot is excluded.
 
 ## Operator feed
 

@@ -292,9 +292,11 @@ and license-reviewed (see `skills/NOTICE.md`). Reference-install packs require
 release, while gstack clones upstream `main` because its skills are versioned
 and upgraded by its own `./setup` and `gstack-upgrade` flow.
 
-The fleet's IAM-per-agent and per-firing-worktree isolation limit blast radius:
-a compromised skill in one worktree cannot reach the operator's home or a second
-Claude account. Mitigation, not prevention.
+Per-agent IAM limits the AWS permissions available to a role. Separate
+worktrees reduce accidental branch overlap. They do not stop a compromised
+skill from using the files, credentials, or network access available to the
+local Alfred user. Use a dedicated operating-system account, virtual machine,
+or container when that access is too broad.
 
 ## Skills NOT recommended for an autonomous fleet
 
