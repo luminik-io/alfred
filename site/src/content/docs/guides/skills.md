@@ -84,14 +84,19 @@ For the full CLI reference, see [`docs/SKILLS.md#the-alfred-skills-command`](htt
 
 ## Security note
 
-Skills run with the same permissions as `claude`. They can read/write files in the agent's worktree, run shell commands, invoke tools. Treat any new skill the way you'd treat any other dependency:
+Skills run with the same permissions as the harness. They can read files the
+local user can read, write files the user can write, run shell commands, invoke
+tools, and use the network. Treat a new skill like any other executable
+dependency:
 
 1. Read the `SKILL.md`.
 2. Skim the scripts the skill might invoke.
 3. Run a Snyk / CodeQL scan on unfamiliar sources.
 4. Pin to a specific commit when installing from a third-party tap.
 
-The fleet's IAM-per-agent + per-firing-worktree-isolation patterns limit blast radius (a malicious skill in the Lucius worktree can't reach your home directory or the secondary Claude account). Mitigations, not prevention.
+A worktree separates git changes. It does not isolate the process from the home
+directory, credentials, or network. Use a dedicated operating-system user,
+virtual machine, or container, plus egress controls where required.
 
 ## Anti-recommendations
 

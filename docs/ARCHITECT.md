@@ -351,7 +351,7 @@ and should be reserved for trusted parent issues.
 
 ## Safety story
 
-- The architect's multi-repo fan-out is public OSS code, not an internal-only path.
+- The architect's multi-repository fan-out is part of the shipped runtime.
   The role turns an approved `agent:large-feature`
   parent into scoped child `agent:implement` issues across repos. senior-dev, test-engineer,
   fixer, reviewers, and your merge gate then carry those child issues to

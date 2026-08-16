@@ -1,6 +1,9 @@
 # Claude Code
 
-Alfred is the scheduler and guardrail layer; Claude Code is the default engine. This doc covers installation, Pro-vs-Max sizing, authentication, the multi-account swap pattern (`alfred claude`), and the optional Codex path.
+Alfred is the scheduler and control layer. The default `hybrid` route tries
+Claude Code first and uses Codex only for a classified capability gap. This
+document covers installation, authentication, Claude account routing, and
+engine selection.
 
 Default billing posture: Alfred uses the local CLI account you have already authenticated. It does not need Anthropic or OpenAI API keys for the normal Claude Code / Codex CLI flow.
 
@@ -28,7 +31,7 @@ Engine modes:
 |---|---|
 | `claude` | Use Claude Code only. |
 | `codex` | Use Codex only. |
-| `hybrid` | Use Claude Code first. Retry transient failures on Claude, and fall back to Codex only when Claude ran but produced no useful result. |
+| `hybrid` | Use Claude Code first. Retry transient failures on Claude, surface fatal failures, and use Codex only for a classified capability gap. |
 
 ```sh
 alfred engine status
@@ -148,28 +151,27 @@ chmod 600 $ALFRED_HOME/.env
 
 #### Notes that apply either way
 
-The token is valid for 1 year, ties directly to your subscription (no extra cost, no API-key billing), and is what `claude` reads first when both an env var and a credential-store entry exist. Revoke via your [Anthropic account settings](https://console.anthropic.com/settings/keys) if the file is ever exposed. The same env var works on Linux for the same reason: host credential stores and user-service contexts often disagree, and the env var sidesteps both.
+The token follows the provider account's validity and billing rules. `claude`
+reads it before a credential-store entry when both exist. Revoke it through
+your Anthropic account if the file is exposed. The same environment variable
+works on Linux when the host credential store is unavailable to user services.
 
 If you prefer not to use the env var (for example, your organisation forbids long-lived subscription tokens), you can leave `claude` reading the credential store and accept that scheduled firings will not authenticate.
 
-## Pro vs Max sizing
+## Usage limits
 
-Claude Code can run against your **subscription usage** rather than direct API token billing when you log in with a Pro or Max account and avoid API-key env vars. Usage is shared with other Claude surfaces and reset behavior is controlled by Anthropic, so treat the table as sizing guidance, not a billing guarantee:
-
-| Tier | Use case |
-|---|---|
-| Pro | One operator, occasional agent runs, manual code work in parallel |
-| Max 5x / 20x | Continuous fleet, multiple codename agents on frequent cadences |
-
-A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. The installed full fleet can exceed Pro quota quickly when several codenames run on frequent cadences.
-
-Recommendation: start on Pro to validate the framework with conservative cadences, upgrade to Max once you have more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you separate work across two accounts when you operate that way.
+Claude Code usage and reset behavior come from the authenticated provider
+account. Alfred records observed turns and surfaces provider-limit failures. It
+does not infer a fixed number of runs from a subscription tier. Start with a
+small schedule, inspect `alfred usage`, and adjust the cadence from measured
+usage on your host.
 
 When the provider usage cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$ALFRED_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
 
 ## The `alfred claude` swap pattern
 
-Two Anthropic accounts? `alfred claude` points the host-scheduled `claude` at either one without re-authenticating each time.
+`alfred claude` can point scheduled Claude firings at one of two configured
+local profiles without a new sign-in on each run.
 
 The mechanism: scheduled agents honor `CLAUDE_CONFIG_DIR`. On macOS,
 `alfred claude` writes the launchd global env var. On Linux, it writes the

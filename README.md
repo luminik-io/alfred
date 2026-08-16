@@ -16,7 +16,8 @@
 Alfred coordinates Claude Code and Codex as short-lived engineering roles. The
 roles plan work, implement changes, add tests, review diffs, and open pull
 requests. Alfred uses your existing CLI authentication. Your operating system
-schedules each run, git worktrees isolate it, and GitHub records the handoffs.
+schedules each run, git worktrees separate code-changing roles, and GitHub
+records the handoffs.
 
 Alfred does not replace a coding harness. It adds durable coordination and
 deterministic controls around the harnesses you already use.
@@ -24,7 +25,7 @@ deterministic controls around the harnesses you already use.
 | A coding-harness session | Alfred |
 |---|---|
 | Handles the prompt in front of you | Claims queued work on a schedule |
-| Works in the current checkout | Creates an isolated worktree per run |
+| Works in the current checkout | Creates an isolated worktree for code changes and review |
 | Keeps session-local context | Recalls reviewed lessons across runs |
 | Uses one active harness | Routes roles between Claude Code and Codex |
 | Returns an answer or diff | Produces a PR, review findings, tests, and evidence |
@@ -67,7 +68,7 @@ stages. See the [demo guide](docs/DEMO.md) or watch the
 [56-second product tour](docs/media/alfred-tour.mp4).
 
 <p align="center">
-  <img src="docs/images/demo.gif" alt="Alfred demo running plan, approval, build, review, fix, and verification stages" width="760">
+  <img src="docs/images/demo.gif" alt="Alfred demo running plan, approval, build, review, and verification stages" width="760">
 </p>
 
 ## Install
@@ -139,7 +140,8 @@ engine or changing GitHub, Slack, git, the scheduler, or project files. See the
 - The senior developer implements one issue in one worktree and opens a PR.
 - A separate reviewer checks the diff. The test engineer adds coverage.
 - The fixer addresses high-priority review findings.
-- Every agent PR includes verification evidence that another person can check.
+- Agent PRs include verification evidence by default so another person can
+  check what ran and what did not.
 - Alfred leaves merge authority with a person or an explicit repository policy.
 
 GitHub issues, labels, branches, comments, and pull requests form the shared
@@ -159,7 +161,8 @@ Alfred also includes context controls that reduce unnecessary model input:
 - Read large files through structure-first and delta views.
 - Rank and trim recalled lessons to a prompt budget.
 - Add blast-radius context before a change.
-- Install a pinned, checksum-verified codebase-memory MCP binary by default.
+- Offer a pinned, checksum-verified codebase-memory MCP binary after you
+  configure an explicit repository scope.
 
 Optional batteries add dense local embeddings, Redis memory, Postgres with
 pgvector, Headroom compression, or an alternative graph tool. They remain
@@ -179,10 +182,11 @@ logs, worktrees, and prompt overrides.
 
 ## Safety and privacy
 
-Alfred runs with your local user permissions, so its scope must be explicit.
+Alfred runs with your local user permissions. Repository configuration controls
+what Alfred schedules and indexes. It is not a filesystem or network sandbox.
 
-- It works only on repositories you configure.
-- It creates a separate worktree for each firing.
+- It schedules work only for repositories you configure.
+- Code-changing and review roles use separate worktrees.
 - It checks locks, authentication, disk space, and spend limits before engine
   work starts.
 - It halts repeated failing runs instead of retrying without a bound.
@@ -200,6 +204,10 @@ alfred telemetry off
 alfred telemetry status
 ```
 
+Agents and project tools can make other network calls with your user account's
+permissions. Use a dedicated operating-system account, virtual machine, or
+container when you need a stronger boundary than repository configuration.
+
 Read the [threat model](docs/THREAT_MODEL.md),
 [telemetry contract](docs/TELEMETRY.md), and
 [macOS permissions](docs/MACOS_PERMISSIONS.md) before you enable unattended
@@ -208,7 +216,7 @@ runs. Report a privacy or containment mismatch with the
 Report exploitable vulnerabilities through a private
 [security advisory](https://github.com/luminik-io/alfred/security/advisories/new).
 
-## Evidence
+## Verification
 
 Alfred uses reproducible tests and public artifacts instead of an adoption
 claim. The [memory benchmark](docs/BENCHMARKS.md) reports its fixture,
@@ -220,20 +228,10 @@ which added subprocess timeouts from a scoped issue, and
 [PR #528](https://github.com/luminik-io/alfred/pull/528), which added a test with
 green checks.
 
-The public proof emitter counts merged PRs with Alfred provenance. It does not
-claim that an agent made the merge decision:
-
-<!-- SELF_PROOF -->11 agent-authored PRs in this repo have been merged so far, 1 in the last 30 days<!-- /SELF_PROOF -->.
-
-Refresh the line and the public Impact data from live GitHub metadata:
-
-```sh
-cd site
-npm run proof:update
-```
-
-The [Impact page](https://alfred.luminik.io/impact/) and
-[telemetry documentation](docs/TELEMETRY.md) describe the count and its limits.
+The [verification contract](docs/VERIFICATION.md) defines what an agent PR
+records and how missing evidence appears. The
+[telemetry documentation](docs/TELEMETRY.md) defines Alfred's optional
+aggregate usage payload.
 
 ## Architecture
 
@@ -251,9 +249,10 @@ flowchart LR
 ```
 
 The host scheduler starts a fresh process for each firing. The shared runner
-performs preflight checks, creates or recovers the worktree, invokes the chosen
-CLI, records events, and updates GitHub. Alfred does not run a model gateway or
-a central orchestration daemon. See [ARCHITECTURE.md](ARCHITECTURE.md).
+performs preflight checks, creates or recovers a worktree when the role needs
+one, invokes the chosen CLI, records events, and updates GitHub. Alfred does not
+run a model gateway or a central orchestration daemon. See
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Documentation
 

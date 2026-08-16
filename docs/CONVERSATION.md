@@ -117,7 +117,7 @@ it wherever an engine is configured.
 ## Offline fallback
 
 If no engine is configured, or the engine cannot be reached, the surfaces
-degrade honestly:
+report unavailable context explicitly:
 
 - Slack falls back to the planning-intake draft path (the pre-conversation
   behavior), so a mention is never dropped.

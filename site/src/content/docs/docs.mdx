@@ -55,8 +55,8 @@ flowchart LR
   <Card title="Short-lived runs" icon="refresh">
     `launchd` on macOS or `systemd --user` on Linux starts each firing. No central orchestration loop must stay alive.
   </Card>
-  <Card title="Worktree isolation" icon="puzzle">
-    Each firing works in a dedicated git worktree, with locks and recovery around the lifecycle.
+  <Card title="Worktree separation" icon="puzzle">
+    Roles that change or review code use dedicated git worktrees, with locks and recovery around the lifecycle.
   </Card>
   <Card title="Explicit approval" icon="approve-check-circle">
     Planned work waits at the configured gate. Alfred does not merge its own PRs by default.
@@ -131,10 +131,15 @@ flowchart LR
 
 - One operator or small team, one trusted host, one local configuration.
 - Local harness authentication, not a hosted model gateway.
-- Explicit repository scope. No silent discovery or cloning.
+- Explicit repository scope for scheduling and indexing. This is not a
+  filesystem or network sandbox.
 - Short-lived scheduled processes, not an always-running orchestrator.
 - Human or repository-policy merge authority by default.
 - Optional integrations must be removable and must preserve user-owned config.
+
+Alfred runs with the local user's permissions. Use a dedicated user, virtual
+machine, or container when other files or network destinations must be outside
+the agent boundary.
 
 Read the [roadmap](/about/roadmap/) for active harness, evidence, memory, and
 launch work. Read the [changelog](/about/changelog/) for shipped changes.

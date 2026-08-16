@@ -1,107 +1,125 @@
 # Threat model
 
-Alfred runs coding agents against your repositories without you watching every
-step. That is the whole point, and it is also the thing that has to be
-contained. This page states plainly what each agent run can and cannot do, and
-the boundaries that keep an autonomous run from becoming a problem.
+Alfred runs coding harnesses with your local user permissions. It does not add
+an operating-system sandbox. This document describes the controls Alfred adds
+and the controls the operator must provide.
 
-For the private vulnerability-reporting process, see [`SECURITY.md`](../SECURITY.md).
-For what leaves your machine, see
-[Privacy](../README.md#privacy-what-alfred-touches-and-what-it-does-not).
+Report exploitable vulnerabilities through the private process in
+[`SECURITY.md`](../SECURITY.md).
 
-## The trust model in one line
+## Trust boundary
 
-Alfred runs as you, on your machine, with the access you already have. It does
-not add privilege. It adds **containment**: each run is isolated, bounded, and
-ends at a gate you control.
+One firing is a short-lived process for one task. Alfred checks the run policy,
+invokes the configured local tools, and records events. Roles that change or
+review code select a configured repository and use a separate git worktree.
+Operational roles can run without a worktree.
 
-## What a single run can do
+Alfred assumes that the host, local user account, configured harnesses, and
+installed project tools are trusted. A harness or build command has the same
+filesystem and network access as that user account.
 
-One firing is one short-lived process working one task:
+For a stronger boundary, run Alfred under a dedicated operating-system user,
+virtual machine, or container with only the required repositories and
+credentials mounted.
 
-- It works in an **isolated git worktree**, a separate checkout of the repo.
-  Other runs, and your own working copy, are untouched. A bad run cannot corrupt
-  a sibling run or your main branch.
-- It can read and write files **inside that worktree**, run the project's tools,
-  and open a branch and a pull request through `gh`.
-- It can post a summary to your Slack webhook if you configured one.
-- It runs under a **hard spend cap** per agent per day. When a Claude-backed
-  agent hits a provider limit, every other agent skips for an hour rather than
-  hammering the limit.
+## Controls Alfred provides
 
-## What a single run cannot do
-
-- It **cannot merge its own work.** Alfred opens PRs and reviews them; a human
-  merges. The `agent:in-flight` -> `agent:pr-open` -> `agent:done` lifecycle is
-  explicit, and human merge is by design. Optional automerge only ever lands
-  small PRs that match a policy you wrote, and you can leave it off.
-- It **cannot touch a repo you did not add.** Alfred only operates on the repos
-  listed in `$ALFRED_HOME/.env`. It does not discover or clone other repos.
-- It **cannot escape the approval gate.** A locally drafted single-repo plan
-  carries `agent:plan-pending-approval` and is held from autonomous pickup until
-  you approve it and the label clears. A `do-not-pickup` override holds an issue
-  no matter what.
-- It **cannot quietly exceed its budget.** Spend is tracked and capped; an
-  exhausted run stops rather than continuing.
-- It **does not act outside its declared IAM scope.** When you follow the
-  per-agent IAM guidance in [`AWS_SETUP.md`](AWS_SETUP.md), each agent has its own
-  least-privilege identity, not your admin SSO.
-
-## Boundaries that contain a run
-
-| Boundary | What it stops |
+| Control | Purpose |
 |---|---|
-| Isolated worktree per firing | One run corrupting another, or your main checkout |
-| Single short-lived process per firing | A runaway loop persisting; the OS scheduler owns cadence |
-| Hard spend cap per agent per day | Unbounded cost from a stuck run |
-| Provider-limit backoff (one agent trips, all pause an hour) | Lockstep retries deepening a rate limit |
-| Approval gate (`agent:plan-pending-approval`) | Autonomous pickup of un-approved single-repo plans |
-| `do-not-pickup` operator override | Any agent claiming an issue you parked |
-| Never auto-merge by default | Unaudited code reaching your main branch |
-| Explicit code-memory repository scope | Workspace checkouts entering the external graph index by discovery |
-| Pinned or explicitly configured code-memory binary | An ambient executable on `PATH` entering the agent toolchain |
-| Per-agent IAM (recommended) | An agent acting with operator-level cloud privilege |
+| Explicit repository configuration | Limits the repositories Alfred schedules and indexes |
+| Worktree for code-changing and review roles | Separates concurrent git changes from the main checkout |
+| Short-lived scheduled process | Gives each firing a defined start and end |
+| Lock and recovery state | Prevents duplicate claims and supports cleanup after interruption |
+| Preflight checks | Verifies auth, disk, policy, and engine readiness before model work |
+| Bounded retry and self-halt | Stops repeated failures from becoming an open-ended loop |
+| Approval labels and operator holds | Prevents configured work from entering the autonomous queue before approval |
+| Pull-request workflow | Keeps changes reviewable before the repository's merge policy runs |
+| Code-memory scope and cache isolation | Prevents blank-scope discovery and separates indexes by exact resolved scope |
+| Pinned code-memory binary | Prevents an ambient `PATH` executable from entering the default toolchain |
 
-Code-memory scope controls new indexing and whether Alfred starts the MCP
-server. Alfred gives each exact resolved repository scope a separate graph
-cache. A scope change cannot serve graphs retained under an older scope. Old
-scope caches remain on disk until the operator removes them.
+These controls are scheduling and workflow boundaries. They do not prevent a
+harness or project command from reading another file that the operating-system
+user can read.
 
-## Inputs Alfred treats as untrusted
+## Repository scope
 
-Alfred reads data from outside the machine, and that data is treated as
-untrusted input, never as instructions to run blindly:
+Alfred schedules and indexes only configured repositories. Code-memory serving
+also requires at least one resolved repository and stores each exact scope in a
+separate cache. Old scope caches remain on disk until the operator removes them.
 
-- **Slack message bodies.** Trusted control commands are codename-, plan-id-, and
-  memory-id-validated, run no shell, and only steer local state. A follow-up
-  reply after a PR link is captured as context, not as a merge approval.
-- **GitHub API responses** (issue and PR bodies, labels, CI status).
-- **Tool and command output** the run reads back.
+Repository scope is not a filesystem access-control list. Use operating-system
+permissions or isolation when the host contains repositories or files that an
+agent must not read.
 
-Remote code execution from any of these sources is treated as **critical**. See
-[`SECURITY.md`](../SECURITY.md) for the full critical/standard classification and
-the private disclosure path.
+## Network use
 
-## What is explicitly out of scope
+Alfred itself can contact:
 
-- **The local CLIs themselves** (`@anthropic-ai/claude-code`, Codex). Report
-  issues to their vendors.
-- **Third-party skills** you choose to install. Skills are markdown plus scripts
-  and run with the same permissions as `claude`. Read every skill before
-  installing it; see [`SKILLS.md`](SKILLS.md).
-- **Operator misconfiguration** (a leaked Slack webhook, a public AWS key). The
-  framework documents the hardening but cannot enforce your secrets hygiene.
-- **Reading your own files in your home directory.** The framework runs as you;
-  this is by design, not a vulnerability.
+- the selected model provider through Claude Code or Codex;
+- GitHub;
+- Slack, when configured;
+- Alfred's aggregate telemetry endpoint, when enabled;
+- package and download endpoints used by installation or optional batteries.
 
-## If you want to verify the privacy claim yourself
+Harnesses, skills, MCP servers, and project commands can add other network
+destinations. Alfred does not enforce an outbound network allowlist. Use host,
+container, or network policy controls when egress must be restricted.
 
-The privacy posture is meant to be inspectable, not taken on faith. Run a
-network monitor (Little Snitch, `lsof -i`, a proxy) during a firing and confirm
-the only outbound destinations are the model provider you chose, GitHub, your
-Slack webhook, and the anonymous usage beacon at
-`alfred-proof-telemetry.luminik.workers.dev/ingest`. That beacon is on by
-default and sends aggregate counts only; turn it off with `alfred telemetry off`
-if you do not want it. If you find a call we did not document, that is exactly
-the kind of finding the [audit issue](../README.md#open-audit-issue) exists to
-collect. One undocumented call is a bug, and we want to hear about it.
+Disable Alfred telemetry with:
+
+```sh
+alfred telemetry off
+alfred telemetry status
+```
+
+The telemetry payload excludes code, prompts, paths, repository names, branch
+names, and hostnames. See [`TELEMETRY.md`](TELEMETRY.md) for the payload and
+endpoint contract.
+
+## Credentials and merge authority
+
+Alfred uses the credentials already available to the local CLIs and `gh`.
+Grant only the scopes required for the configured repositories and services.
+For cloud tasks, use a dedicated least-privilege identity rather than an
+administrator session.
+
+Alfred does not merge its own pull requests by default. A repository can still
+have automerge or another policy that merges qualifying changes. Review that
+policy separately from Alfred.
+
+## Untrusted inputs
+
+Treat these values as untrusted data:
+
+- issue, pull-request, review, and CI text from GitHub;
+- Slack message bodies and thread replies;
+- repository files;
+- tool and command output;
+- recalled lessons and external MCP results.
+
+Control commands validate identifiers and permitted actions before they change
+Alfred state. A Slack reply or GitHub comment is not merge approval unless an
+explicit configured policy says it is.
+
+## Out of scope
+
+- Vulnerabilities in Claude Code, Codex, or another harness CLI.
+- Third-party skills, MCP servers, and binaries installed by the operator.
+- Secrets exposed through host or project configuration.
+- Filesystem or network isolation beyond the local user's permissions.
+- A malicious operator or compromised host.
+
+## Verification
+
+Run Alfred in a test account or isolated host and inspect:
+
+- the configured repository list;
+- generated worktree paths;
+- `alfred doctor` and engine readiness output;
+- process and network activity during a firing;
+- GitHub and Slack token scopes;
+- optional battery binaries and checksums;
+- telemetry state and payloads.
+
+Open a public audit issue for a safe-to-disclose mismatch. Use the private
+security process for an exploitable vulnerability.

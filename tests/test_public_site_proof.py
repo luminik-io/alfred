@@ -10,11 +10,13 @@ SITE = ROOT / "site"
 
 
 def test_public_pages_use_the_public_repository_proof() -> None:
-    for relative in ("src/pages/index.astro", "src/pages/impact.astro"):
-        page = (SITE / relative).read_text(encoding="utf-8")
+    impact = (SITE / "src/pages/impact.astro").read_text(encoding="utf-8")
+    home = (SITE / "src/pages/index.astro").read_text(encoding="utf-8")
 
-        assert 'from "../data/impact-proof.json"' in page
-        assert "luminik-product-proof" not in page
+    assert 'from "../data/impact-proof.json"' in impact
+    assert 'from "../data/impact-proof.json"' not in home
+    assert "luminik-product-proof" not in impact
+    assert "luminik-product-proof" not in home
 
 
 def test_private_repository_aggregate_emitter_is_not_shipped() -> None:

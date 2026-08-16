@@ -49,7 +49,7 @@ Alfred decides what to do next:
   `error_api`, connection resets, context overflow): retry the same engine with
   exponential backoff and jitter.
 - **FATAL** (`error_authentication`, `error_budget`, 401/403/422): surface the
-  failure honestly and do not burn the fallback.
+  failure and do not use the fallback.
 - **CAPABILITY** (`error_max_turns`, parse failure, loop detection, or another
   no-useful-result failure): fall back to Codex because a different engine may
   handle the task better.

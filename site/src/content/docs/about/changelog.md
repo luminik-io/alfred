@@ -17,8 +17,9 @@ changes that are merged or released.
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
 lists changes merged since v0.6.0. It currently includes per-role model
-controls, a harder memory benchmark fixture, an optional graphify battery,
-namespaced model settings, and onboarding fixes.
+controls, the shared Claude and Codex engine registry, the new desktop themes,
+trusted code-memory scope, safer memory promotion and recall, an optional
+Graphify battery, and Work inspector evidence.
 
 ## 0.6.0 (2026-07-10)
 
@@ -51,7 +52,7 @@ Read the complete
 ## Earlier releases
 
 - [0.5.3](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#053---2026-06-24): signed desktop packages, conversational Ask, workflow and timeline changes, reliability, code memory, and auth fixes.
-- [0.5.2](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#052---2026-06-22): desktop parity, Redis memory default at that release, Slack planning, and code-map graph support.
+- [0.5.2](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#052---2026-06-22) (changelog entry, no published tag): Slack planning, code-map graph support, visual checks, and site updates.
 - [0.5.1](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#051---2026-06-17): first-run trust work, desktop download path, dry-run coverage, and planning controls.
 - [0.5.0](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#050---2026-06-15): native desktop client, approval gate, disk guardian, Slack issue bridge, and review-first memory.
 - [0.4.0](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#040---2026-05-23): runner decomposition, observability, state machine, planning, FleetBrain, connectors, and `alfred serve`.

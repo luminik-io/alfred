@@ -31,7 +31,7 @@ Use this before tagging a public Alfred release.
 
 `bash bin/scrub-check.sh` must pass before tagging. It scans tracked and untracked worktree files, excluding generated dependency trees and lockfiles, for:
 
-- Host-private paths or identifiers from local development machines or earlier private systems.
+- Host-specific paths or identifiers from local development machines.
 - Real-looking Slack webhook URLs, Slack bot or app tokens, and AWS access key IDs.
 
 Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.slack.com/services/T.../B.../...`.
@@ -65,4 +65,4 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 8. Smoke-test the published install path from a fresh directory.
 
 The full tag-to-publish flow, and why the draft gate keeps the download claim
-honest, is in [`RELEASING.md`](RELEASING.md).
+accurate, is in [`RELEASING.md`](RELEASING.md).

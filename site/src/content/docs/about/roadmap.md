@@ -16,16 +16,12 @@ shipped work. The canonical source is
 
 ### Launch quality
 
-- Replace the desktop visual system with accessible light and dark themes.
 - Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.
 
 ### Harness capability contract
 
-- Use one registry for engine versions, authentication, supported flags,
-  non-interactive behavior, and dispatch readiness.
-- Keep Claude Code and Codex as the validated engines.
 - Validate OpenCode isolation, permissions, structured events, and failure
   behavior before enabling dispatch.
 - Keep CLI detection separate from support status.
@@ -41,8 +37,8 @@ shipped work. The canonical source is
 
 ### Memory quality and proof
 
-- Run the real engine A/B against the shipped SQLite-first chain.
-- Improve retrieval for technical terms, code symbols, and repository rules.
+- Repeat the real-engine memory A/B after retrieval-policy changes and publish
+  the fixture, provider chain, engine, and limitations with each result.
 - Show a lesson's source, recall reason, and validity period.
 - Keep every memory change visible and reversible.
 
@@ -56,8 +52,8 @@ shipped work. The canonical source is
 ## Next
 
 - Version the `alfred serve` API and add compatibility tests.
-- Expand engine doctor output for auth, permissions, MCPs, skills, profiles,
-  and config ownership.
+- Expand engine diagnostics to report permissions, MCPs, skills, and config
+  ownership alongside the shipped authentication and profile checks.
 - Generate reversible role-specific harness configuration from one capability
   model.
 - Track approved multi-repository work to a final merged, dropped, or blocked
@@ -70,6 +66,8 @@ shipped work. The canonical source is
 - Gemini, Ollama, Cline, and other harness adapters.
 - Local replay and evaluation of normalized sessions.
 - Portable role packs for documentation, release, and repository maintenance.
+- A local fleet workspace command that measures harness readiness, worktree
+  capacity, repository scope, and queue pressure before it assigns work.
 - More code-graph backends with measured retrieval quality.
 - Optional remote workers that keep Alfred's scope and approval controls.
 

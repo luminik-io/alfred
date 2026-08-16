@@ -70,7 +70,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 // Self-proof: the CUMULATIVE count of merged PRs shipped by Alfred agents, with
 // the rolling window kept as a secondary line. Rendered when the emitter
 // supplied any merged-PR signal. A zero-attribution repo stays visible with
-// honest copy, never a fabricated number.
+// Empty data never becomes a fabricated number.
 const selfProof = proof.self_proof;
 const cumulativeTotal = selfProof?.agent_shipped_total ?? 0;
 const cumulativeIncomplete = selfProof?.agent_shipped_total_incomplete ?? false;

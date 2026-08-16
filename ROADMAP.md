@@ -18,8 +18,6 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Launch quality
 
-- Replace the current desktop visual system with an accessible light and dark
-  system. Keep dense operational state readable during long sessions.
 - Add a complete scratch-home test. It must install Alfred, configure a fleet,
   start the local API, exercise the desktop-ready setup path, verify optional
   battery status, and remove its temporary state.
@@ -30,9 +28,6 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Harness capability contract
 
-- Keep one registry for engine version checks, authentication probes, supported
-  flags, non-interactive behavior, and dispatch readiness.
-- Treat Claude Code and Codex as the validated engines.
 - Validate OpenCode before enabling dispatch. The adapter must prove isolated
   config, repository scope, permission behavior, structured events, and a
   fail-closed response to interactive prompts.
@@ -52,9 +47,8 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Memory quality and proof
 
-- Run the real engine A/B against the shipped SQLite-first provider chain.
-- Improve retrieval precision for compact technical terms, code symbols, and
-  repository conventions.
+- Repeat the real-engine memory A/B after retrieval-policy changes and publish
+  the fixture, provider chain, engine, and limitations with each result.
 - Show why a lesson was recalled, where it came from, and when it expires.
 - Keep promotion, retirement, merge, and revert actions visible and reversible.
 
@@ -70,8 +64,9 @@ The order can change when testing finds a reliability or safety problem.
 
 - Add a versioned `alfred serve` API contract with compatibility tests and
   stable error payloads.
-- Extend the engine doctor to report version, authentication, permissions,
-  MCPs, skills, config ownership, and scheduler-selected profiles.
+- Extend engine diagnostics to report permissions, MCPs, skills, and config
+  ownership alongside the shipped version, authentication, and scheduler
+  profile checks.
 - Add role-specific harness configuration writers that derive from the same
   capability model and can undo only the settings Alfred owns.
 - Track approved multi-repository work until each child PR is merged, dropped,
@@ -89,6 +84,8 @@ These items need research and proof before they can enter the delivery plan:
   and containment contract.
 - Local replay and evaluation of normalized harness sessions.
 - Portable role packs for documentation, release, and repository maintenance.
+- A local fleet workspace command that measures harness readiness, worktree
+  capacity, repository scope, and queue pressure before it assigns work.
 - Additional code-graph backends with measured retrieval and blast-radius
   quality.
 - Optional remote workers that preserve Alfred's approval, evidence, and

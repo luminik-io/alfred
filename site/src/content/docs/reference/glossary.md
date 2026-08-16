@@ -70,7 +70,8 @@ in depth.
   narrates a full firing lifecycle without LLM calls or side effects.
   See also: [Dry-run mode](/getting-started/dry-run/).
 - **engine**: The coding backend an agent invokes; Claude Code, Codex, or a
-  hybrid that tries Claude first and falls back to Codex on rate limits.
+  hybrid that retries transient Claude failures and uses Codex only for a
+  classified capability gap.
   See also: [Claude Code and Codex](/guides/claude-code/).
 - **engine routing**: Per-agent assignment of which engine to use, set via
   `ALFRED_<AGENT>_ENGINE` (`claude`, `codex`, or `hybrid`).

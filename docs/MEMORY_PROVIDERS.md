@@ -3,8 +3,8 @@
 Alfred ships a single-host memory layer: a runner can call
 `memory.recall(...)` before a firing to surface lessons earlier
 firings learned, and `memory.reflect(...)` afterwards to file new
-ones. The default chain is `sqlite,fleet`: the embedded SQLite hybrid store
-gives semantic-quality recall with **no daemon** (no Redis, no Ollama), while
+ones. The default chain is `sqlite,fleet`: the embedded SQLite store gives
+lexical recall with **no daemon** (no Redis, no Ollama), while
 FleetBrain keeps the local operational ledger and review queue. Redis Agent
 Memory Server stays a fully supported opt-in for operators who want it
 (`ALFRED_MEMORY_PROVIDERS=redis,fleet`).
@@ -43,6 +43,11 @@ still owns candidates, firing logs, the graph, and review state; the hybrid file
 owns only the promoted, recall-able lessons, so it can be reset or rebuilt
 without touching the operational ledger.
 
+Promoted lessons can carry a type, code anchor, validity data, provenance, and
+reuse counts. Consolidation can merge duplicates while retaining provenance.
+These fields use the same capture, review, promote, retire, and revert flow.
+They do not change the default lexical retrieval arm.
+
 ### SQLite hybrid knobs
 
 ```sh
@@ -60,7 +65,7 @@ ALFRED_MEMORY_SQLITE_POOL=50
 For the **code-structure** layer (where a symbol lives, who calls it, what a
 change breaks, who owns a file) see [CODE_MEMORY.md](CODE_MEMORY.md). It is a
 separate read-only MCP layer (codebase-memory-mcp) that complements the
-semantic lessons and the operational graph rather than replacing them.
+reviewed lessons and the operational graph rather than replacing them.
 
 ## The scale tier: Postgres + pgvector
 

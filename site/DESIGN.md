@@ -154,5 +154,6 @@ No carousels, no parallax. The only motion permitted: a 0.6s ease-in fade on the
 - No fake testimonials.
 - No CTAs ending in "!".
 - No "AI-powered" anywhere on the site.
-- No "Get started in 30 seconds" claims (install is honestly 30 min minimum).
+- No fixed install-time claim. Prerequisites and provider sign-in determine the
+  time.
 - No fake screenshots in the hero. Use public evidence or clearly labelled sample data.

@@ -53,9 +53,23 @@ Once a day, Alfred posts this JSON:
   "issues_closed": 14,
   "files_changed": 1287,
   "lines_changed": 0,
-  "loc_added": 1287
+  "loc_added": 1287,
+  "stale_fields": ["lines_changed"],
+  "last_30_days": {
+    "window_days": 30,
+    "prs_opened": 4,
+    "prs_merged": 3,
+    "prs_reviewed": 3,
+    "issues_opened": 5,
+    "issues_closed": 4,
+    "files_changed": 72,
+    "lines_changed": 0
+  }
 }
 ```
+
+`stale_fields` and `last_30_days` are optional. The reporter omits them when it
+does not have the required local data.
 
 | Field | Meaning |
 | --- | --- |
@@ -69,6 +83,8 @@ Once a day, Alfred posts this JSON:
 | `files_changed` | Lifetime file-touch count from the local fleet brain. |
 | `lines_changed` | Lifetime additions plus deletions from cached Alfred-authored GitHub PRs when the local brain has line counts. |
 | `loc_added` | Historical wire alias for `files_changed`. |
+| `stale_fields` | Count fields that could not be refreshed. This currently contains only `lines_changed`. The collector can preserve a previous value instead of treating a stale zero as a measured zero. |
+| `last_30_days` | The same activity categories for a rolling window, plus `window_days`. It contains counts only. |
 
 Alfred never sends repo names, file paths, code, prompts, PR titles, issue
 titles, branch names, people, hostnames, or billing data.

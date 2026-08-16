@@ -2,101 +2,73 @@
 import MarketingLayout from "../layouts/MarketingLayout.astro";
 import Hero from "../components/marketing/Hero.astro";
 import SectionHeader from "../components/marketing/SectionHeader.astro";
-import MetricRow from "../components/marketing/MetricRow.astro";
-import JobCard from "../components/marketing/JobCard.astro";
 ---
 
 <MarketingLayout
-  title="Run a bigger engineering loop as a single operator or small team | Alfred"
-  description="Alfred runs on a Mac mini, spare MacBook, or Linux box you choose, signs in with your Claude Code and Codex subscriptions, and turns plans or GitHub issues into pull requests while you are away."
+  title="Alfred for solo builders and small engineering teams"
+  description="Coordinate Claude Code and Codex work through local schedules, repository scope, worktrees, review, and explicit approval."
   path="/for-solo-founders/"
 >
   <Hero
-    eyebrow="FOR SOLO FOUNDERS AND SMALL TEAMS"
-    headline="Run a bigger engineering loop without hiring a bigger team."
-    sub="Set up Alfred on a Mac mini, spare MacBook, or Linux box you choose, sign in with the subscriptions you already pay for, and let coding agents turn rough plans into PRs while you handle the decisions only you can make."
+    eyebrow="FOR SOLO BUILDERS AND SMALL TEAMS"
+    headline="Keep several coding-agent tasks moving through one controlled workflow."
+    sub="Alfred schedules approved work on a Mac or Linux host, routes it through Claude Code or Codex, and returns pull requests and review findings for your decision."
     headlineSize="lg"
     primaryCta={{ label: "Install", href: "/getting-started/install/" }}
     secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred" }}
-  >
-    <div slot="panel" class="panel">
-      <div class="panel__head">
-        <span class="m-eyebrow">A TYPICAL LOCAL SETUP</span>
-        <span class="m-mono m-mute">~/.alfred/state</span>
-      </div>
-      <MetricRow label="operators" value="1+" state="live" />
-      <MetricRow label="machine" value="Mac mini M2" state="live" />
-      <MetricRow label="agents" value="21" state="live" />
-      <MetricRow label="spend limit" value="$20 / day" glyph="arrow" state="info" />
-      <MetricRow label="errors" value="0" state="live" />
-    </div>
-  </Hero>
+  />
 
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="WHILE YOU ARE AWAY"
-        title="Three times you do not have to be at the keyboard."
-        lede="Alfred works from a Mac, Linux box, or server you control during the hours the rest of your week cannot cover. For overnight work, use a host you leave awake or a small dedicated box."
+        eyebrow="OPERATING MODEL"
+        title="Separate the recurring engineering loop from the decisions only you can make."
+        lede="Alfred coordinates task intake, isolated code changes, independent review, evidence, and follow-up. You choose repositories, schedules, engines, approval rules, and merge policy."
       />
-      <div class="windows">
-        <JobCard
-          title="While you sleep"
-          body="On its configured cadence overnight, senior-dev works through the tasks Drake lined up during the day. You wake up to pull requests and review notes."
-          log={[
-            "[02:14] senior-dev PR #1247 opened",
-            "[03:42] senior-dev PR #1248 opened",
-            "[05:11] ras-al reviewed PR#1247",
-          ]}
-          state="live"
-        />
-        <JobCard
-          title="While you are in meetings"
-          body="You step into a call and the agents keep going. A Slack summary tells you what opened and what is worth a look when you come back."
-          log={[
-            "[14:00] meeting block started",
-            "[14:20] senior-dev worktree opened",
-            "[14:35] PR #1252 opened, severity=info",
-          ]}
-          state="info"
-        />
-        <JobCard
-          title="While you are deep in your own work"
-          body="You are heads-down on a feature only you can write. Drake reads your plans, files the next three tasks, and senior-dev starts on them before you look up."
-          log={[
-            "[10:02] drake triaged /specs/payouts.md",
-            "[10:02] drake filed 3 agent:implement issues",
-            "[10:24] senior-dev claimed #312",
-          ]}
-          state="warn"
-        />
+      <div class="grid">
+        <article class="m-card">
+          <h3 class="m-h3">Queue approved work</h3>
+          <p>Start from a GitHub issue, Desktop request, Slack plan, or structured specification. Planned work waits at the configured approval gate.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Separate code changes</h3>
+          <p>Implementation, test, review, and fix roles use dedicated git worktrees. Alfred records the branch, checks, and pull-request evidence.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Mix Claude Code and Codex</h3>
+          <p>Assign an engine per role or use the validated hybrid route. Setup and dispatch use the same executable, profile, and authentication checks.</p>
+        </article>
+        <article class="m-card">
+          <h3 class="m-h3">Keep reviewed lessons</h3>
+          <p>Embedded SQLite recalls promoted lessons. Behavior-changing candidates wait for review by default, and memory actions remain reversible.</p>
+        </article>
       </div>
     </div>
   </section>
 
-  <section class="m-section">
+  <section class="m-section m-section--soft">
     <div class="m-container">
       <SectionHeader
-        eyebrow="WHERE YOU STAY IN CONTROL"
-        title="Where Alfred stops and you decide."
-        lede="Alfred can open pull requests, run review, fix comments, and merge small safe PRs when you enable that policy. Large plans and risky work wait for your approval."
+        eyebrow="CONTROL POINTS"
+        title="Alfred stops when the next step needs your authority."
+        lede="The product controls scheduling and workflow. It does not replace repository policy, operating-system isolation, or human judgment."
       />
-      <div class="boundaries">
+      <div class="grid">
         <article class="m-card">
-          <h3 class="m-h3">You approve big plans in Slack</h3>
-          <p>Architect waits for your go-ahead before it files a multi-repo plan. Any agent about to do something it cannot undo posts a draft to Slack and waits for your reply.</p>
+          <h3 class="m-h3">Repository scope</h3>
+          <p>Alfred schedules and indexes configured repositories. Use a dedicated user, virtual machine, or container when you need filesystem or network isolation.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">Spending limits are firm</h3>
-          <p>You set a limit per day and per agent, and the providers cap usage on their side too. When any limit is reached, the run stops cleanly.</p>
+          <h3 class="m-h3">Approval</h3>
+          <p>Planned work and multi-repository fan-out can wait for explicit approval before entering the autonomous queue.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">You review before anything merges</h3>
-          <p>Ra's al Ghul leaves comments and marks the pull request. Automerge only handles PRs that meet the policy you set: old enough, green CI, reviewed, and no unresolved blocker comments.</p>
+          <h3 class="m-h3">Review</h3>
+          <p>A separate role reviews code and records findings. Missing GitHub evidence remains unavailable instead of appearing as zero.</p>
         </article>
         <article class="m-card">
-          <h3 class="m-h3">No production access by default</h3>
-          <p>The default setup does not need live database passwords or billing keys. Alfred only gets the repo, Slack, AWS, and environment access you explicitly grant to that host.</p>
+          <h3 class="m-h3">Merge</h3>
+          <p>Alfred does not merge by default. If you enable a merge policy, GitHub checks, reviews, threads, and repository rules remain the final gate.</p>
         </article>
       </div>
     </div>
@@ -104,18 +76,18 @@ import JobCard from "../components/marketing/JobCard.astro";
 </MarketingLayout>
 
 <style>
-  .panel { display: flex; flex-direction: column; }
-  .panel__head { display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; margin-bottom: 6px; border-bottom: 1px solid var(--alfred-border); }
-  /* minmax(0, 1fr): prevents card content from setting min-content
-     width and pushing the row past 1024px (small laptops, iPad landscape).
-     The single-column @media variants below use the same form (NOT bare
-     1fr, which silently resolves to minmax(auto, 1fr) and reintroduces
-     the min-content min). */
-  .windows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
-  /* 1100, not 980: at 1024 the 3-col layout was overflowing. Going
-     straight from 3-col to 1-col avoids an orphan card in a 2-col view. */
-  @media (max-width: 1100px) { .windows { grid-template-columns: minmax(0, 1fr); } }
-  .boundaries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-  @media (max-width: 720px) { .boundaries { grid-template-columns: minmax(0, 1fr); } }
-  .boundaries p { margin-top: 10px; color: var(--alfred-text); font-size: 15px; line-height: 1.6; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .grid p {
+    margin-top: 10px;
+    color: var(--alfred-text);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: minmax(0, 1fr); }
+  }
 </style>

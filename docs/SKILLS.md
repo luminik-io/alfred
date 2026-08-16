@@ -109,7 +109,7 @@ Yes, with one caveat you must know. The fleet invokes `claude -p` **without**
 session does. Under `--permission-mode bypassPermissions` (how firings run), the
 `Skill` tool is permitted, so a matching skill can auto-activate.
 
-The honest caveat: auto-activation is a model decision, not a guarantee, and
+Auto-activation is a model decision, not a guarantee, and
 `--bare` (which skips all skill, hook, and MCP discovery) is slated to become the
 `-p` default in a future Claude Code release. So the reliable, future-proof way
 to get a skill into a headless run is to **name it in the agent's prompt**. Two

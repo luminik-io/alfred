@@ -26,7 +26,7 @@ const lifecycle = [
   {
     n: "04",
     title: "It makes its own copy of the repo",
-    body: "A fresh copy of the repo opens in its own folder under ~/.alfred. Each run gets its own copy, so runs can happen at the same time and a crash never affects your working files.",
+    body: "A code-changing or review role opens a separate git worktree under ~/.alfred. Concurrent runs keep their branch changes separate from the main checkout.",
     log: "[12:00:05] worktree ~/.alfred/wt/12000305/  branch=agent/247-billing-v2",
   },
   {

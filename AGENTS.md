@@ -9,8 +9,9 @@ first; this file is the short version those agents need.
 Alfred is the open-source coordination and supervision layer for local coding
 agents. It invokes Claude Code and Codex through authenticated local CLIs. The
 OS scheduler (`launchd` on macOS or `systemd --user` on Linux) starts each role.
-`lib/agent_runner/` gives every run a lock, preflight checks, limits, and an
-isolated git worktree. Stable role slugs control runtime identity. Optional
+`lib/agent_runner/` gives runs shared locks, preflight checks, and limits.
+Roles that change or review code use isolated git worktrees. Stable role slugs
+control runtime identity. Optional
 roster themes change display names only. `examples/` contains tutorial agents.
 
 Users inspect and steer the team through the Alfred CLI (`bin/alfred`), the

@@ -20,16 +20,18 @@ permission dialog for it.
 
 What it reaches, and why:
 
-- **Your repos and worktrees** under `ALFRED_HOME` (`~/.alfred` by default) and
-  the checkouts you pointed it at. This is ordinary file access in your home
-  directory. Alfred only touches repos you added to `$ALFRED_HOME/.env`.
+- **Configured repositories and worktrees** under `ALFRED_HOME` (`~/.alfred` by
+  default). Repository configuration controls Alfred's scheduling and indexing.
+  It does not stop a harness or project command from reading other files that
+  the local user can read.
 - **Your local CLI auth.** Alfred shells out to `claude` and optional `codex`
   using the auth those tools already stored. It never reads your provider
   password and never asks for an API key.
-- **Outbound network** to the model provider you chose (Anthropic for Claude
-  Code, OpenAI for Codex), to GitHub through `gh`, and to your Slack webhook if
-  you configured one. There are no other destinations. See
-  [Privacy](../README.md#privacy-what-alfred-touches-and-what-it-does-not).
+- **Outbound network** to the selected model provider, GitHub, optional Slack,
+  Alfred telemetry when enabled, and package or battery download endpoints.
+  Harnesses, skills, MCP servers, and project commands can add other
+  destinations. Alfred does not enforce an outbound allowlist. See the
+  [threat model](THREAT_MODEL.md).
 
 ## Alfred Desktop
 
@@ -49,7 +51,7 @@ Prompts you may see, and why:
   The app talks to `127.0.0.1` (loopback) to reach the local `alfred serve` API.
   Its content security policy only allows `self` and the local IPC bridge, so
   the window itself makes no third-party calls. The CLI it drives is what reaches
-  GitHub, your model provider, and Slack, exactly as described above.
+  the configured external services described above.
 - **Notifications (only if a build enables them).** Used to tell you a plan needs
   approval or a run finished. Decline it and the app still works; you just rely
   on Slack and the in-app feed instead.

@@ -118,10 +118,14 @@ Whatever the path, `release_issue` runs so the issue never stays stuck in `agent
 
 ## Why this shape holds up unattended
 
-- **Idempotent.** Every firing reads its inputs from scratch. A crash mid-run leaves no half-state to resume; the next firing's `make_worktree` even prunes orphaned worktrees first.
-- **Bounded.** `max_turns` and the firing timeout cap the worst-case spend of any single firing. The schedule caps the worst-case spend of the day.
-- **Observable.** Every exit path prints a sentinel and posts anything that needs attention to Slack. Codex writes per-firing artifacts under `$ALFRED_HOME/state/codex/`; Claude transcript capture is planned, not written by the current runner.
-- **Isolated.** A bad firing trashes its own worktree and nothing else.
+- **Recoverable.** Locks, issue state, and worktree records let the next firing
+  detect and clean up interrupted work.
+- **Bounded.** Turn limits, timeouts, retry limits, and the schedule bound each
+  firing and its retry path.
+- **Observable.** Exit paths record sentinels and post configured alerts. Codex
+  writes per-firing artifacts under `$ALFRED_HOME/state/codex/`.
+- **Separated.** Code-changing and review roles use dedicated git worktrees.
+  This separates branch changes, not filesystem or network permissions.
 
 ## See also
 
