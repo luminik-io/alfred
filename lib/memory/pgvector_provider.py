@@ -899,10 +899,10 @@ class PgvectorProvider:
         """Return up to ``limit`` lessons for the scope, hybrid-ranked.
 
         Same contract and shape as the SQLite hybrid ``recall``: anchored lessons
-        lead, then lexical + dense arms are fused with RRF. A nonempty query miss
-        stays empty. Calls without a query use a recency baseline. Any DB error
-        returns ``[]`` so the chained provider falls through without breaking a
-        firing.
+        lead, then lexical + dense arms are fused with RRF. When both arms return
+        no candidates, a nonempty query stays empty instead of adding recency.
+        Calls without a query use a recency baseline. Any DB error returns ``[]``
+        so the chained provider falls through without breaking a firing.
         """
         cap = max(1, int(limit))
         text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()

@@ -29,10 +29,18 @@ When both arms run they are fused with **Reciprocal Rank Fusion** (RRF):
 lesson both arms rank highly rises above one only a single arm found. With only
 the lexical arm, the fused order is exactly the BM25 order.
 
-A non-empty query that has no match returns no lessons from the shipped chain.
-This rule also applies to the FleetBrain fallback, which uses literal matching.
-Alfred does not substitute unrelated recent lessons into an agent prompt. A
-recall without a query is an explicit unfiltered listing and uses recency order.
+With the default lexical arm, a non-empty query that has no meaningful match
+returns no lessons from the shipped chain. The tokenizer drops common English
+words and generic task verbs before it searches, so sharing only a term such as
+`the` or `fix` does not turn an unrelated lesson into a hit. The FleetBrain
+fallback uses literal matching. Alfred does not substitute unrelated recent
+lessons into an agent prompt. A recall without a query is an explicit
+unfiltered listing and uses recency order.
+
+The optional dense arm returns nearest semantic candidates. Vector search does
+not have a universal model-independent definition of a miss, so dense recall
+can return a candidate when lexical recall is empty. Leave dense recall off
+when the operator needs strict lexical empty-on-miss behavior.
 
 **The dense arm is optional and degrades cleanly.** If `sqlite-vec` is not
 installed (`pip install "alfred-os[vector]"`) or the Ollama embedder is
