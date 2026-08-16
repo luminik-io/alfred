@@ -15,7 +15,8 @@ from collections.abc import Iterator
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _UNICODE_WORD_RE = re.compile(r"[^\W_]+")
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:C\+\+|C#|I/O|N\+[0-9]+|O\([0-9]+\)|HTTP/[0-9]+(?:\.[0-9]+)?)"
+    r"(?<![A-Za-z0-9])(?:C\+\+|[A-Za-z]#|N\+[0-9]+|O\([0-9]+\)|"
+    r"[A-Za-z0-9]{1,24}/[A-Za-z0-9]{1,24}(?:\.[A-Za-z0-9]{1,8})?)"
     r"(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
@@ -63,6 +64,12 @@ _LOW_SIGNAL_QUERY_TOKENS = frozenset(
         "without",
     }
 )
+
+
+def lexical_surface(text: str) -> str:
+    """Return the canonical text surface used by every lexical provider."""
+
+    return unicodedata.normalize("NFKC", text).casefold()
 
 
 def _compound_matches(text: str) -> list[re.Match[str]]:
@@ -128,9 +135,10 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     and can match the spelling ``cold start``.
     """
 
+    text = lexical_surface(text)
     compounds = _compound_matches(text)
     for match in compounds:
-        yield re.sub(r"\s+", "", match.group(0)).lower()
+        yield re.sub(r"\s+", "", match.group(0))
 
     yield from _unicode_concepts(text)
 
@@ -145,7 +153,7 @@ def meaningful_tokens(text: str) -> Iterator[str]:
         ):
             continue
         raw = match.group(0)
-        token = raw.lower()
+        token = raw
         if len(raw) > 1 and token not in _LOW_SIGNAL_QUERY_TOKENS:
             yield token
 
@@ -191,7 +199,7 @@ def literal_fallback_query(text: str) -> str | None:
     one-character ASCII noise, and punctuation-only input remain hard misses.
     """
 
-    stripped = text.strip()
+    stripped = lexical_surface(text).strip()
     if not stripped or tokenize(stripped):
         return None
     words = [match.group(0) for match in _UNICODE_WORD_RE.finditer(stripped)]

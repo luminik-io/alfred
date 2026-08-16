@@ -26,6 +26,7 @@ from memory_tokens import (
     MAX_LITERAL_QUERY_CANDIDATES,
     escape_like_literal,
     has_meaningful_lexical_overlap,
+    lexical_surface,
     literal_fallback_query,
     required_lexical_overlap,
     tokenize,
@@ -623,6 +624,9 @@ class SQLiteStore:
         if str(self.db_path) == ":memory:":
             if self._memory_conn is None:
                 self._memory_conn = sqlite3.connect(":memory:")
+                self._memory_conn.create_function(
+                    "alfred_lexical_surface", 1, lexical_surface, deterministic=True
+                )
                 self._memory_conn.execute("PRAGMA foreign_keys = ON")
                 # WAL is a no-op for ``:memory:`` but the synchronous setting
                 # is harmless; keep the call shape symmetric with the disk
@@ -633,6 +637,7 @@ class SQLiteStore:
             return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
+        conn.create_function("alfred_lexical_surface", 1, lexical_surface, deterministic=True)
         conn.execute("PRAGMA foreign_keys = ON")
         # WAL lets concurrent readers proceed while a writer holds the
         # database, and lets two short-lived writers from sibling firings
@@ -691,8 +696,8 @@ class SQLiteStore:
     ) -> list[Lesson]:
         """Return the most relevant lessons, most-recent first.
 
-        The local SQLite ledger ranks literal ``body`` matches first, then uses
-        canonical exact-concept overlap for spelling variants such as
+        The local SQLite ledger ranks literal ``body`` or tag matches first,
+        then uses canonical exact-concept overlap for spelling variants such as
         ``cold-start`` and ``cold start``. A miss returns no lesson instead of
         backfilling recent scoped rows that do not match the task. Calling
         without a query is the explicit recency-ordered listing operation.
@@ -706,17 +711,23 @@ class SQLiteStore:
         """
         limit = int(limit)
         query_body = (query or "").strip() or None
-        query_tokens = tokenize(query_body) if query_body is not None else []
+        query_surface = lexical_surface(query_body) if query_body is not None else None
+        query_tokens = tokenize(query_surface) if query_surface is not None else []
         literal_only_query = (
-            literal_fallback_query(query_body)
-            if query_body is not None and not query_tokens
+            literal_fallback_query(query_surface)
+            if query_surface is not None and not query_tokens
             else None
         )
         if query_body is not None and not query_tokens and literal_only_query is None:
             return []
         now_iso = _to_iso(datetime.now(UTC))
+        tags_surface = (
+            "COALESCE((SELECT group_concat(alfred_lexical_surface(lt.tag), ' ') "
+            "FROM lesson_tags lt WHERE lt.lesson_id = lessons.id), '')"
+        )
+        searchable_columns = f"{_LESSON_COLUMNS}, {tags_surface}"
 
-        def _scoped(query_body: str | None) -> str:
+        def _scoped(search_text: str | None) -> str:
             wheres: list[str] = [
                 "superseded_by IS NULL",
                 "(valid_until IS NULL OR valid_until > ?)",
@@ -725,21 +736,25 @@ class SQLiteStore:
                 wheres.append("codename = ?")
             if repo:
                 wheres.append("repo = ?")
-            if query_body:
-                wheres.append("body LIKE ? ESCAPE '\\'")
+            if search_text:
+                wheres.append(
+                    "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                    "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                    "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                )
             clause = "WHERE " + " AND ".join(wheres)
-            return (
-                f"SELECT {_LESSON_COLUMNS} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
-            )
+            columns = searchable_columns if search_text else _LESSON_COLUMNS
+            return f"SELECT {columns} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
 
-        def _scope_params(query_body: str | None) -> list[object]:
+        def _scope_params(search_text: str | None) -> list[object]:
             params: list[object] = [now_iso]
             if codename:
                 params.append(codename)
             if repo:
                 params.append(repo)
-            if query_body:
-                params.append(f"%{escape_like_literal(query_body)}%")
+            if search_text:
+                pattern = f"%{escape_like_literal(search_text)}%"
+                params.extend([pattern, pattern])
             query_limit = (
                 min(max(0, limit), MAX_LITERAL_QUERY_CANDIDATES)
                 if literal_only_query is not None
@@ -749,19 +764,21 @@ class SQLiteStore:
             return params
 
         with self._connect() as conn:
-            rows = conn.execute(_scoped(query_body), _scope_params(query_body)).fetchall()
+            rows = conn.execute(_scoped(query_surface), _scope_params(query_surface)).fetchall()
             if query_body is None:
                 return [self._row_to_lesson(conn, row) for row in rows]
             if literal_only_query is not None:
-                return [self._row_to_lesson(conn, row) for row in rows]
+                return [self._row_to_lesson(conn, row[:-1]) for row in rows]
 
             # Keep exact literal matches first. The explicit escape keeps LIKE
             # metacharacters literal without disabling canonical fallback.
             matched_rows = [
-                row for row in rows if has_meaningful_lexical_overlap(str(row[3]), query_tokens)
+                row
+                for row in rows
+                if has_meaningful_lexical_overlap(f"{row[3]} {row[-1]}", query_tokens)
             ]
             if len(matched_rows) >= limit:
-                return [self._row_to_lesson(conn, row) for row in matched_rows]
+                return [self._row_to_lesson(conn, row[:-1]) for row in matched_rows]
 
             # A literal miss can still be a spelling variant such as
             # ``cold-start`` versus ``cold start``. Prefilter with bounded LIKE
@@ -778,10 +795,17 @@ class SQLiteStore:
             if repo:
                 wheres.append("repo = ?")
                 params.append(repo)
-            like_clauses = ["body LIKE ? ESCAPE '\\'" for _token in query_tokens]
+            like_clauses = [
+                "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                for _token in query_tokens
+            ]
             like_score = " + ".join(f"CAST({clause} AS INTEGER)" for clause in like_clauses)
             wheres.append(f"({like_score}) >= ?")
-            params.extend(f"%{escape_like_literal(token)}%" for token in query_tokens)
+            for token in query_tokens:
+                pattern = f"%{escape_like_literal(token)}%"
+                params.extend([pattern, pattern])
             params.append(required_lexical_overlap(query_tokens))
 
             seen = {str(row[0]) for row in matched_rows}
@@ -794,7 +818,7 @@ class SQLiteStore:
                     page_wheres.append("(created_at < ? OR (created_at = ? AND id > ?))")
                     page_params.extend([created_at, created_at, lesson_id])
                 sql = (
-                    f"SELECT {_LESSON_COLUMNS} FROM lessons "
+                    f"SELECT {searchable_columns} FROM lessons "
                     f"WHERE {' AND '.join(page_wheres)} "
                     "ORDER BY created_at DESC, id ASC LIMIT ?"
                 )
@@ -806,7 +830,7 @@ class SQLiteStore:
                     lesson_id = str(row[0])
                     if lesson_id in seen:
                         continue
-                    if not has_meaningful_lexical_overlap(str(row[3]), query_tokens):
+                    if not has_meaningful_lexical_overlap(f"{row[3]} {row[-1]}", query_tokens):
                         continue
                     seen.add(lesson_id)
                     matched_rows.append(row)
@@ -821,7 +845,7 @@ class SQLiteStore:
                 if len(candidate_rows) < _MEMORY_QUERY_PAGE_SIZE:
                     break
 
-            return [self._row_to_lesson(conn, row) for row in matched_rows]
+            return [self._row_to_lesson(conn, row[:-1]) for row in matched_rows]
 
     def list_lessons(self, limit: int | None = None) -> list[Lesson]:
         sql = f"SELECT {_LESSON_COLUMNS} FROM lessons ORDER BY created_at DESC"

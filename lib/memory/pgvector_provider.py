@@ -76,6 +76,7 @@ from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
 )
+from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
@@ -377,8 +378,8 @@ def _lexical_like_query(
     """ILIKE fallback lexical arm (required overlap, most-recent first).
 
     The counterpart to the SQLite ``LIKE`` fallback: used only if the tsvector
-    column could not be provisioned. Matches the SAME body+tags surface the
-    full-text arm indexes, so a tag-only hit is still recalled. The overlap
+    column could not be provisioned. ``lexical_text`` is the canonical NFKC,
+    case-folded body+tags surface the full-text arm indexes. The overlap
     requirement narrows each bounded page. The caller uses a strict eight-page
     keyset budget and enforces exact token overlap on these returned rows, so
     substring-only matches cannot cause unbounded OFFSET scans or hydration
@@ -388,8 +389,8 @@ def _lexical_like_query(
     like_params: list[Any] = []
     clauses: list[str] = []
     for tok in tokens:
-        clauses.append("(l.body ILIKE %s OR l.tags_json ILIKE %s)")
-        like_params.extend([f"%{tok}%", f"%{tok}%"])
+        clauses.append("l.lexical_text ILIKE %s")
+        like_params.append(f"%{tok}%")
     like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
     cursor_sql = ""
     cursor_params: list[Any] = []
@@ -433,11 +434,10 @@ def _lexical_literal_query(
     pattern = f"%{_escape_like_literal(text)}%"
     sql = (
         f"SELECT l.id FROM {table} l "
-        "WHERE (l.body ILIKE %s ESCAPE '\\' OR l.tags_json ILIKE %s ESCAPE '\\') "
+        "WHERE l.lexical_text ILIKE %s ESCAPE '\\' "
         f"{scope_sql} ORDER BY l.created_at DESC, l.id ASC LIMIT %s"
     )
     params = [
-        pattern,
         pattern,
         *scope_params,
         min(max(1, pool), MAX_LITERAL_QUERY_CANDIDATES),
@@ -714,6 +714,7 @@ class PgvectorProvider:
                     repo          TEXT NOT NULL,
                     body          TEXT NOT NULL,
                     tags_json     TEXT NOT NULL DEFAULT '[]',
+                    lexical_text  TEXT NOT NULL DEFAULT '',
                     severity      TEXT NOT NULL DEFAULT 'info',
                     firing_id     TEXT,
                     created_at    TIMESTAMPTZ NOT NULL,
@@ -734,6 +735,7 @@ class PgvectorProvider:
                 ("superseded_by", "TEXT"),
                 ("provenance", "TEXT"),
                 ("body_tsv", "TSVECTOR"),
+                ("lexical_text", "TEXT NOT NULL DEFAULT ''"),
             ):
                 conn.execute(f"ALTER TABLE {lessons} ADD COLUMN IF NOT EXISTS {column} {ddl}")
             conn.execute(
@@ -906,6 +908,7 @@ class PgvectorProvider:
             lesson.repo,
             lesson.body,
             json.dumps(lesson.tags),
+            fts_text,
             lesson.severity,
             lesson.firing_id,
             _aware(lesson.created_at),
@@ -919,12 +922,13 @@ class PgvectorProvider:
             params.append(fts_text)
         conn.execute(
             f"INSERT INTO {self._lessons} "
-            "(id, codename, repo, body, tags_json, severity, firing_id, created_at, "
+            "(id, codename, repo, body, tags_json, lexical_text, severity, firing_id, created_at, "
             " updated_at, kind, valid_until, superseded_by, provenance, body_tsv) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, {body_tsv_sql}) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, {body_tsv_sql}) "
             "ON CONFLICT (id) DO UPDATE SET "
             "  codename = EXCLUDED.codename, repo = EXCLUDED.repo, body = EXCLUDED.body, "
-            "  tags_json = EXCLUDED.tags_json, severity = EXCLUDED.severity, "
+            "  tags_json = EXCLUDED.tags_json, lexical_text = EXCLUDED.lexical_text, "
+            "  severity = EXCLUDED.severity, "
             "  firing_id = EXCLUDED.firing_id, created_at = EXCLUDED.created_at, "
             "  updated_at = EXCLUDED.updated_at, kind = EXCLUDED.kind, "
             "  valid_until = EXCLUDED.valid_until, superseded_by = EXCLUDED.superseded_by, "
@@ -965,7 +969,7 @@ class PgvectorProvider:
 
     @staticmethod
     def _fts_text(lesson: Lesson) -> str:
-        return " ".join([lesson.body, " ".join(lesson.tags)]).strip()
+        return _lexical_surface(" ".join([lesson.body, " ".join(lesson.tags)]).strip())
 
     # ----- read path -----------------------------------------------------
 
@@ -1047,6 +1051,7 @@ class PgvectorProvider:
         repo: str | None,
         now: datetime,
     ) -> list[str]:
+        text = _lexical_surface(text)
         tokens = _tokenize(text)
         if not tokens:
             literal = _literal_fallback_query(text)

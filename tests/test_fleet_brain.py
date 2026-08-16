@@ -313,7 +313,7 @@ def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain
     assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
 
 
-@pytest.mark.parametrize("query", ["N+12", "C++", "C#", "HTTP/2.1", "O(42)", "I/O"])
+@pytest.mark.parametrize("query", ["N+12", "C++", "C#", "F#", "HTTP/2.1", "O(42)", "I/O", "A/B"])
 def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query: str) -> None:
     matching_body = f"Use {query} carefully in this code path."
     brain.reflect(codename="lucius", repo="org/api", body=matching_body)
@@ -331,6 +331,42 @@ def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetB
     out = brain.recall(codename="lucius", repo="org/api", query="C++")
 
     assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_matches_lesson_tags_in_literal_and_concept_paths(
+    brain: FleetBrain,
+) -> None:
+    literal = brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Database migration guidance",
+        tags=["protobuf"],
+    )
+    concept = brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="The GraphQL transport guidance",
+        tags=["schema"],
+    )
+
+    literal_out = brain.recall(codename="lucius", repo="org/api", query="protobuf")
+    concept_out = brain.recall(codename="lucius", repo="org/api", query="graphql schema")
+
+    assert [lesson.id for lesson in literal_out] == [literal.id]
+    assert [lesson.id for lesson in concept_out] == [concept.id]
+
+
+def test_recall_literal_only_query_matches_nfkc_equivalent_tag(brain: FleetBrain) -> None:
+    lesson = brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Localized failure guidance",
+        tags=["エラー"],
+    )
+
+    out = brain.recall(codename="lucius", repo="org/api", query="ｴﾗｰ")
+
+    assert [item.id for item in out] == [lesson.id]
 
 
 def test_recall_query_accepts_japanese_issue_title(brain: FleetBrain) -> None:

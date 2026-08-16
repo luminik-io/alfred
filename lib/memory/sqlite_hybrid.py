@@ -71,6 +71,7 @@ from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
 )
+from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
@@ -358,6 +359,7 @@ class SqliteHybridProvider:
                     repo          TEXT NOT NULL,
                     body          TEXT NOT NULL,
                     tags_json     TEXT NOT NULL DEFAULT '[]',
+                    lexical_text  TEXT NOT NULL DEFAULT '',
                     severity      TEXT NOT NULL DEFAULT 'info',
                     firing_id     TEXT,
                     created_at    TEXT NOT NULL,
@@ -380,6 +382,7 @@ class SqliteHybridProvider:
             _add_column_if_missing(conn, "lessons", "valid_until", "TEXT")
             _add_column_if_missing(conn, "lessons", "superseded_by", "TEXT")
             _add_column_if_missing(conn, "lessons", "provenance", "TEXT")
+            _add_column_if_missing(conn, "lessons", "lexical_text", "TEXT NOT NULL DEFAULT ''")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS lesson_anchors (
@@ -551,12 +554,13 @@ class SqliteHybridProvider:
         now = _iso(datetime.now(UTC))
         conn.execute(
             "INSERT INTO lessons "
-            "(id, codename, repo, body, tags_json, severity, firing_id, created_at, "
+            "(id, codename, repo, body, tags_json, lexical_text, severity, firing_id, created_at, "
             " updated_at, kind, valid_until, superseded_by, provenance) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (id) DO UPDATE SET "
             "  codename = excluded.codename, repo = excluded.repo, body = excluded.body, "
-            "  tags_json = excluded.tags_json, severity = excluded.severity, "
+            "  tags_json = excluded.tags_json, lexical_text = excluded.lexical_text, "
+            "  severity = excluded.severity, "
             "  firing_id = excluded.firing_id, created_at = excluded.created_at, "
             "  updated_at = excluded.updated_at, kind = excluded.kind, "
             "  valid_until = excluded.valid_until, superseded_by = excluded.superseded_by, "
@@ -567,6 +571,7 @@ class SqliteHybridProvider:
                 lesson.repo,
                 lesson.body,
                 json.dumps(lesson.tags),
+                self._fts_text(lesson),
                 lesson.severity,
                 lesson.firing_id,
                 _iso(lesson.created_at),
@@ -604,7 +609,7 @@ class SqliteHybridProvider:
 
     @staticmethod
     def _fts_text(lesson: Lesson) -> str:
-        return " ".join([lesson.body, " ".join(lesson.tags)]).strip()
+        return _lexical_surface(" ".join([lesson.body, " ".join(lesson.tags)]).strip())
 
     # ----- read path -----------------------------------------------------
 
@@ -712,6 +717,7 @@ class SqliteHybridProvider:
         codename: str | None,
         repo: str | None,
     ) -> list[str]:
+        text = _lexical_surface(text)
         tokens = _tokenize(text)
         if not tokens:
             literal = _literal_fallback_query(text)
@@ -722,10 +728,10 @@ class SqliteHybridProvider:
             limit = min(max(1, self.pool), MAX_LITERAL_QUERY_CANDIDATES)
             sql = (
                 "SELECT l.id FROM lessons l "
-                "WHERE (l.body LIKE ? ESCAPE '\\' OR l.tags_json LIKE ? ESCAPE '\\') "
+                "WHERE l.lexical_text LIKE ? ESCAPE '\\' "
                 f"{scope_sql} ORDER BY l.created_at DESC, l.id ASC LIMIT ?"
             )
-            rows = conn.execute(sql, [pattern, pattern, *scope_params, limit]).fetchall()
+            rows = conn.execute(sql, [pattern, *scope_params, limit]).fetchall()
             return [str(row[0]) for row in rows]
         scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
         if self._fts_ok:
@@ -746,15 +752,14 @@ class SqliteHybridProvider:
         # increasingly expensive OFFSET scans. The fixed page and page-count
         # caps above bound this fallback to 400 inspected candidates and eight
         # SQL queries even if the corpus contains only substring false matches.
-        # Match the SAME body+tags surface the FTS arm indexes via _fts_text(),
-        # so a tag-only hit is still recalled here. Tags are stored as a JSON
-        # array in tags_json, so a token like "graphql" matches the serialized
-        # '["graphql", ...]'.
+        # Match the same canonical body+tags surface the FTS arm indexes via
+        # _fts_text(), so compatibility/case variants and tag-only hits behave
+        # identically before the exact Python overlap filter.
         like_params: list[Any] = []
         clauses: list[str] = []
         for tok in tokens:
-            clauses.append("(l.body LIKE ? OR l.tags_json LIKE ?)")
-            like_params.extend([f"%{tok}%", f"%{tok}%"])
+            clauses.append("l.lexical_text LIKE ?")
+            like_params.append(f"%{tok}%")
         like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
         base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
         out: list[str] = []

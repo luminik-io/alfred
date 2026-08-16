@@ -189,9 +189,11 @@ def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
     [
         ("C++", "Use C# for the client", "Use C++ for the client"),
         ("C#", "Use C++ for the client", "Use C# for the client"),
+        ("F#", "Use C# for the client", "Use F# for the client"),
         ("N+12", "Avoid N+13 queries", "Avoid N+12 queries"),
         ("O(42)", "The lookup is O(1)", "The lookup is O(42)"),
         ("I/O", "Use IO batching", "Use I/O batching"),
+        ("A/B", "Use A/C testing", "Use A/B testing"),
         ("HTTP/2.1", "Require HTTP/3", "Require HTTP/2.1"),
     ],
 )
@@ -248,7 +250,7 @@ def test_lexical_like_fallback_matches_body_and_tags() -> None:
     sql, params = _lexical_like_query(
         ["graphql"], table="lessons", codename=None, repo="r", pool=3, now=_NOW
     )
-    assert "l.body ILIKE %s OR l.tags_json ILIKE %s" in sql
+    assert "l.lexical_text ILIKE %s" in sql
     assert "%graphql%" in params
     assert "OFFSET" not in sql
     assert params[-1] == 3
@@ -260,14 +262,12 @@ def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
     )
 
     where, _, order = sql.partition("ORDER BY")
-    assert where.count("CAST((l.body ILIKE %s OR l.tags_json ILIKE %s) AS INTEGER)") == 2
+    assert where.count("CAST(l.lexical_text ILIKE %s AS INTEGER)") == 2
     assert ") >= %s" in where
     assert "LIMIT %s" in order
     assert "OFFSET" not in order
     assert params == [
         "%graphql%",
-        "%graphql%",
-        "%schema%",
         "%schema%",
         2,
         _NOW,
@@ -451,7 +451,7 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
     assert conn.candidate_calls == 8
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
+@pytest.mark.parametrize("query", ["C++", "C#", "F#", "N+12", "O(42)", "HTTP/2.1", "I/O", "A/B"])
 def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:
@@ -557,11 +557,29 @@ def test_token_empty_literal_lookup_is_bounded_escaped_and_scoped() -> None:
     assert ids == ["match"]
     assert len(calls) == 1
     sql, params = calls[0]
-    assert "l.body ILIKE %s ESCAPE '\\'" in sql
+    assert "l.lexical_text ILIKE %s ESCAPE '\\'" in sql
     assert "l.codename = %s" in sql
     assert "l.repo = %s" in sql
     assert params[0] == r"%修\_\%%"
     assert params[-1] == 400
+
+
+def test_token_empty_literal_lookup_nfkc_normalizes_before_prefilter() -> None:
+    calls: list[list[Any]] = []
+
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match",)]
+
+    class Connection:
+        def execute(self, _sql: str, params: list[Any]) -> Cursor:
+            calls.append(params)
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+
+    assert provider._lexical_ids(Connection(), "ｴﾗｰ", codename="c", repo="r", now=_NOW) == ["match"]
+    assert calls[0][0] == "%エラー%"
 
 
 @pytest.mark.parametrize(

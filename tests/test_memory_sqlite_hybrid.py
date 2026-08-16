@@ -101,7 +101,7 @@ def test_lexical_recall_keeps_compound_single_character_terms(
     assert out[0].id == match.id
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
+@pytest.mark.parametrize("query", ["C++", "C#", "F#", "N+12", "O(42)", "HTTP/2.1", "I/O", "A/B"])
 def test_default_chain_round_trips_symbolic_technical_terms(
     tmp_path: Path,
     query: str,
@@ -234,7 +234,7 @@ def test_default_chain_requires_mixed_query_unicode_subject(tmp_path: Path) -> N
     assert [item.id for item in out] == [relevant.id]
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
+@pytest.mark.parametrize("query", ["C++", "C#", "F#", "N+12", "O(42)", "HTTP/2.1", "I/O", "A/B"])
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,
     query: str,
@@ -510,10 +510,12 @@ def test_tokenize_mixed_query_emits_unicode_subject_concepts() -> None:
     [
         ("C++", "c++"),
         ("C#", "c#"),
+        ("F#", "f#"),
         ("N+12", "n+12"),
         ("O(42)", "o(42)"),
         ("HTTP/2.1", "http/2.1"),
         ("I/O", "i/o"),
+        ("A/B", "a/b"),
     ],
 )
 def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
@@ -535,6 +537,34 @@ def test_tokenize_splits_ordinary_hyphens_but_keeps_symbolic_compounds() -> None
     assert {"http/2", "c++", "c#", "n+1", "o(1)"}.issubset(tokens)
     assert {"http", "1"}.isdisjoint(tokens)
     assert len(tokens) == 7
+
+
+def test_tokenize_nfkc_casefolds_before_detecting_symbolic_compounds() -> None:
+    assert mod._tokenize("ＧｒａｐｈＱＬ Ｆ＃ Ａ／Ｂ") == [  # noqa: RUF001
+        "f#",
+        "a/b",
+        "graphql",
+    ]
+
+
+@pytest.mark.parametrize("compound", ["F#", "A/B"])
+def test_generic_symbolic_compound_does_not_double_count_constituents(compound: str) -> None:
+    query_tokens = mod._tokenize(f"GraphQL {compound}")
+
+    assert len(query_tokens) == 2
+    assert not mod._has_meaningful_lexical_overlap(f"Only {compound} is supported", query_tokens)
+
+
+def test_literal_only_query_uses_nfkc_surface_before_sqlite_prefilter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    lesson = provider.reflect(codename="c", repo="r", body="エラー処理の手順")
+
+    out = provider.recall(query="ｴﾗｰ", codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
 
 
 @pytest.mark.parametrize(
