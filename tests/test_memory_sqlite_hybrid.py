@@ -316,6 +316,58 @@ def test_default_chain_requires_contextual_major_version_identity(
 
 
 @pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+    ],
+)
+def test_default_chain_unversioned_runtime_query_matches_versioned_lesson(
+    tmp_path: Path,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=crowding_body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_requires_ipv4_identity(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Connect 192.168.1.3 database guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 192.168.1.2 database guidance",
+    )
+
+    out = load_provider(env).recall(
+        query="Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
     ("query_context", "lesson_context", "wrong_context"),
     [
         ("C compiler", "C language", "R language"),
@@ -1354,6 +1406,92 @@ def test_like_recall_requires_contextual_major_version_identity(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+    ],
+)
+def test_fts_recall_unversioned_runtime_query_matches_versioned_lesson(
+    provider: SqliteHybridProvider,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=crowding_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+    ],
+)
+def test_like_recall_unversioned_runtime_query_matches_versioned_lesson(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body=crowding_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_fts_recall_requires_ipv4_identity(provider: SqliteHybridProvider) -> None:
+    provider.reflect(codename="c", repo="r", body="Connect 192.168.1.3 database guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 192.168.1.2 database guidance",
+    )
+    assert provider._fts_ok is True
+
+    out = provider.recall(
+        query="Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_recall_requires_ipv4_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body="Connect 192.168.1.3 database guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 192.168.1.2 database guidance",
+    )
+
+    out = provider.recall(
+        query="Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="c", repo="r", body="The API client retries requests")
     relevant = provider.reflect(
@@ -1830,6 +1968,86 @@ def test_node_major_aliases_are_atomic_and_match_each_other() -> None:
 
 
 @pytest.mark.parametrize(
+    ("query", "crowding_lesson", "matching_lesson"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+    ],
+)
+def test_unversioned_runtime_query_matches_stored_version_companion(
+    query: str,
+    crowding_lesson: str,
+    matching_lesson: str,
+) -> None:
+    query_tokens = mod._tokenize(query)
+
+    assert not mod._has_meaningful_lexical_overlap(crowding_lesson, query_tokens)
+    assert mod._has_meaningful_lexical_overlap(matching_lesson, query_tokens)
+
+
+@pytest.mark.parametrize("runtime", ["Python 3", "Node 22", "Node.js 22", "NodeJS 22"])
+def test_version_identity_companion_does_not_double_count_overlap(runtime: str) -> None:
+    query_tokens = mod._tokenize(f"{runtime} migration")
+
+    assert not mod._has_meaningful_lexical_overlap(
+        f"{runtime} packaging guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        f"{runtime} migration guidance",
+        query_tokens,
+    )
+
+
+def test_ipv4_is_a_bounded_mandatory_identity() -> None:
+    query_tokens = mod._tokenize("Connect 192.168.1.2 database")
+
+    assert "192.168.1.2" in query_tokens
+    assert mod._requires_exact_lexical_tokens(query_tokens)
+    assert not mod._has_meaningful_lexical_overlap(
+        "Connect 192.168.1.3 database guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        "Connect 192.168.1.2 database guidance",
+        query_tokens,
+    )
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["0.0.0.0", "1.2.3.4", "127.0.0.1", "255.255.255.255"],
+)
+def test_ipv4_identity_accepts_bounded_octets_and_sentence_punctuation(address: str) -> None:
+    assert token_mod._is_ipv4_identity(address)
+    assert address in mod._tokenize(f"Connect {address}.")
+
+
+@pytest.mark.parametrize(
+    "invalid_or_compound",
+    [
+        "999.1.1.1",
+        "256.1.1.1",
+        "192.168.001.2",
+        "192.168.1.2:5432",
+        "192.168.1.2/24",
+        "host192.168.1.2",
+        "192.168.1.2host",
+    ],
+)
+def test_ipv4_identity_rejects_invalid_octets_and_compound_boundaries(
+    invalid_or_compound: str,
+) -> None:
+    assert not token_mod._is_ipv4_identity(invalid_or_compound)
+    assert not any(
+        token_mod._is_ipv4_identity(token)
+        for token in mod._tokenize(f"Connect {invalid_or_compound} database")
+    )
+
+
+@pytest.mark.parametrize(
     ("query", "forbidden_identity"),
     [
         ("Run 3 tests", "run 3"),
@@ -1894,8 +2112,6 @@ def test_tokenize_recognizes_dotted_version_before_sentence_period() -> None:
     [
         "1234.1",
         "1.1234",
-        "1.2.3.4",
-        "127.0.0.1",
         "2026.08.16",
         "TLSv1.3",
         "tls1.3",
@@ -2348,6 +2564,11 @@ def test_dense_requested_but_sqlite_vec_missing_falls_back_to_lexical(
         ("Fix C compiler warnings", "R compiler warnings", "C language warnings"),
         ("Fix TLS 1.3 configuration", "TLS 1.2 configuration", "TLS 1.3 configuration"),
         ("Fix NodeJS 22 runtime", "Node.js 20 runtime", "Node 22 runtime"),
+        (
+            "Connect 192.168.1.2 database",
+            "Connect 192.168.1.3 database",
+            "Connect 192.168.1.2 database",
+        ),
     ],
 )
 def test_dense_recall_requires_matching_query_identities(

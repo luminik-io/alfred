@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterator
+from ipaddress import AddressValueError, IPv4Address
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _MIN_LANGUAGE_STANDARD_DIGITS = 2
@@ -33,6 +34,10 @@ _DOTTED_VERSION_RE = re.compile(
     rf"(?:\.[0-9]{{1,{_MAX_DOTTED_VERSION_COMPONENT_DIGITS}}})"
     rf"{{{_MIN_DOTTED_VERSION_COMPONENTS - 1},{_MAX_DOTTED_VERSION_COMPONENTS - 1}}}"
     r"(?![A-Za-z0-9/]|\.[A-Za-z0-9])"
+)
+_IPV4_CANDIDATE_RE = re.compile(
+    r"(?<![A-Za-z0-9./:])(?:[0-9]{1,3}\.){3}[0-9]{1,3}"
+    r"(?![A-Za-z0-9/:]|\.[A-Za-z0-9])"
 )
 _MIN_MAJOR_VERSION_DIGITS = 1
 _MAX_MAJOR_VERSION_DIGITS = 2
@@ -141,11 +146,36 @@ def lexical_surface(text: str) -> str:
     return unicodedata.normalize("NFKC", text).casefold()
 
 
+def _is_ipv4_identity(token: str) -> bool:
+    """Return whether token is one strict dotted-quad IPv4 identity."""
+
+    if _IPV4_CANDIDATE_RE.fullmatch(token) is None:
+        return False
+    try:
+        IPv4Address(token)
+    except AddressValueError:
+        return False
+    return True
+
+
+def _contextual_major_base(token: str) -> str | None:
+    """Return the non-identity technology named by a runtime version."""
+
+    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) is None:
+        return None
+    return "python" if token.startswith("python ") else "node"
+
+
 def _compound_matches(text: str) -> list[re.Match[str]]:
     """Return symbolic compounds whose constituents must not double-count."""
 
     matches = [
         *_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text),
+        *(
+            match
+            for match in _IPV4_CANDIDATE_RE.finditer(text)
+            if _is_ipv4_identity(match.group(0))
+        ),
         *_DOTTED_VERSION_RE.finditer(text),
         *_CONTEXTUAL_MAJOR_VERSION_RE.finditer(text),
         *_LANGUAGE_IDENTITY_RE.finditer(text),
@@ -158,6 +188,7 @@ def _is_identity_token(token: str) -> bool:
 
     return (
         bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
+        or _is_ipv4_identity(token)
         or bool(_DOTTED_VERSION_RE.fullmatch(token))
         or bool(_CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token))
         or bool(_LANGUAGE_IDENTITY_RE.fullmatch(token))
@@ -172,6 +203,8 @@ def _english_inflection_form(token: str) -> str:
     Unicode concepts, and protected words unchanged.
     """
 
+    if token == "nodejs":
+        return "node"
     if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) and token.startswith(
         _NODE_MAJOR_ALIAS_PREFIXES
     ):
@@ -320,7 +353,11 @@ def _unicode_concepts(text: str) -> Iterator[str]:
             yield normalized
 
 
-def meaningful_tokens(text: str) -> Iterator[str]:
+def meaningful_tokens(
+    text: str,
+    *,
+    include_version_companions: bool = False,
+) -> Iterator[str]:
     """Yield meaningful overlap concepts without applying the query cap.
 
     Symbolic terms such as ``C++``, ``C#``, ``N+12``, ``O(42)``, and
@@ -328,19 +365,25 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     components of one to three digits each, such as ``1.3`` or ``10.20.30``.
     Explicit Python, Node, and Node.js major versions have one or two digits
     and stay bound to their runtime context, such as ``Python 3`` or ``Node
-    22``. Words
-    inside any compound span are not yielded a second time. A lesson containing
-    only ``HTTP/2`` therefore contributes one overlap concept, not both
-    ``http/2`` and ``http``. Ordinary punctuation is only a spelling separator,
-    so ``cold-start`` yields ``cold`` and ``start`` and can match the spelling
-    ``cold start``.
+    22``. Valid dotted-quad IPv4 addresses stay intact. Words inside a compound
+    span are not yielded a second time. A lesson containing only ``HTTP/2``
+    therefore contributes one overlap concept, not both ``http/2`` and
+    ``http``. Candidate overlap can request one non-identity base technology
+    companion for a contextual major version. Ordinary punctuation is only a
+    spelling separator, so ``cold-start`` yields ``cold`` and ``start`` and can
+    match the spelling ``cold start``.
     """
 
     text = lexical_surface(text)
     compounds = _compound_matches(text)
     unicode_words = [span for span in _unicode_word_spans(text) if not span[2].isascii()]
     for match in compounds:
-        yield re.sub(r"\s+", " ", match.group(0))
+        compound = re.sub(r"\s+", " ", match.group(0))
+        yield compound
+        if include_version_companions:
+            companion = _contextual_major_base(compound)
+            if companion is not None:
+                yield companion
 
     yield from _unicode_concepts(text)
 
@@ -494,7 +537,7 @@ def has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
     required = required_lexical_overlap(query_tokens)
     query_token_set = {_english_inflection_form(token) for token in query_tokens}
     matched: set[str] = set()
-    for token in meaningful_tokens(text):
+    for token in meaningful_tokens(text, include_version_companions=True):
         token = _english_inflection_form(token)
         if token not in query_token_set:
             continue

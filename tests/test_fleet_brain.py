@@ -625,6 +625,47 @@ def test_recall_query_requires_contextual_major_version_identity(
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+    ],
+)
+def test_recall_query_unversioned_runtime_matches_versioned_lesson(
+    brain: FleetBrain,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=crowding_body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_requires_ipv4_identity(brain: FleetBrain) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Connect 192.168.1.3 database guidance",
+    )
+    matching_body = "Connect 192.168.1.2 database guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Connect 192.168.1.2 database",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
     matching_body = "Use C++ for the client"

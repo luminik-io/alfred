@@ -957,6 +957,81 @@ def test_lexical_like_fallback_requires_contextual_major_version_identity(
 
 
 @pytest.mark.parametrize(
+    ("query", "crowding_text", "matching_text"),
+    [
+        ("Python migration", "python 3 packaging guidance", "python 3 migration guidance"),
+        ("Node runtime", "node 22 packaging guidance", "node 22 runtime guidance"),
+        ("Node.js runtime", "node.js 22 packaging guidance", "node.js 22 runtime guidance"),
+        ("NodeJS runtime", "nodejs 22 packaging guidance", "nodejs 22 runtime guidance"),
+    ],
+)
+def test_lexical_like_fallback_unversioned_runtime_matches_versioned_lesson(
+    query: str,
+    crowding_text: str,
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("crowding", crowding_text, _NOW),
+                ("matching", matching_text, _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=1)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+def test_lexical_like_fallback_requires_ipv4_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", "connect 192.168.1.3 database guidance", _NOW),
+                (
+                    "matching",
+                    "connect 192.168.1.2 database guidance",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
     ("query_alias", "lesson_alias"),
     [
         ("Node", "Node.js"),
@@ -2021,6 +2096,11 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
         ("Fix C compiler warnings", "r compiler warnings", "c language warnings"),
         ("Fix TLS 1.3 configuration", "tls 1.2 configuration", "tls 1.3 configuration"),
         ("Fix NodeJS 22 runtime", "node.js 20 runtime", "node 22 runtime"),
+        (
+            "Connect 192.168.1.2 database",
+            "connect 192.168.1.3 database",
+            "connect 192.168.1.2 database",
+        ),
     ],
 )
 def test_dense_recall_requires_matching_query_identities(
