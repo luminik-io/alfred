@@ -199,6 +199,39 @@ def test_converse_auto_selection_probes_the_process_environment(monkeypatch) -> 
     assert captured["environment"] == "process"
 
 
+def test_converse_auto_selection_keeps_repairable_claude_auth_state(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import server.setup as setup
+
+    config_dir = tmp_path / ".claude"
+    config_dir.mkdir()
+    (config_dir / ".credentials.json").write_text("{}", encoding="utf-8")
+    for name in (cc.ENGINE_ENV, cc.FALLBACK_ENGINE_ENV, "ALFRED_ENGINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    monkeypatch.delenv("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR", raising=False)
+    monkeypatch.setattr(cc, "hydrate_engine_paths", lambda _engine: None)
+    monkeypatch.setattr(
+        setup,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "path": "/bin/claude",
+                "ready": False,
+                "state": "auth_required",
+            }
+        ],
+    )
+
+    assert cc.converse_engine_from_env() == "claude"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+
+    monkeypatch.setenv("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR", "1")
+    assert cc.converse_engine_from_env() == ""
+
+
 def test_converse_engine_honors_configured_binary_override(monkeypatch, tmp_path: Path) -> None:
     import server.setup as setup
 

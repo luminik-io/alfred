@@ -55,7 +55,12 @@ from .config import (
     normalize_model_name,
 )
 from .context_governor import govern_prompt_context
-from .engine_registry import DEFAULT_ENGINE_REGISTRY, EngineProbeResult, probe_engine
+from .engine_registry import (
+    DEFAULT_ENGINE_REGISTRY,
+    EngineProbeResult,
+    EngineProbeState,
+    probe_engine,
+)
 from .memory_runtime import (
     BEGIN_MARKER,
     load_runtime_memory,
@@ -140,20 +145,26 @@ def _engine_not_ready_result(engine: str, readiness: EngineProbeResult) -> Claud
     )
 
 
+def engine_readiness_allows_dispatch_attempt(engine: str, state: EngineProbeState | str) -> bool:
+    """Allow ready engines and Claude's bounded stale-credential repair attempt."""
+
+    if state == EngineProbeState.READY:
+        return True
+    return (
+        engine == "claude"
+        and state == EngineProbeState.AUTH_REQUIRED
+        and not _truthy_env("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR")
+        and _claude_credentials_file().is_file()
+    )
+
+
 def _engine_readiness_failure(engine: str, readiness: EngineProbeResult) -> ClaudeResult | None:
     """Translate one readiness result into a fail-closed dispatch result."""
 
-    if (
-        engine == "claude"
-        and readiness.state == "auth_required"
-        and not _truthy_env("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR")
-        and _claude_credentials_file().is_file()
-    ):
+    if engine_readiness_allows_dispatch_attempt(engine, readiness.state):
         # Let one real invocation reach the existing result classifier. Only a
         # confirmed authentication response may quarantine the disk credential
         # and retry; a transient readiness-probe failure never mutates auth.
-        return None
-    if readiness.ready:
         return None
     return _engine_not_ready_result(engine, readiness)
 

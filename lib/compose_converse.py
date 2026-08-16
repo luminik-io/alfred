@@ -1683,6 +1683,7 @@ def _engine_cli_path(engine: str) -> str | None:
 def _available_engine_clis() -> dict[str, str]:
     """Return subscription CLIs resolved by the canonical setup detector."""
 
+    from agent_runner import engine_readiness_allows_dispatch_attempt
     from server.setup import engine_clis
 
     hydrate_engine_paths("hybrid")
@@ -1690,6 +1691,9 @@ def _available_engine_clis() -> dict[str, str]:
         str(item.get("name") or "").strip().lower(): str(item.get("path") or "").strip()
         for item in engine_clis(environment="process")
         if item.get("ready")
+        or engine_readiness_allows_dispatch_attempt(
+            str(item.get("name") or "").strip().lower(), str(item.get("state") or "")
+        )
     }
 
 
