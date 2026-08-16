@@ -508,6 +508,35 @@ def test_lexical_like_fallback_requires_one_character_language_identity() -> Non
     assert ids == ["c"]
 
 
+def test_lexical_like_fallback_requires_symbolic_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("c-sharp", "fix c# compiler warnings", _NOW),
+                ("c-plus-plus", "fix c++ compiler warnings", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix C++ compiler warnings",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["c-plus-plus"]
+
+
 def test_lexical_like_fallback_recalls_unicode_query() -> None:
     query = "認証エラーを修正"
     lesson_body = f"手順: {query}してください"

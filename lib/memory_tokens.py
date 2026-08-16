@@ -79,6 +79,12 @@ def _compound_matches(text: str) -> list[re.Match[str]]:
     return list(_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text))
 
 
+def _is_identity_token(token: str) -> bool:
+    """Return whether a query concept must match rather than only add rank."""
+
+    return token in _ONE_CHAR_TECHNICAL_TOKENS or bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
+
+
 def _unicode_script(char: str, previous: str | None) -> str:
     """Classify one Unicode character into a stable stdlib script bucket."""
 
@@ -263,7 +269,7 @@ def has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
 
     required = required_lexical_overlap(query_tokens)
     query_token_set = set(query_tokens)
-    required_identity_tokens = query_token_set & _ONE_CHAR_TECHNICAL_TOKENS
+    required_identity_tokens = {token for token in query_token_set if _is_identity_token(token)}
     matched: set[str] = set()
     for token in meaningful_tokens(text):
         if token not in query_token_set:

@@ -340,6 +340,20 @@ def test_recall_query_requires_one_character_language_identity(brain: FleetBrain
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+def test_recall_query_requires_symbolic_identity(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Fix C# compiler warnings")
+    matching_body = "Fix C++ compiler warnings"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix C++ compiler warnings",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
     matching_body = "Use C++ for the client"

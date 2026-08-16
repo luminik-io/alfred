@@ -127,6 +127,25 @@ def test_default_chain_round_trips_symbolic_technical_terms(
     assert [item.id for item in out] == [lesson.id]
 
 
+def test_default_chain_requires_symbolic_query_identity(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Fix C# compiler warnings")
+    relevant = writer.reflect(codename="c", repo="r", body="Fix C++ compiler warnings")
+
+    out = load_provider(env).recall(
+        query="Fix C++ compiler warnings",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred-home"),
@@ -369,6 +388,17 @@ def test_recall_requires_one_character_language_identity(
     relevant = provider.reflect(codename="c", repo="r", body="Fix C compiler warnings")
 
     out = provider.recall(query="Fix C compiler warnings", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_symbolic_query_identity(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Fix C# compiler warnings")
+    relevant = provider.reflect(codename="c", repo="r", body="Fix C++ compiler warnings")
+
+    out = provider.recall(query="Fix C++ compiler warnings", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -650,6 +680,18 @@ def test_generic_symbolic_compound_does_not_double_count_constituents(compound: 
 
     assert len(query_tokens) == 2
     assert not mod._has_meaningful_lexical_overlap(f"Only {compound} is supported", query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_lesson"),
+    [
+        ("Fix C++ compiler warnings", "Fix C# compiler warnings"),
+        ("Optimize O(n) parser warnings", "Optimize O(42) parser warnings"),
+        ("Use A/B release testing", "Use A/C release testing"),
+    ],
+)
+def test_symbolic_query_identity_is_mandatory(query: str, wrong_lesson: str) -> None:
+    assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
 
 
 def test_literal_only_query_uses_nfkc_surface_before_sqlite_prefilter(
