@@ -2020,6 +2020,62 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
     )
 
 
+def test_graphify_fallback_inspects_explicit_code_memory_scope_while_mcp_stays_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    repo.joinpath(".git").mkdir(parents=True)
+    binary = runtime / "bin" / "codebase-memory-mcp"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+    cache_root = tmp_path / "cache"
+    graph_dir = _scope_cache_dir(cache_root, repo)
+    graph_dir.mkdir(parents=True)
+    graph_dir.joinpath("graph.db").write_text("ready", encoding="utf-8")
+    env = {
+        "HOME": str(tmp_path / "home"),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_MCP": "0",
+        "ALFRED_GRAPHIFY_MCP": "1",
+        "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": str(workspace),
+        "WORKSPACE_SUBDIR": "",
+    }
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "configured": True,
+                    "enabled": False,
+                    "installed": False,
+                }
+            ]
+        },
+    )
+
+    code_memory = setup_mod.code_memory_status(env)
+    capability_plane = setup_mod.capability_status(code_memory, launcher_env=env)
+    code_graph = next(
+        item for item in capability_plane["capabilities"] if item["key"] == "code_graph"
+    )
+
+    assert code_memory["enabled"] is False
+    assert code_memory["repos"]["selected"] == ["api"]
+    assert code_memory["graph_dir"] == str(graph_dir)
+    assert code_memory["index_present"] is True
+    assert code_graph["state"] == "ready"
+    assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
+
+
 def test_relative_graph_is_not_probed_against_setup_server_cwd(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2588,6 +2644,80 @@ def test_setup_expands_tilde_workspace_and_repo_map_paths(
     assert code_memory["graph_dir"] == str(
         _scope_cache_dir(cache_root, workspace_repo, mapped_repo)
     )
+
+
+def test_launcher_and_setup_use_runtime_home_for_mapped_tilde_without_home(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    repo = runtime / "repos" / "api"
+    repo.joinpath(".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    binary.chmod(0o755)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "ALFRED_REPO_LOCAL_MAP": "api=~/repos/api",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": str(tmp_path / "unused-workspace"),
+        "WORKSPACE_SUBDIR": "",
+    }
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+    expected = _scope_cache_dir(cache_root, repo)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert launcher.stdout.strip() == str(expected)
+    assert code_memory["repos"]["configured_existing"] == ["api"]
+    assert code_memory["graph_dir"] == str(expected)
+
+
+@pytest.mark.parametrize(
+    ("env", "expected_base"),
+    [
+        ({"HOME": "/configured/home", "ALFRED_HOME": "/runtime"}, Path("/configured/home")),
+        ({"ALFRED_HOME": "/runtime"}, Path("/runtime")),
+        ({}, Path.home()),
+    ],
+)
+def test_mapped_tilde_home_precedence(
+    env: dict[str, str],
+    expected_base: Path,
+) -> None:
+    path = setup_mod._code_memory_configured_repo_path(
+        env,
+        "api",
+        {"api": "~/repos/api"},
+    )
+
+    assert path == expected_base / "repos" / "api"
+
+
+def test_mapped_tilde_does_not_use_platform_fallback_when_home_is_configured() -> None:
+    path = setup_mod._code_memory_configured_repo_path(
+        {
+            "HOME": "~",
+            "ALFRED_HOME": "/runtime",
+            "WORKSPACE_ROOT": "/workspace",
+            "WORKSPACE_SUBDIR": "",
+        },
+        "api",
+        {"api": "~/repos/api"},
+    )
+
+    assert path == Path("/workspace/~/repos/api")
 
 
 def test_bootstrap_status_uses_full_slug_repo_local_map_for_bare_code_memory_repo(

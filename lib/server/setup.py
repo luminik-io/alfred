@@ -891,9 +891,13 @@ def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
     launcher_env = env or _code_memory_launcher_env()
     enabled = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_MCP", default=True)
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
+    graphify_fallback = (
+        _config_flag(launcher_env, "ALFRED_GRAPHIFY_MCP", default=False)
+        and _code_memory_config(launcher_env, "ALFRED_GRAPHIFY_FALLBACK").lower() == "code-memory"
+    )
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
-    if enabled:
+    if enabled or graphify_fallback:
         repo_scope, resolved_repo_paths = _code_memory_repo_scope_with_paths(launcher_env)
     else:
         repo_scope = _disabled_code_memory_repo_scope(launcher_env)
@@ -1671,13 +1675,27 @@ def _code_memory_configured_repo_path(
     mapping = repo_map if repo_map is not None else _code_memory_repo_map(env)
     mapped = mapping.get(name, mapping.get(name.casefold(), name))
     if mapped == "~" or mapped.startswith("~/"):
-        expanded = _safe_expand_path(mapped)
-        if expanded:
-            return expanded
+        home = _code_memory_mapped_path_home(env)
+        if home is not None:
+            suffix = mapped.removeprefix("~/") if mapped != "~" else ""
+            mapped_path = home / suffix
+            if mapped_path.is_absolute():
+                return mapped_path
+            mapped = str(mapped_path)
     path = Path(mapped)
     if path.is_absolute():
         return path
     return _code_memory_workspace(env) / path
+
+
+def _code_memory_mapped_path_home(env: Mapping[str, str]) -> Path | None:
+    """Match the launcher's HOME, ALFRED_HOME, platform fallback order."""
+
+    for key in ("HOME", "ALFRED_HOME"):
+        raw = env.get(key, "").strip()
+        if raw:
+            return Path(raw)
+    return _safe_home({})
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:
