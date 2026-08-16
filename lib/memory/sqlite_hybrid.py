@@ -758,7 +758,7 @@ class SqliteHybridProvider:
         like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
         base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
         out: list[str] = []
-        page_size = _lexical_fallback_page_size(self.pool)
+        page_size = _lexical_fallback_page_size()
         after: tuple[str, str] | None = None
         for _page in range(_MAX_LEXICAL_FALLBACK_PAGES):
             cursor_sql = ""
@@ -1268,10 +1268,10 @@ def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
     return ", ".join(out) if out else None
 
 
-def _lexical_fallback_page_size(pool: int) -> int:
-    """Cap one fallback page so the total candidate budget stays absolute."""
+def _lexical_fallback_page_size() -> int:
+    """Return the fixed candidate page size, independent of result count."""
 
-    return min(max(1, int(pool)), _LEXICAL_FALLBACK_PAGE_SIZE)
+    return _LEXICAL_FALLBACK_PAGE_SIZE
 
 
 def _scope_clause(codename: str | None, repo: str | None, *, alias: str) -> tuple[str, list[Any]]:

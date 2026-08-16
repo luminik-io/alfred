@@ -1070,7 +1070,7 @@ class PgvectorProvider:
             except Exception as exc:
                 _LOG.debug("memory.pgvector: full-text query failed, using ILIKE: %s", exc)
         out: list[str] = []
-        page_size = _lexical_fallback_page_size(self.pool)
+        page_size = _lexical_fallback_page_size()
         after: tuple[datetime, str] | None = None
         for _page in range(_MAX_LEXICAL_FALLBACK_PAGES):
             sql, params = _lexical_like_query(

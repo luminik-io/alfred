@@ -15,7 +15,7 @@ Covers:
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -374,12 +374,49 @@ def test_like_fallback_pages_past_substring_only_matches(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+@pytest.mark.parametrize("pool", [1, 2])
+def test_like_fallback_candidate_page_is_independent_of_result_pool(
+    monkeypatch: pytest.MonkeyPatch,
+    pool: int,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=pool)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The API rapid response policy is documented",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    for index in range(pool * 8):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"Rapid rollout note {index}",
+            created_at=datetime(2026, 1, 2, tzinfo=UTC) + timedelta(seconds=index),
+        )
+
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="api rapid", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id") and "FROM lessons l WHERE" in statement
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert len(candidate_queries) == 1
+    assert "LIMIT 50" in candidate_queries[0]
+
+
 def test_like_fallback_stops_after_eight_candidate_pages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
     provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
-    for index in range(30):
+    for index in range(450):
         provider.reflect(
             codename="c",
             repo="r",
@@ -400,6 +437,7 @@ def test_like_fallback_stops_after_eight_candidate_pages(
     ]
     assert out == []
     assert len(candidate_queries) == 8
+    assert all("LIMIT 50" in statement for statement in candidate_queries)
     assert all(" OFFSET " not in statement for statement in candidate_queries)
 
 

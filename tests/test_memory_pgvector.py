@@ -26,7 +26,7 @@ import os
 import re
 import sys
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -254,8 +254,13 @@ def test_lexical_like_fallback_pages_past_substring_only_matches() -> None:
                 self.candidate_sql.append(normalized)
                 pages = {
                     0: [
-                        ("weak-newest", "rapid rollout newest", "[]", _NOW),
-                        ("weak-newer", "rapid rollout newer", "[]", _NOW),
+                        (
+                            f"weak-{index:02}",
+                            f"rapid rollout {index}",
+                            "[]",
+                            _NOW - timedelta(seconds=index),
+                        )
+                        for index in range(50)
                     ],
                     1: [
                         (
@@ -287,6 +292,58 @@ def test_lexical_like_fallback_pages_past_substring_only_matches() -> None:
     assert "l.created_at < %s OR (l.created_at = %s AND l.id > %s)" in conn.candidate_sql[1]
 
 
+@pytest.mark.parametrize("pool", [1, 2])
+def test_lexical_like_fallback_candidate_page_is_independent_of_result_pool(pool: int) -> None:
+    rows = [
+        (
+            f"weak-{index:02}",
+            f"rapid rollout {index}",
+            "[]",
+            _NOW - timedelta(seconds=index),
+        )
+        for index in range(pool * 8)
+    ]
+    rows.append(
+        (
+            "valid-older",
+            "api rapid response policy",
+            "[]",
+            _NOW - timedelta(minutes=1),
+        )
+    )
+
+    class Cursor:
+        def __init__(self, page: list[tuple[Any, ...]]) -> None:
+            self.page = page
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.page
+
+    class Connection:
+        def __init__(self) -> None:
+            self.offset = 0
+            self.page_sizes: list[int] = []
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" not in normalized:
+                raise AssertionError(f"unexpected SQL: {normalized}")
+            page_size = int(params[-1])
+            self.page_sizes.append(page_size)
+            page = rows[self.offset : self.offset + page_size]
+            self.offset += len(page)
+            return Cursor(page)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=pool)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(conn, "api rapid", codename="c", repo="r", now=_NOW)
+
+    assert ids == ["valid-older"]
+    assert conn.page_sizes == [50]
+
+
 def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:
@@ -313,7 +370,7 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
                         "[]",
                         datetime(2026, 7, 9 - (page // 8), tzinfo=UTC),
                     )
-                    for index in range(2)
+                    for index in range(50)
                 ]
                 return Cursor(rows)
             raise AssertionError(f"unexpected SQL: {normalized}")
