@@ -34,24 +34,25 @@
   }
 
   /* The segmented tab list is a fixed-height shell with inner triggers; grow
-     the shell so each trigger clears 36px, and let triggers fill it. */
+     the shell so each trigger clears the 38px phone target, and let triggers
+     fill it. */
   [data-slot="tabs-list"] {
     height: auto;
     min-height: 42px;
   }
 
   [data-slot="tabs-trigger"] {
-    min-height: 36px;
+    min-height: 38px;
   }
 
   /* The Alfred segmented control (alfred-tabs-list) already floors its row at
-     2.25rem; lift the inner trigger to a full 36px target too. */
+     2.25rem; lift the inner trigger to the same 38px target too. */
   .alfred-tabs-list {
     min-height: 2.75rem;
   }
 
   .alfred-tabs-list [role="tab"] {
-    min-height: 36px;
+    min-height: 38px;
   }
 }
 
