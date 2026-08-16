@@ -34,15 +34,15 @@ _DOTTED_VERSION_RE = re.compile(
     rf"{{{_MIN_DOTTED_VERSION_COMPONENTS - 1},{_MAX_DOTTED_VERSION_COMPONENTS - 1}}}"
     r"(?![A-Za-z0-9/]|\.[A-Za-z0-9])"
 )
-_MAJOR_VERSION_CONTEXTS = ("python", "node")
 _MIN_MAJOR_VERSION_DIGITS = 1
 _MAX_MAJOR_VERSION_DIGITS = 2
 _CONTEXTUAL_MAJOR_VERSION_RE = re.compile(
-    rf"(?<![A-Za-z0-9])(?:{'|'.join(_MAJOR_VERSION_CONTEXTS)})[ \t]+"
+    r"(?<![A-Za-z0-9])(?:python|node(?:\.js)?)[ \t]+"
     rf"[1-9][0-9]{{{_MIN_MAJOR_VERSION_DIGITS - 1},{_MAX_MAJOR_VERSION_DIGITS - 1}}}"
     r"(?![A-Za-z0-9]|\.[A-Za-z0-9])",
     re.IGNORECASE,
 )
+_NODE_JS_MAJOR_PREFIX = "node.js "
 _ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
 _MAX_QUERY_TOKENS = 24
 _MAX_RETRIEVAL_VARIANTS_PER_CONCEPT = 2
@@ -51,6 +51,12 @@ MAX_LITERAL_QUERY_CANDIDATES = 400
 _IRREGULAR_ENGLISH_INFLECTIONS = {
     "analyses": "analysis",
     "statuses": "status",
+}
+_REGULAR_SIBILANT_ENGLISH_INFLECTIONS = {
+    "boxes": "box",
+    "classes": "class",
+    "processes": "process",
+    "watches": "watch",
 }
 _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
     {
@@ -145,6 +151,8 @@ def _english_inflection_form(token: str) -> str:
     Unicode concepts, and protected words unchanged.
     """
 
+    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) and token.startswith(_NODE_JS_MAJOR_PREFIX):
+        return f"node {token.removeprefix(_NODE_JS_MAJOR_PREFIX)}"
     if (
         len(token) < 4
         or len(token) > _MAX_INFLECTION_TOKEN_LENGTH
@@ -156,6 +164,9 @@ def _english_inflection_form(token: str) -> str:
     irregular = _IRREGULAR_ENGLISH_INFLECTIONS.get(token)
     if irregular is not None:
         return irregular
+    sibilant = _REGULAR_SIBILANT_ENGLISH_INFLECTIONS.get(token)
+    if sibilant is not None:
+        return sibilant
     if token.endswith("ies") and len(token) > 4:
         return f"{token[:-3]}y"
     if token.endswith("sses"):
@@ -276,8 +287,9 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     Symbolic terms such as ``C++``, ``C#``, ``N+12``, ``O(42)``, and
     ``HTTP/2.1`` stay intact. Standalone numeric versions have two or three
     components of one to three digits each, such as ``1.3`` or ``10.20.30``.
-    Explicit Python and Node major versions have one or two digits and stay
-    bound to their runtime context, such as ``Python 3`` or ``Node 22``. Words
+    Explicit Python, Node, and Node.js major versions have one or two digits
+    and stay bound to their runtime context, such as ``Python 3`` or ``Node
+    22``. Words
     inside any compound span are not yielded a second time. A lesson containing
     only ``HTTP/2`` therefore contributes one overlap concept, not both
     ``http/2`` and ``http``. Ordinary punctuation is only a spelling separator,

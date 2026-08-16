@@ -230,6 +230,11 @@ def test_default_chain_requires_atomic_language_standard_identity(
             "Node 20 runtime guidance",
             "Node 22 runtime guidance",
         ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
     ],
 )
 def test_default_chain_requires_contextual_major_version_identity(
@@ -589,6 +594,14 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("analyses", "analyses"),
         ("analysis", "analyses"),
         ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("class", "classes"),
+        ("classes", "class"),
     ],
 )
 def test_fts_recall_preserves_inflection_retrieval_variants(
@@ -719,6 +732,14 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("analyses", "analyses"),
         ("analysis", "analyses"),
         ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("class", "classes"),
+        ("classes", "class"),
     ],
 )
 def test_like_recall_preserves_inflection_retrieval_variants(
@@ -920,6 +941,11 @@ def test_like_recall_requires_atomic_language_standard_identity(
             "Node 20 runtime guidance",
             "Node 22 runtime guidance",
         ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
     ],
 )
 def test_fts_recall_requires_contextual_major_version_identity(
@@ -949,6 +975,11 @@ def test_fts_recall_requires_contextual_major_version_identity(
             "Fix Node 22 runtime",
             "Node 20 runtime guidance",
             "Node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
         ),
     ],
 )
@@ -1218,6 +1249,9 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
     [
         ("schemas", "schema"),
         ("policies", "policy"),
+        ("processes", "process"),
+        ("watches", "watch"),
+        ("boxes", "box"),
         ("classes", "class"),
         ("statuses", "status"),
         ("analyses", "analysis"),
@@ -1241,6 +1275,7 @@ def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
         ("class", "class", "clas"),
         ("CSS", "css", "cs"),
         ("Redis", "redis", "redi"),
+        ("caches", "cache", "cach"),
     ],
 )
 def test_overlap_does_not_strip_technical_s_endings(
@@ -1327,15 +1362,21 @@ def test_atomic_language_standard_identity_is_mandatory(
     assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
 
 
-@pytest.mark.parametrize("runtime", ["Python 3", "Node 22"])
-def test_tokenize_recognizes_contextual_major_version_identity(runtime: str) -> None:
-    assert mod._tokenize(runtime) == [runtime.casefold()]
+@pytest.mark.parametrize(
+    ("runtime", "canonical"),
+    [("Python 3", "python 3"), ("Node 22", "node 22"), ("Node.js 22", "node 22")],
+)
+def test_tokenize_recognizes_contextual_major_version_identity(
+    runtime: str,
+    canonical: str,
+) -> None:
+    assert mod._tokenize(runtime) == [canonical]
 
 
 def test_contextual_major_versions_casefold_and_keep_punctuation_boundaries() -> None:
-    tokens = mod._tokenize("Upgrade PYTHON 3, then Node 22.")
+    tokens = mod._tokenize("Upgrade PYTHON 3, Node 22, then NODE.JS 20.")
 
-    assert {"python 3", "node 22"}.issubset(tokens)
+    assert {"python 3", "node 22", "node 20"}.issubset(tokens)
 
 
 @pytest.mark.parametrize(
@@ -1343,6 +1384,7 @@ def test_contextual_major_versions_casefold_and_keep_punctuation_boundaries() ->
     [
         ("Fix Python 3 migration", "Python 2 migration guidance"),
         ("Fix Node 22 runtime", "Node 20 runtime guidance"),
+        ("Fix Node.js 22 runtime", "Node.js 20 runtime guidance"),
     ],
 )
 def test_contextual_major_version_identity_is_mandatory(
@@ -1350,6 +1392,15 @@ def test_contextual_major_version_identity_is_mandatory(
     wrong_lesson: str,
 ) -> None:
     assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
+
+
+def test_node_js_major_alias_is_atomic_and_matches_node_major() -> None:
+    query_tokens = mod._tokenize("Fix Node.js 22 runtime")
+
+    assert query_tokens == ["node 22", "runtime"]
+    assert mod._has_meaningful_lexical_overlap("Node.js 22 runtime guidance", query_tokens)
+    assert mod._has_meaningful_lexical_overlap("Node 22 runtime guidance", query_tokens)
+    assert not mod._has_meaningful_lexical_overlap("Node.js 20 runtime guidance", query_tokens)
 
 
 @pytest.mark.parametrize(
@@ -1361,6 +1412,9 @@ def test_contextual_major_version_identity_is_mandatory(
         ("Python 03 migration", "python 03"),
         ("Python 123 migration", "python 123"),
         ("Python3 migration", "python 3"),
+        ("Node.js22 migration", "node 22"),
+        ("XNode.js 22 migration", "node 22"),
+        ("Node.js 22beta migration", "node 22"),
     ],
 )
 def test_tokenize_does_not_create_generic_or_unbounded_major_identities(

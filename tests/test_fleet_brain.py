@@ -350,6 +350,14 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
         ("analyses", "analyses"),
         ("analysis", "analyses"),
         ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("class", "classes"),
+        ("classes", "class"),
     ],
 )
 def test_recall_query_preserves_inflection_retrieval_variants(
@@ -497,6 +505,11 @@ def test_recall_query_requires_atomic_language_standard_identity(
             "Fix Node 22 runtime",
             "Node 20 runtime guidance",
             "Node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
         ),
     ],
 )

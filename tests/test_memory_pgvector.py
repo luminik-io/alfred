@@ -707,6 +707,12 @@ def test_lexical_like_fallback_requires_atomic_language_standard_identity(
             "node 20 runtime guidance",
             "node 22 runtime guidance",
         ),
+        (
+            "Fix Node.js 22 runtime",
+            "node.js 22",
+            "node.js 20 runtime guidance",
+            "node.js 22 runtime guidance",
+        ),
     ],
 )
 def test_lexical_like_fallback_requires_contextual_major_version_identity(
@@ -929,6 +935,14 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("analyses", "analyses"),
         ("analysis", "analyses"),
         ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("class", "classes"),
+        ("classes", "class"),
     ],
 )
 def test_lexical_like_fallback_preserves_inflection_retrieval_variants(
