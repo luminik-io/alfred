@@ -114,8 +114,8 @@ def test_reference_solutions_are_graded_as_intended():
 
 def test_recall_query_surfaces_the_relevant_lesson():
     # Each task's recall_query must literally match its relevant lesson body so
-    # the local FleetBrain recall (literal substring, then recency backfill)
-    # returns the right lesson in the top-K. This is what gives recall 100%.
+    # the local FleetBrain recall returns the right lesson. This is what gives
+    # recall 100% without unrelated recency backfill.
     fixture = mb.load_fixture(FIXTURE_DIR)
     provider = mb.seed_fleet_provider(fixture.lessons, codename=fixture.codename, repo=fixture.repo)
     for task in fixture.tasks:
@@ -145,10 +145,8 @@ def test_stub_ab_shows_full_delta_on_hard_fixture():
     assert report.memory_on.repeated_mistake_rate == pytest.approx(0.0)
     assert report.repeated_mistake_rate_delta == pytest.approx(1.0)
 
-    # Retrieval: the right lesson is recalled for all ten tasks. The shipped
-    # SQLite-first chain returns 18 lessons across those tasks, including eight
-    # distractors where fixture terms overlap.
+    # Retrieval: the shipped SQLite-first chain returns only the one relevant
+    # lesson for each task. Unrelated recent lessons do not backfill the result.
     assert report.memory_on.retrieval.recall == pytest.approx(1.0)
     assert report.memory_on.retrieval.recalled_relevant == EXPECTED_N
-    assert report.memory_on.retrieval.recalled_total == 18
-    assert report.memory_on.retrieval.precision == pytest.approx(10 / 18, abs=1e-3)
+    assert report.memory_on.retrieval.precision == pytest.approx(1.0)

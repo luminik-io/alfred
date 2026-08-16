@@ -71,6 +71,26 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
+from memory_tokens import MAX_DENSE_QUERY_CANDIDATES, MAX_LITERAL_QUERY_CANDIDATES
+from memory_tokens import escape_like_literal as _escape_like_literal
+from memory_tokens import (
+    has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
+)
+from memory_tokens import identity_regex_pattern as _identity_regex_pattern
+from memory_tokens import is_identity_token as _is_identity_token
+from memory_tokens import lexical_surface as _lexical_surface
+from memory_tokens import literal_fallback_query as _literal_fallback_query
+from memory_tokens import query_token_groups as _query_token_groups
+from memory_tokens import required_identities_match as _required_identities_match
+from memory_tokens import (
+    required_lexical_overlap as _required_lexical_overlap,
+)
+from memory_tokens import (
+    requires_exact_lexical_tokens as _requires_exact_lexical_tokens,
+)
+from memory_tokens import (
+    tokenize as _tokenize,
+)
 
 # Reuse the exact helpers the SQLite hybrid provider uses so the two stores stay
 # in lockstep: the same embedder config, the same RRF fusion (k=60 convention),
@@ -81,14 +101,16 @@ from .sqlite_hybrid import (
     _DEFAULT_EMBEDDING_DIM,
     _DEFAULT_POOL,
     _DEFAULT_RRF_K,
+    _LEXICAL_MIGRATION_BATCH_SIZE,
+    _MAX_LEXICAL_FALLBACK_PAGES,
     Embedder,
     _clean_tags,
     _env_flag,
     _env_int,
     _from_iso,
+    _lexical_fallback_page_size,
     _OllamaEmbedder,
     _reciprocal_rank_fusion,
-    _tokenize,
     _union_provenance,
 )
 
@@ -304,8 +326,53 @@ def _scope_clause(
     return "AND " + " AND ".join(clauses), params
 
 
+def _stored_lexical_text(body: str, tags_json: str) -> str:
+    """Build the canonical body+tags surface for a stored lesson row."""
+
+    try:
+        decoded = json.loads(tags_json) if tags_json else []
+    except (json.JSONDecodeError, TypeError):
+        decoded = []
+    tags = [str(tag) for tag in decoded] if isinstance(decoded, list) else []
+    return _lexical_surface(" ".join([body, *tags]).strip())
+
+
+def _column_exists(conn: Any, table: str, column: str) -> bool:
+    row = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = %s AND column_name = %s)",
+        [table, column],
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _backfill_lexical_text(conn: Any, table: str) -> None:
+    """Populate a newly introduced lexical column in bounded keyset batches."""
+
+    after_id = ""
+    while True:
+        rows = conn.execute(
+            f"SELECT id, body, tags_json FROM {table} "
+            "WHERE lexical_text = '' AND id > %s ORDER BY id LIMIT %s",
+            [after_id, _LEXICAL_MIGRATION_BATCH_SIZE],
+        ).fetchall()
+        if not rows:
+            return
+        updates: list[tuple[str, str, str]] = []
+        for lesson_id, body, tags_json in rows:
+            surface = _stored_lexical_text(str(body), str(tags_json))
+            updates.append((surface, surface, str(lesson_id)))
+        conn.cursor().executemany(
+            f"UPDATE {table} SET lexical_text = %s, "
+            "body_tsv = to_tsvector('english', %s) "
+            "WHERE id = %s AND lexical_text = ''",
+            updates,
+        )
+        after_id = str(rows[-1][0])
+
+
 def _lexical_query(
-    tokens: list[str],
+    token_groups: list[tuple[str, ...]],
     *,
     table: str,
     codename: str | None,
@@ -313,28 +380,126 @@ def _lexical_query(
     pool: int,
     now: datetime,
 ) -> tuple[str, list[Any]]:
-    """Full-text arm: ``to_tsquery`` OR-of-tokens ranked by ``ts_rank``.
+    """Full-text arm: bounded English-lexeme overlap ranked by ``ts_rank``.
 
-    Mirrors the SQLite FTS arm, which OR-joins the query tokens and ranks by
-    BM25. Postgres has no BM25 built in, so ``ts_rank`` over the maintained
-    ``body_tsv`` column is the lexical relevance signal; ties fall back to
-    recency. Scope + validity filtered in the same ``WHERE``.
+    The OR query keeps the GIN-index candidate path broad. A CTE asks
+    PostgreSQL to normalize, drop stop words from, and de-duplicate the query's
+    English lexemes. A correlated count then enforces one match when only one
+    distinct lexeme remains, or two matches otherwise, before ``LIMIT``. This
+    keeps PostgreSQL stemming authoritative and prevents duplicate stems or
+    high-ranked weak matches from passing the overlap gate. ``ts_rank`` over
+    the maintained ``body_tsv`` column is the relevance signal; ties fall back
+    to recency. Scope + validity stay in the same ``WHERE``.
     """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
-    tsquery = " | ".join(tokens)
+    variants = [variant for group in token_groups for variant in group]
+    concept_indexes = [
+        concept_index for concept_index, group in enumerate(token_groups) for _variant in group
+    ]
+    canonical_concepts = [group[0] for group in token_groups for _variant in group]
+    tsquery = " | ".join(variants)
     sql = (
+        "WITH query_lexemes AS ("
+        "SELECT DISTINCT concept_index, "
+        "plainto_tsquery('english', canonical) AS canonical_query, "
+        "plainto_tsquery('english', token) AS lexeme_query "
+        "FROM unnest(%s::int[], %s::text[], %s::text[]) "
+        "AS raw(concept_index, canonical, token) "
+        "WHERE numnode(plainto_tsquery('english', token)) > 0"
+        ") "
         f"SELECT l.id FROM {table} l "
         "WHERE l.body_tsv @@ to_tsquery('english', %s) "
+        "AND (SELECT COUNT(DISTINCT q.canonical_query) FROM query_lexemes q "
+        "WHERE l.body_tsv @@ q.lexeme_query) "
+        ">= LEAST(2, (SELECT COUNT(DISTINCT canonical_query) FROM query_lexemes)) "
         f"{scope_sql} "
         "ORDER BY ts_rank(l.body_tsv, to_tsquery('english', %s)) DESC, l.created_at DESC "
         "LIMIT %s"
     )
-    params = [tsquery, *scope_params, tsquery, pool]
+    params = [
+        concept_indexes,
+        canonical_concepts,
+        variants,
+        tsquery,
+        *scope_params,
+        tsquery,
+        pool,
+    ]
     return sql, params
 
 
 def _lexical_like_query(
-    tokens: list[str],
+    token_groups: list[tuple[str, ...]],
+    *,
+    table: str,
+    codename: str | None,
+    repo: str | None,
+    pool: int,
+    now: datetime,
+    after: tuple[datetime, str] | None = None,
+) -> tuple[str, list[Any]]:
+    """ILIKE fallback lexical arm (required overlap, most-recent first).
+
+    The counterpart to the SQLite ``LIKE`` fallback: used only if the tsvector
+    column could not be provisioned. ``lexical_text`` is the canonical NFKC,
+    case-folded body+tags surface the full-text arm indexes. The overlap
+    requirement narrows each bounded page. The caller uses a strict eight-page
+    keyset budget and enforces exact token overlap on these returned rows, so
+    substring-only matches cannot cause unbounded OFFSET scans or hydration
+    queries.
+    """
+    scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
+    like_params: list[Any] = []
+    clauses: list[str] = []
+    for group in token_groups:
+        if _is_identity_token(group[0]):
+            group_clauses = ["l.lexical_text ~ %s" for _variant in group]
+            like_params.extend(_identity_regex_pattern(variant) for variant in group)
+        else:
+            group_clauses = ["l.lexical_text ILIKE %s ESCAPE '\\'" for _variant in group]
+            like_params.extend(f"%{_escape_like_literal(variant)}%" for variant in group)
+        clauses.append(f"({' OR '.join(group_clauses)})")
+    like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
+    cursor_sql = ""
+    cursor_params: list[Any] = []
+    if after is not None:
+        created_at, lesson_id = after
+        cursor_sql = "AND (l.created_at < %s OR (l.created_at = %s AND l.id > %s)) "
+        cursor_params = [created_at, created_at, lesson_id]
+    sql = (
+        f"SELECT l.id, l.lexical_text, l.created_at FROM {table} l "
+        f"WHERE ({like_score_sql}) >= %s {scope_sql} {cursor_sql}"
+        "ORDER BY l.created_at DESC, l.id ASC LIMIT %s"
+    )
+    params = [
+        *like_params,
+        _required_lexical_overlap([group[0] for group in token_groups]),
+        *scope_params,
+        *cursor_params,
+        pool,
+    ]
+    return sql, params
+
+
+def _fts_represents_all_concepts(conn: Any, concepts: list[str]) -> bool:
+    """Ask PostgreSQL whether English FTS preserves every query concept.
+
+    Canonical concepts are already de-duplicated and bounded by the shared
+    tokenizer. A single aggregate query keeps PostgreSQL's configured English
+    dictionary authoritative instead of maintaining a partial stop-word list
+    in Alfred.
+    """
+
+    rows = conn.execute(
+        "SELECT COALESCE(bool_and(numnode(plainto_tsquery('english', concept)) > 0), FALSE) "
+        "FROM unnest(%s::text[]) AS concepts(concept)",
+        [concepts],
+    ).fetchall()
+    return bool(rows and rows[0][0])
+
+
+def _lexical_literal_query(
+    text: str,
     *,
     table: str,
     codename: str | None,
@@ -342,24 +507,20 @@ def _lexical_like_query(
     pool: int,
     now: datetime,
 ) -> tuple[str, list[Any]]:
-    """ILIKE fallback lexical arm (any-token substring, most-recent first).
+    """Build one bounded escaped lookup for a token-empty Unicode query."""
 
-    The counterpart to the SQLite ``LIKE`` fallback: used only if the tsvector
-    column could not be provisioned. Matches the SAME body+tags surface the
-    full-text arm indexes, so a tag-only hit is still recalled.
-    """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
-    like_params: list[Any] = []
-    clauses: list[str] = []
-    for tok in tokens:
-        clauses.append("(l.body ILIKE %s OR l.tags_json ILIKE %s)")
-        like_params.extend([f"%{tok}%", f"%{tok}%"])
-    like_sql = " OR ".join(clauses)
+    pattern = f"%{_escape_like_literal(text)}%"
     sql = (
-        f"SELECT l.id FROM {table} l WHERE ({like_sql}) {scope_sql} "
-        "ORDER BY l.created_at DESC LIMIT %s"
+        f"SELECT l.id FROM {table} l "
+        "WHERE l.lexical_text ILIKE %s ESCAPE '\\' "
+        f"{scope_sql} ORDER BY l.created_at DESC, l.id ASC LIMIT %s"
     )
-    params = [*like_params, *scope_params, pool]
+    params = [
+        pattern,
+        *scope_params,
+        min(max(1, pool), MAX_LITERAL_QUERY_CANDIDATES),
+    ]
     return sql, params
 
 
@@ -632,6 +793,7 @@ class PgvectorProvider:
                     repo          TEXT NOT NULL,
                     body          TEXT NOT NULL,
                     tags_json     TEXT NOT NULL DEFAULT '[]',
+                    lexical_text  TEXT NOT NULL DEFAULT '',
                     severity      TEXT NOT NULL DEFAULT 'info',
                     firing_id     TEXT,
                     created_at    TIMESTAMPTZ NOT NULL,
@@ -645,6 +807,7 @@ class PgvectorProvider:
                 )
                 """
             )
+            lexical_text_exists = _column_exists(conn, lessons, "lexical_text")
             # Additive migrations for a pre-existing table (idempotent).
             for column, ddl in (
                 ("kind", f"TEXT NOT NULL DEFAULT '{DEFAULT_LESSON_KIND}'"),
@@ -652,8 +815,11 @@ class PgvectorProvider:
                 ("superseded_by", "TEXT"),
                 ("provenance", "TEXT"),
                 ("body_tsv", "TSVECTOR"),
+                ("lexical_text", "TEXT NOT NULL DEFAULT ''"),
             ):
                 conn.execute(f"ALTER TABLE {lessons} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+            if not lexical_text_exists:
+                _backfill_lexical_text(conn, lessons)
             conn.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS {anchors} (
@@ -824,6 +990,7 @@ class PgvectorProvider:
             lesson.repo,
             lesson.body,
             json.dumps(lesson.tags),
+            fts_text,
             lesson.severity,
             lesson.firing_id,
             _aware(lesson.created_at),
@@ -837,12 +1004,13 @@ class PgvectorProvider:
             params.append(fts_text)
         conn.execute(
             f"INSERT INTO {self._lessons} "
-            "(id, codename, repo, body, tags_json, severity, firing_id, created_at, "
+            "(id, codename, repo, body, tags_json, lexical_text, severity, firing_id, created_at, "
             " updated_at, kind, valid_until, superseded_by, provenance, body_tsv) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, {body_tsv_sql}) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, {body_tsv_sql}) "
             "ON CONFLICT (id) DO UPDATE SET "
             "  codename = EXCLUDED.codename, repo = EXCLUDED.repo, body = EXCLUDED.body, "
-            "  tags_json = EXCLUDED.tags_json, severity = EXCLUDED.severity, "
+            "  tags_json = EXCLUDED.tags_json, lexical_text = EXCLUDED.lexical_text, "
+            "  severity = EXCLUDED.severity, "
             "  firing_id = EXCLUDED.firing_id, created_at = EXCLUDED.created_at, "
             "  updated_at = EXCLUDED.updated_at, kind = EXCLUDED.kind, "
             "  valid_until = EXCLUDED.valid_until, superseded_by = EXCLUDED.superseded_by, "
@@ -883,7 +1051,7 @@ class PgvectorProvider:
 
     @staticmethod
     def _fts_text(lesson: Lesson) -> str:
-        return " ".join([lesson.body, " ".join(lesson.tags)]).strip()
+        return _lexical_surface(" ".join([lesson.body, " ".join(lesson.tags)]).strip())
 
     # ----- read path -----------------------------------------------------
 
@@ -899,21 +1067,36 @@ class PgvectorProvider:
         """Return up to ``limit`` lessons for the scope, hybrid-ranked.
 
         Same contract and shape as the SQLite hybrid ``recall``: anchored lessons
-        lead, then lexical + dense arms fused with RRF, then a recency baseline so
-        a scoped rail is never blank. Any DB error returns ``[]`` so the chained
-        provider falls through -- recall never breaks a firing.
+        lead, then lexical + dense arms are fused with RRF. When both arms return
+        no candidates, a nonempty query stays empty instead of adding recency.
+        Calls without a query use a recency baseline. Any DB error returns ``[]``
+        so the chained provider falls through without breaking a firing.
         """
         cap = max(1, int(limit))
-        text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
+        has_query = bool((query or "").strip())
+        text = (query or "").strip()
+        query_tokens = _tokenize(text) if has_query else []
         try:
             anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
             with self._connect() as conn:
                 now = datetime.now(UTC)
-                lexical = self._lexical_ids(conn, text, codename=codename, repo=repo, now=now)
+                lexical = (
+                    self._lexical_ids(conn, text, codename=codename, repo=repo, now=now)
+                    if has_query
+                    else []
+                )
                 dense: list[str] = []
-                if self._vec_ok:
-                    dense = self._dense_ids(conn, text, codename=codename, repo=repo, now=now)
-                if not lexical and not dense:
+                if has_query and query_tokens and self._vec_ok:
+                    dense = self._dense_ids(
+                        conn,
+                        text,
+                        codename=codename,
+                        repo=repo,
+                        now=now,
+                        query_tokens=query_tokens,
+                    )
+                    dense = self._filter_dense_identity_ids(conn, dense, query_tokens)[: self.pool]
+                if not lexical and not dense and not has_query:
                     fused_ids = self._recency_ids(
                         conn, codename=codename, repo=repo, limit=cap, now=now
                     )
@@ -959,31 +1142,67 @@ class PgvectorProvider:
         repo: str | None,
         now: datetime,
     ) -> list[str]:
-        tokens = _tokenize(text)
+        text = _lexical_surface(text)
+        token_groups = _query_token_groups(text)
+        tokens = [group[0] for group in token_groups]
         if not tokens:
-            return []
-        if self._fts_ok:
-            sql, params = _lexical_query(
-                tokens,
+            literal = _literal_fallback_query(text)
+            if literal is None:
+                return []
+            sql, params = _lexical_literal_query(
+                literal,
                 table=self._lessons,
                 codename=codename,
                 repo=repo,
                 pool=self.pool,
                 now=now,
             )
+            return [str(row[0]) for row in conn.execute(sql, params).fetchall()]
+        if self._fts_ok and not _requires_exact_lexical_tokens(tokens):
             try:
-                return [r[0] for r in conn.execute(sql, params).fetchall()]
+                if _fts_represents_all_concepts(conn, tokens):
+                    sql, params = _lexical_query(
+                        token_groups,
+                        table=self._lessons,
+                        codename=codename,
+                        repo=repo,
+                        pool=self.pool,
+                        now=now,
+                    )
+                    ids = [r[0] for r in conn.execute(sql, params).fetchall()]
+                    return ids
             except Exception as exc:
                 _LOG.debug("memory.pgvector: full-text query failed, using ILIKE: %s", exc)
-        sql, params = _lexical_like_query(
-            tokens,
-            table=self._lessons,
-            codename=codename,
-            repo=repo,
-            pool=self.pool,
-            now=now,
-        )
-        return [r[0] for r in conn.execute(sql, params).fetchall()]
+        out: list[str] = []
+        page_size = _lexical_fallback_page_size()
+        after: tuple[datetime, str] | None = None
+        for _page in range(_MAX_LEXICAL_FALLBACK_PAGES):
+            sql, params = _lexical_like_query(
+                token_groups,
+                table=self._lessons,
+                codename=codename,
+                repo=repo,
+                pool=page_size,
+                now=now,
+                after=after,
+            )
+            rows = conn.execute(sql, params).fetchall()
+            if not rows:
+                break
+            for lesson_id, lexical_text, _created_at in rows:
+                if _has_meaningful_lexical_overlap(str(lexical_text), tokens):
+                    out.append(str(lesson_id))
+                if len(out) >= self.pool:
+                    break
+            if len(out) >= self.pool:
+                break
+            next_after = (rows[-1][2], str(rows[-1][0]))
+            if next_after == after:
+                break
+            after = next_after
+            if len(rows) < page_size:
+                break
+        return out
 
     def _dense_ids(
         self,
@@ -993,18 +1212,21 @@ class PgvectorProvider:
         codename: str | None,
         repo: str | None,
         now: datetime,
+        query_tokens: list[str],
     ) -> list[str]:
         if self.embedder is None or not text:
             return []
         vec = self.embedder(text)
         if not vec or len(vec) != int(self.dimensions):
             return []
+        has_required_identities = any(_is_identity_token(token) for token in query_tokens)
+        candidate_limit = MAX_DENSE_QUERY_CANDIDATES if has_required_identities else self.pool
         sql, params = _dense_query(
             _vector_literal(vec),
             table=self._lessons,
             codename=codename,
             repo=repo,
-            pool=self.pool,
+            pool=candidate_limit,
             now=now,
         )
         try:
@@ -1012,6 +1234,25 @@ class PgvectorProvider:
         except Exception as exc:
             _LOG.debug("memory.pgvector: dense KNN failed: %s", exc)
             return []
+
+    def _filter_dense_identity_ids(
+        self,
+        conn: Any,
+        ids: list[str],
+        query_tokens: list[str],
+    ) -> list[str]:
+        if not ids or not any(_is_identity_token(token) for token in query_tokens):
+            return ids
+        rows = conn.execute(
+            f"SELECT id, lexical_text FROM {self._lessons} WHERE id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+        text_by_id = {str(row[0]): str(row[1]) for row in rows}
+        return [
+            lesson_id
+            for lesson_id in ids
+            if _required_identities_match(text_by_id.get(lesson_id, ""), query_tokens)
+        ]
 
     def _recency_ids(
         self,

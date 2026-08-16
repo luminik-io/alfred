@@ -120,6 +120,18 @@ def test_fleet_brain_provider_recall_filters(
     assert [L.body for L in only_lucius] == ["A"]
 
 
+def test_fleet_brain_provider_rejects_low_signal_literal_query(
+    fleet_brain_provider: FleetBrainProvider,
+) -> None:
+    fleet_brain_provider.reflect(
+        codename="lucius",
+        repo="acme-org/api",
+        body="Fix cache invalidation before the release.",
+    )
+
+    assert fleet_brain_provider.recall(repo="acme-org/api", query="fix") == []
+
+
 # ---------------------------------------------------------------------------
 # NullMemoryProvider
 # ---------------------------------------------------------------------------
