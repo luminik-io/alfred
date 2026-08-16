@@ -269,12 +269,12 @@ def test_stub_ab_retrieval_and_off_arm_recalls_nothing():
     fixture = mb.load_fixture(FIXTURE_DIR)
     report = mb.run_memory_ab(fixture, solver=mb.make_stub_solver())
 
-    # memory ON: the right lesson is always recalled (recall 1.0); distractors
-    # in the top-3 keep precision below 1 (4 relevant of 12 recalled).
+    # memory ON: each query recalls its relevant lesson and no unrelated recent
+    # lesson, so both recall and precision are 1.0.
     assert report.memory_on.retrieval.recall == pytest.approx(1.0)
     assert report.memory_on.retrieval.recalled_relevant == 4
-    assert report.memory_on.retrieval.recalled_total == 12
-    assert report.memory_on.retrieval.precision == pytest.approx(4 / 12, abs=1e-3)
+    assert report.memory_on.retrieval.recalled_total == 4
+    assert report.memory_on.retrieval.precision == pytest.approx(1.0)
 
     # memory OFF: a true no-memory control - nothing recalled at all.
     off_attempts = [a for a in report.attempts if a.arm == "memory_off"]
