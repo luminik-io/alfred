@@ -453,25 +453,34 @@ def _with_pr_evidence(repo: str, pr: dict, *, deadline: float) -> tuple[dict, bo
     number = pr.get("number")
     if not isinstance(number, int):
         return pr, False
+    acquired = False
     try:
-        with _PR_EVIDENCE_SLOTS:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return {**pr, "_github_evidence_unavailable": True}, False
-            evidence = _gh_json(
-                [
-                    "pr",
-                    "view",
-                    str(number),
-                    "--repo",
-                    repo,
-                    "--json",
-                    _PR_EVIDENCE_FIELDS,
-                ],
-                timeout=min(2, remaining),
-            )
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {**pr, "_github_evidence_unavailable": True}, False
+        acquired = _PR_EVIDENCE_SLOTS.acquire(timeout=remaining)
+        if not acquired:
+            return {**pr, "_github_evidence_unavailable": True}, False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {**pr, "_github_evidence_unavailable": True}, False
+        evidence = _gh_json(
+            [
+                "pr",
+                "view",
+                str(number),
+                "--repo",
+                repo,
+                "--json",
+                _PR_EVIDENCE_FIELDS,
+            ],
+            timeout=min(2, remaining),
+        )
     except Exception:
         evidence = None
+    finally:
+        if acquired:
+            _PR_EVIDENCE_SLOTS.release()
     if not isinstance(evidence, dict):
         return {**pr, "_github_evidence_unavailable": True}, True
     return {**pr, **evidence}, False

@@ -426,6 +426,111 @@ def test_expired_global_evidence_deadline_skips_calls_without_dropping_cards(mon
     assert board["errors"] == []
 
 
+def test_pr_evidence_slot_acquisition_uses_remaining_board_deadline(monkeypatch):
+    acquire_timeouts: list[float | None] = []
+    releases = 0
+    viewed: list[int] = []
+
+    class SaturatedEvidenceSlots:
+        def acquire(self, *, timeout=None):
+            acquire_timeouts.append(timeout)
+            return False
+
+        def release(self):
+            nonlocal releases
+            releases += 1
+
+    def fake_gh(args, **kwargs):
+        viewed.append(int(args[2]))
+        return {"headRefOid": "a" * 40}
+
+    monkeypatch.setattr(sb, "_PR_EVIDENCE_SLOTS", SaturatedEvidenceSlots())
+    monkeypatch.setattr(sb.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+
+    enriched, errored = sb._with_pr_evidence(
+        "acme/api",
+        {"number": 1},
+        deadline=100.75,
+    )
+
+    assert acquire_timeouts == [pytest.approx(0.75)]
+    assert releases == 0
+    assert viewed == []
+    assert enriched["_github_evidence_unavailable"] is True
+    assert errored is False
+
+
+def test_overlapping_board_build_stops_waiting_for_saturated_evidence_slot(monkeypatch):
+    pr = {
+        "number": 1,
+        "title": "ship it",
+        "url": "u1",
+        "state": "OPEN",
+        "author": {"login": "alice"},
+        "createdAt": _iso(2),
+        "mergedAt": None,
+        "isDraft": False,
+        "labels": [{"name": "agent:authored"}],
+        "headRefName": "senior-dev/ship-it",
+    }
+    first_view_started = threading.Event()
+    release_first_view = threading.Event()
+    second_finished = threading.Event()
+    view_calls: list[int] = []
+    results: dict[str, dict] = {}
+    failures: list[BaseException] = []
+
+    def fake_gh(args, **kwargs):
+        if args[:2] == ["pr", "list"]:
+            return [pr]
+        if args[:2] == ["pr", "view"]:
+            view_calls.append(int(args[2]))
+            first_view_started.set()
+            assert release_first_view.wait(timeout=2)
+            return {"headRefOid": "a" * 40}
+        if args[0] == "issue":
+            return []
+        return None
+
+    def build(name: str, finished: threading.Event | None = None):
+        try:
+            results[name] = sb.build_board(["acme/api"], now=NOW)
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            failures.append(exc)
+        finally:
+            if finished is not None:
+                finished.set()
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+    monkeypatch.setattr(sb, "_PR_EVIDENCE_WORKERS", 1)
+    monkeypatch.setattr(sb, "_PR_EVIDENCE_SLOTS", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(sb, "_PR_EVIDENCE_DEADLINE_SECONDS", 0.05)
+    monkeypatch.setattr(sb.time, "monotonic", lambda: 100.0)
+
+    first = threading.Thread(target=build, args=("first",))
+    first.start()
+    assert first_view_started.wait(timeout=1)
+
+    second = threading.Thread(target=build, args=("second", second_finished))
+    second.start()
+    completed_within_budget = second_finished.wait(timeout=0.5)
+
+    release_first_view.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert completed_within_budget is True
+    assert first.is_alive() is False
+    assert second.is_alive() is False
+    assert failures == []
+    second_card = results["second"]["columns"]["in_progress"][0]
+    assert second_card["github_evidence"] is None
+    assert second_card["github_evidence_unavailable"] is True
+    assert results["second"]["errors"] == []
+    assert view_calls == [1]
+
+
 def test_github_evidence_marks_capped_connections_without_guessing_totals():
     item = {
         "changedFiles": 240,
