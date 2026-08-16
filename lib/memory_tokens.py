@@ -20,6 +20,15 @@ _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
     r"(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+_MIN_DOTTED_VERSION_COMPONENTS = 2
+_MAX_DOTTED_VERSION_COMPONENTS = 3
+_MAX_DOTTED_VERSION_COMPONENT_DIGITS = 3
+_DOTTED_VERSION_RE = re.compile(
+    rf"(?<![A-Za-z0-9./])[0-9]{{1,{_MAX_DOTTED_VERSION_COMPONENT_DIGITS}}}"
+    rf"(?:\.[0-9]{{1,{_MAX_DOTTED_VERSION_COMPONENT_DIGITS}}})"
+    rf"{{{_MIN_DOTTED_VERSION_COMPONENTS - 1},{_MAX_DOTTED_VERSION_COMPONENTS - 1}}}"
+    r"(?![A-Za-z0-9/]|\.[A-Za-z0-9])"
+)
 _ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
 _MAX_QUERY_TOKENS = 24
 _MAX_RETRIEVAL_VARIANTS_PER_CONCEPT = 2
@@ -95,13 +104,21 @@ def lexical_surface(text: str) -> str:
 def _compound_matches(text: str) -> list[re.Match[str]]:
     """Return symbolic compounds whose constituents must not double-count."""
 
-    return list(_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text))
+    matches = [
+        *_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text),
+        *_DOTTED_VERSION_RE.finditer(text),
+    ]
+    return sorted(matches, key=lambda match: (match.start(), match.end()))
 
 
 def _is_identity_token(token: str) -> bool:
     """Return whether a query concept must match rather than only add rank."""
 
-    return token in _ONE_CHAR_TECHNICAL_TOKENS or bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
+    return (
+        token in _ONE_CHAR_TECHNICAL_TOKENS
+        or bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
+        or bool(_DOTTED_VERSION_RE.fullmatch(token))
+    )
 
 
 def _english_inflection_form(token: str) -> str:
@@ -241,11 +258,13 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     """Yield meaningful overlap concepts without applying the query cap.
 
     Symbolic terms such as ``C++``, ``C#``, ``N+12``, ``O(42)``, and
-    ``HTTP/2.1`` stay intact. Words inside any compound span are not yielded a
-    second time. A lesson containing only ``HTTP/2`` therefore contributes one
-    overlap concept, not both ``http/2`` and ``http``. Ordinary punctuation is
-    only a spelling separator, so ``cold-start`` yields ``cold`` and ``start``
-    and can match the spelling ``cold start``.
+    ``HTTP/2.1`` stay intact. Standalone numeric versions have two or three
+    components of one to three digits each, such as ``1.3`` or ``10.20.30``.
+    Words inside any compound span are not yielded a second time. A lesson
+    containing only ``HTTP/2`` therefore contributes one overlap concept, not
+    both ``http/2`` and ``http``. Ordinary punctuation is only a spelling
+    separator, so ``cold-start`` yields ``cold`` and ``start`` and can match the
+    spelling ``cold start``.
     """
 
     text = lexical_surface(text)

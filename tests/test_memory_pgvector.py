@@ -586,6 +586,58 @@ def test_lexical_like_fallback_requires_symbolic_identity() -> None:
     assert ids == ["c-plus-plus"]
 
 
+@pytest.mark.parametrize(
+    ("query", "version", "wrong_text", "matching_text"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "1.3",
+            "tls 1.2 configuration guidance",
+            "tls 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "3.13",
+            "python 3.12 runtime guidance",
+            "python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_lexical_like_fallback_requires_dotted_version_identity(
+    query: str,
+    version: str,
+    wrong_text: str,
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", wrong_text, _NOW),
+                ("matching", matching_text, _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert f"%{version}%" in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
 def test_lexical_like_fallback_recalls_unicode_query() -> None:
     query = "認証エラーを修正"
     lesson_body = f"手順: {query}してください"

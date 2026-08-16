@@ -146,6 +146,41 @@ def test_default_chain_requires_symbolic_query_identity(tmp_path: Path) -> None:
     assert [item.id for item in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_default_chain_requires_dotted_version_identity(
+    tmp_path: Path,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred-home"),
@@ -677,6 +712,67 @@ def test_recall_requires_symbolic_query_identity(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_fts_recall_requires_dotted_version_identity(
+    provider: SqliteHybridProvider,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_like_recall_requires_dotted_version_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="c", repo="r", body="The API client retries requests")
     relevant = provider.reflect(
@@ -998,6 +1094,46 @@ def test_unicode_word_is_one_overlap_concept(
 )
 def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
     assert mod._tokenize(query) == [expected]
+
+
+@pytest.mark.parametrize("version", ["1.3", "3.13", "10.20.30", "123.456.789"])
+def test_tokenize_recognizes_bounded_standalone_dotted_versions(version: str) -> None:
+    query_tokens = mod._tokenize(f"Fix TLS {version} configuration")
+
+    assert version in query_tokens
+    assert not mod._has_meaningful_lexical_overlap(
+        "TLS 9.9 configuration guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        f"TLS {version} configuration guidance",
+        query_tokens,
+    )
+
+
+def test_tokenize_recognizes_dotted_version_before_sentence_period() -> None:
+    assert "1.3" in mod._tokenize("Use TLS 1.3.")
+
+
+@pytest.mark.parametrize(
+    "not_version",
+    [
+        "1234.1",
+        "1.1234",
+        "1.2.3.4",
+        "127.0.0.1",
+        "2026.08.16",
+        "TLSv1.3",
+        "tls1.3",
+        "1.3beta",
+    ],
+)
+def test_tokenize_rejects_unbounded_or_embedded_dotted_versions(not_version: str) -> None:
+    assert all("." not in token for token in mod._tokenize(not_version))
+
+
+def test_http_version_compound_does_not_double_count_dotted_constituent() -> None:
+    assert mod._tokenize("HTTP/2.1") == ["http/2.1"]
 
 
 @pytest.mark.parametrize(

@@ -426,6 +426,35 @@ def test_recall_query_requires_symbolic_identity(brain: FleetBrain) -> None:
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_recall_query_requires_dotted_version_identity(
+    brain: FleetBrain,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=wrong_body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
     matching_body = "Use C++ for the client"
