@@ -224,11 +224,10 @@ def test_fts_enabled_symbolic_queries_use_exact_bounded_fallback(
                 assert params[-1] == 50
                 return Cursor(
                     [
-                        ("collision", collision_body, "[]", _NOW),
+                        ("collision", collision_body.casefold(), _NOW),
                         (
                             "matching",
-                            matching_body,
-                            "[]",
+                            matching_body.casefold(),
                             _NOW - timedelta(seconds=1),
                         ),
                     ]
@@ -317,7 +316,6 @@ def test_lexical_like_fallback_pages_past_substring_only_matches() -> None:
                         (
                             f"weak-{index:02}",
                             f"rapid rollout {index}",
-                            "[]",
                             _NOW - timedelta(seconds=index),
                         )
                         for index in range(50)
@@ -326,7 +324,6 @@ def test_lexical_like_fallback_pages_past_substring_only_matches() -> None:
                         (
                             "valid-older",
                             "api rapid response policy",
-                            "[]",
                             datetime(2026, 7, 8, tzinfo=UTC),
                         )
                     ],
@@ -358,7 +355,6 @@ def test_lexical_like_fallback_candidate_page_is_independent_of_result_pool(pool
         (
             f"weak-{index:02}",
             f"rapid rollout {index}",
-            "[]",
             _NOW - timedelta(seconds=index),
         )
         for index in range(pool * 8)
@@ -367,7 +363,6 @@ def test_lexical_like_fallback_candidate_page_is_independent_of_result_pool(pool
         (
             "valid-older",
             "api rapid response policy",
-            "[]",
             _NOW - timedelta(minutes=1),
         )
     )
@@ -427,7 +422,6 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
                     (
                         f"weak-{page:02}-{index}",
                         f"rapid rollout {page}-{index}",
-                        "[]",
                         datetime(2026, 7, 9 - (page // 8), tzinfo=UTC),
                     )
                     for index in range(50)
@@ -464,7 +458,7 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
         def execute(self, sql: str, _params: Any) -> Cursor:
             normalized = " ".join(sql.split())
             if "FROM lessons l WHERE" in normalized:
-                return Cursor([("match", f"Prefer {query} for this case.", "[]", _NOW)])
+                return Cursor([("match", f"prefer {query.casefold()} for this case.", _NOW)])
             raise AssertionError(f"unexpected SQL: {normalized}")
 
     provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
@@ -487,7 +481,7 @@ def test_lexical_like_fallback_recalls_unicode_query() -> None:
 
     class Cursor:
         def fetchall(self) -> list[tuple[Any, ...]]:
-            return [("match", lesson_body, "[]", _NOW)]
+            return [("match", lesson_body.casefold(), _NOW)]
 
     class Connection:
         def execute(self, sql: str, _params: Any) -> Cursor:
@@ -508,11 +502,10 @@ def test_lexical_like_fallback_requires_unicode_subject_in_mixed_query() -> None
     class Cursor:
         def fetchall(self) -> list[tuple[Any, ...]]:
             return [
-                ("api-only", "The API client retries requests", "[]", _NOW),
+                ("api-only", "the api client retries requests", _NOW),
                 (
                     "relevant",
-                    "API の課金エラーを修正する手順",
-                    "[]",
+                    "api の課金エラーを修正する手順",
                     _NOW - timedelta(seconds=1),
                 ),
             ]
@@ -536,6 +529,34 @@ def test_lexical_like_fallback_requires_unicode_subject_in_mixed_query() -> None
     )
 
     assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_matches_unicode_subject_stored_only_in_tag() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert normalized.startswith("SELECT l.id, l.lexical_text")
+            return Cursor([("match", "api billing guidance 課金", _NOW)])
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API 課金",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["match"]
 
 
 def test_token_empty_literal_lookup_is_bounded_escaped_and_scoped() -> None:
@@ -595,7 +616,7 @@ def test_lexical_like_fallback_matches_hyphenated_spelling_variants(
 ) -> None:
     class Cursor:
         def fetchall(self) -> list[tuple[Any, ...]]:
-            return [("match", lesson_body, "[]", _NOW)]
+            return [("match", lesson_body.casefold(), _NOW)]
 
     class Connection:
         def execute(self, sql: str, _params: Any) -> Cursor:

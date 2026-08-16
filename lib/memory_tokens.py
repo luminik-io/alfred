@@ -105,23 +105,27 @@ def _unicode_concepts(text: str) -> Iterator[str]:
         if raw.isascii():
             continue
         normalized = unicodedata.normalize("NFKC", raw).casefold()
-        if len(normalized) > 1:
-            yield normalized
-
         segment: list[str] = []
         script: str | None = None
+        script_runs: list[tuple[str, str]] = []
         for char in normalized:
             next_script = "ascii" if char.isascii() else _unicode_script(char, script)
             if script is not None and next_script != script:
                 token = "".join(segment)
                 if not token.isascii() and len(token) > 1:
-                    yield token
+                    script_runs.append((token, script))
                 segment = []
             segment.append(char)
             script = next_script
         token = "".join(segment)
-        if token and not token.isascii() and len(token) > 1:
-            yield token
+        if token and script is not None and not token.isascii() and len(token) > 1:
+            script_runs.append((token, script))
+
+        non_latin_runs = [token for token, run_script in script_runs if run_script != "latin"]
+        if non_latin_runs:
+            yield from non_latin_runs
+        elif len(normalized) > 1:
+            yield normalized
 
 
 def meaningful_tokens(text: str) -> Iterator[str]:
@@ -137,12 +141,16 @@ def meaningful_tokens(text: str) -> Iterator[str]:
 
     text = lexical_surface(text)
     compounds = _compound_matches(text)
+    unicode_words = [
+        match for match in _UNICODE_WORD_RE.finditer(text) if not match.group(0).isascii()
+    ]
     for match in compounds:
         yield re.sub(r"\s+", "", match.group(0))
 
     yield from _unicode_concepts(text)
 
     compound_index = 0
+    unicode_word_index = 0
     for match in _WORD_RE.finditer(text):
         while compound_index < len(compounds) and compounds[compound_index].end() <= match.start():
             compound_index += 1
@@ -150,6 +158,17 @@ def meaningful_tokens(text: str) -> Iterator[str]:
             compound_index < len(compounds)
             and match.end() > compounds[compound_index].start()
             and match.start() < compounds[compound_index].end()
+        ):
+            continue
+        while (
+            unicode_word_index < len(unicode_words)
+            and unicode_words[unicode_word_index].end() <= match.start()
+        ):
+            unicode_word_index += 1
+        if (
+            unicode_word_index < len(unicode_words)
+            and match.end() > unicode_words[unicode_word_index].start()
+            and match.start() < unicode_words[unicode_word_index].end()
         ):
             continue
         raw = match.group(0)

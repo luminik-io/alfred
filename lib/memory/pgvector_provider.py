@@ -442,7 +442,7 @@ def _lexical_like_query(
         cursor_sql = "AND (l.created_at < %s OR (l.created_at = %s AND l.id > %s)) "
         cursor_params = [created_at, created_at, lesson_id]
     sql = (
-        f"SELECT l.id, l.body, l.tags_json, l.created_at FROM {table} l "
+        f"SELECT l.id, l.lexical_text, l.created_at FROM {table} l "
         f"WHERE ({like_score_sql}) >= %s {scope_sql} {cursor_sql}"
         "ORDER BY l.created_at DESC, l.id ASC LIMIT %s"
     )
@@ -1142,14 +1142,14 @@ class PgvectorProvider:
             rows = conn.execute(sql, params).fetchall()
             if not rows:
                 break
-            for lesson_id, body, tags_json, _created_at in rows:
-                if _has_meaningful_lexical_overlap(f"{body} {tags_json}", tokens):
+            for lesson_id, lexical_text, _created_at in rows:
+                if _has_meaningful_lexical_overlap(str(lexical_text), tokens):
                     out.append(str(lesson_id))
                 if len(out) >= self.pool:
                     break
             if len(out) >= self.pool:
                 break
-            next_after = (rows[-1][3], str(rows[-1][0]))
+            next_after = (rows[-1][2], str(rows[-1][0]))
             if next_after == after:
                 break
             after = next_after

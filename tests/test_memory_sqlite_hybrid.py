@@ -531,6 +531,20 @@ def test_tokenize_mixed_query_emits_unicode_subject_concepts() -> None:
 
 
 @pytest.mark.parametrize(
+    ("unicode_word", "overlapping_ascii_fragment"),
+    [("café", "caf"), ("API課金", "api")],
+)
+def test_unicode_word_is_one_overlap_concept(
+    unicode_word: str,
+    overlapping_ascii_fragment: str,
+) -> None:
+    tokens = mod._tokenize(f"GraphQL schema {unicode_word}")
+
+    assert overlapping_ascii_fragment not in tokens
+    assert not mod._has_meaningful_lexical_overlap(unicode_word, tokens)
+
+
+@pytest.mark.parametrize(
     ("query", "expected"),
     [
         ("C++", "c++"),
