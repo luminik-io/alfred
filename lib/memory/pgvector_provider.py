@@ -83,6 +83,9 @@ from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
 from memory_tokens import (
+    requires_exact_lexical_tokens as _requires_exact_lexical_tokens,
+)
+from memory_tokens import (
     tokenize as _tokenize,
 )
 
@@ -469,12 +472,6 @@ def _lexical_like_query(
         pool,
     ]
     return sql, params
-
-
-def _requires_exact_lexical_tokens(tokens: list[str]) -> bool:
-    """Return whether PostgreSQL lexemes would erase concept identity."""
-
-    return any(not token.isalnum() or len(token) == 1 for token in tokens)
 
 
 def _lexical_literal_query(

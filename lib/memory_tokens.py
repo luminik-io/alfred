@@ -416,6 +416,12 @@ def required_lexical_overlap(query_tokens: list[str]) -> int:
     return 1 if len(concepts) == 1 else 2
 
 
+def requires_exact_lexical_tokens(tokens: list[str]) -> bool:
+    """Return whether a full-text lexer could erase a concept's identity."""
+
+    return any(not token.isalnum() or len(token) == 1 for token in tokens)
+
+
 def has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
     """Return whether text satisfies the canonical exact-concept threshold."""
 

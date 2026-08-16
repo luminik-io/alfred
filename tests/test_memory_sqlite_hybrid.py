@@ -716,6 +716,68 @@ def test_fts_candidate_scan_filters_overlap_before_result_pool() -> None:
     assert len(filter_queries) == 1
 
 
+def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=101)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="C++",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    for index in range(401):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body="C#",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+    assert provider._fts_ok is True
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="C++", codename="c", repo="r")
+
+    fallback_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id, l.lexical_text, l.created_at FROM lessons l")
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert not any(statement.startswith("SELECT l.id FROM lessons_fts") for statement in statements)
+    assert len(fallback_queries) == 1
+    assert "LIMIT 50" in fallback_queries[0]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "C",
+        "C++",
+        "C++17",
+        "N+12",
+        "O(n)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+        "TLS 1.3",
+        "Python 3",
+    ],
+)
+def test_identity_classes_route_around_fts(query: str) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(codename="c", repo="r", body=f"{query} guidance")
+    assert provider._fts_ok is True
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert not any(statement.startswith("SELECT l.id FROM lessons_fts") for statement in statements)
+
+
 def test_fts_candidate_scan_preserves_bm25_order_and_result_cap() -> None:
     provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
     weaker = provider.reflect(

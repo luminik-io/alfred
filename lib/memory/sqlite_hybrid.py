@@ -78,6 +78,9 @@ from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
 from memory_tokens import (
+    requires_exact_lexical_tokens as _requires_exact_lexical_tokens,
+)
+from memory_tokens import (
     tokenize as _tokenize,
 )
 
@@ -747,7 +750,7 @@ class SqliteHybridProvider:
             rows = conn.execute(sql, [pattern, *scope_params, limit]).fetchall()
             return [str(row[0]) for row in rows]
         scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
-        if self._fts_ok:
+        if self._fts_ok and not _requires_exact_lexical_tokens(tokens):
             retrieval_tokens = dict.fromkeys(variant for group in token_groups for variant in group)
             match = " OR ".join(f'"{token}"' for token in retrieval_tokens)
             candidate_limit = min(
