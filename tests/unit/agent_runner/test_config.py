@@ -162,12 +162,12 @@ def test_engine_preflight_bins_modes(fresh_agent_runner, monkeypatch):
     def codex_only(binary, **_kwargs):
         return "/bin/codex" if binary == "codex" else None
 
-    assert ar.engine_preflight_bins("codex") == [ar.CODEX_BIN]
+    assert ar.engine_preflight_bins("codex") == [config.CODEX_BIN]
     assert config.engine_preflight_bins("hybrid", which=both) == ["claude"]
     assert config.engine_preflight_bins("hybrid", which=codex_only) == ["codex"]
     assert ar.engine_preflight_bins("hybrid", hybrid_requires_codex=True) == [
-        ar.CLAUDE_BIN,
-        ar.CODEX_BIN,
+        config.CLAUDE_BIN,
+        config.CODEX_BIN,
     ]
 
 
