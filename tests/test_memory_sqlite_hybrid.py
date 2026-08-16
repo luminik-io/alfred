@@ -226,6 +226,35 @@ def test_like_fallback_pages_past_substring_only_matches(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_like_fallback_stops_after_eight_candidate_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    for index in range(30):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"Rapid rollout note {index}",
+            created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="api rapid", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id") and "FROM lessons l WHERE" in statement
+    ]
+    assert out == []
+    assert len(candidate_queries) == 8
+    assert all(" OFFSET " not in statement for statement in candidate_queries)
+
+
 def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
     assert mod._tokenize("Fix the GraphQL schema with the loader") == [
         "graphql",

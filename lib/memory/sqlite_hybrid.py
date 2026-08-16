@@ -86,6 +86,13 @@ _EMBED_TIMEOUT_S = 5.0
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _COMPOUND_TOKEN_RE = re.compile(r"\b[A-Za-z0-9]+(?:\s*[+/#-]\s*[A-Za-z0-9]+)+\b")
 _MAX_QUERY_TOKENS = 24
+# The substring fallback is a last-resort path for SQLite builds without FTS5.
+# Keep it predictably bounded even when every recent lesson is a false
+# substring match. Eight keyset pages of at most 50 rows means one recall
+# inspects no more than 400 candidates and issues no more than eight fallback
+# queries. Smaller configured pools keep their existing page size.
+_LEXICAL_FALLBACK_PAGE_SIZE = 50
+_MAX_LEXICAL_FALLBACK_PAGES = 8
 _LOW_SIGNAL_QUERY_TOKENS = frozenset(
     {
         "add",
@@ -759,40 +766,52 @@ class SqliteHybridProvider:
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
         # LIKE fallback (SQLite build without FTS5): require enough token
-        # substrings before each bounded candidate page, then paginate while
-        # enforcing exact token overlap in _filter_lexical_ids(). Match the SAME
-        # body+tags surface the FTS arm indexes via _fts_text(), so a tag-only hit
-        # is still recalled here. Tags are stored as a JSON array in tags_json, so
-        # a token like "graphql" matches the serialized '["graphql", ...]'.
+        # substrings before each bounded candidate page, then enforce exact
+        # token overlap on the returned body+tags rows. Keyset pagination avoids
+        # increasingly expensive OFFSET scans. The fixed page and page-count
+        # caps above bound this fallback to 400 inspected candidates and eight
+        # SQL queries even if the corpus contains only substring false matches.
+        # Match the SAME body+tags surface the FTS arm indexes via _fts_text(),
+        # so a tag-only hit is still recalled here. Tags are stored as a JSON
+        # array in tags_json, so a token like "graphql" matches the serialized
+        # '["graphql", ...]'.
         like_params: list[Any] = []
         clauses: list[str] = []
         for tok in tokens:
             clauses.append("(l.body LIKE ? OR l.tags_json LIKE ?)")
             like_params.extend([f"%{tok}%", f"%{tok}%"])
         like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
-        sql = (
-            f"SELECT l.id FROM lessons l WHERE ({like_score_sql}) >= ? {scope_sql} "
-            "ORDER BY l.created_at DESC, l.id LIMIT ? OFFSET ?"
-        )
         base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
         out: list[str] = []
-        seen: set[str] = set()
-        offset = 0
-        while len(out) < self.pool:
-            rows = conn.execute(sql, [*base_params, self.pool, offset]).fetchall()
-            candidate_ids = [r[0] for r in rows]
-            if not candidate_ids:
+        page_size = _lexical_fallback_page_size(self.pool)
+        after: tuple[str, str] | None = None
+        for _page in range(_MAX_LEXICAL_FALLBACK_PAGES):
+            cursor_sql = ""
+            cursor_params: list[Any] = []
+            if after is not None:
+                created_at, lesson_id = after
+                cursor_sql = "AND (l.created_at < ? OR (l.created_at = ? AND l.id > ?)) "
+                cursor_params = [created_at, created_at, lesson_id]
+            sql = (
+                "SELECT l.id, l.body, l.tags_json, l.created_at FROM lessons l "
+                f"WHERE ({like_score_sql}) >= ? {scope_sql} {cursor_sql}"
+                "ORDER BY l.created_at DESC, l.id ASC LIMIT ?"
+            )
+            rows = conn.execute(sql, [*base_params, *cursor_params, page_size]).fetchall()
+            if not rows:
                 break
-            fresh_ids = [lesson_id for lesson_id in candidate_ids if lesson_id not in seen]
-            if not fresh_ids:
-                break
-            seen.update(fresh_ids)
-            for lesson_id in self._filter_lexical_ids(conn, fresh_ids, tokens):
-                out.append(lesson_id)
+            for lesson_id, body, tags_json, _created_at in rows:
+                if _has_meaningful_lexical_overlap(f"{body} {tags_json}", tokens):
+                    out.append(str(lesson_id))
                 if len(out) >= self.pool:
                     break
-            offset += len(candidate_ids)
-            if len(candidate_ids) < self.pool:
+            if len(out) >= self.pool:
+                break
+            next_after = (str(rows[-1][3]), str(rows[-1][0]))
+            if next_after == after:
+                break
+            after = next_after
+            if len(rows) < page_size:
                 break
         return out
 
@@ -1322,6 +1341,12 @@ def _has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
 
 def _required_lexical_overlap(query_tokens: list[str]) -> int:
     return 1 if len(query_tokens) == 1 else 2
+
+
+def _lexical_fallback_page_size(pool: int) -> int:
+    """Cap one fallback page so the total candidate budget stays absolute."""
+
+    return min(max(1, int(pool)), _LEXICAL_FALLBACK_PAGE_SIZE)
 
 
 def _scope_clause(codename: str | None, repo: str | None, *, alias: str) -> tuple[str, list[Any]]:
