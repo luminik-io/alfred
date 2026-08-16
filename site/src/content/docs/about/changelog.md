@@ -18,6 +18,18 @@ The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
 currently has no pending changes.
 
+## 0.7.4 (2026-08-17)
+
+Version 0.7.4 replaces the brown Linked Fold dark field with warm graphite
+surfaces while keeping its gold accent and clipped-corner treatment.
+
+- The background, sidebar, cards, and overlays now have clear separation.
+- The final palette passes the 144-state fixture-backed Desktop screen matrix.
+- A focused test locks the final dark-mode cascade values.
+
+Read the complete
+[`0.7.4` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#074---2026-08-17).
+
 ## 0.7.3 (2026-08-17)
 
 Version 0.7.3 fixes Settings at phone widths and adds a GitHub Actions workflow
