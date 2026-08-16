@@ -444,6 +444,40 @@ def test_lexical_like_fallback_recalls_unicode_query() -> None:
     assert ids == ["match"]
 
 
+def test_lexical_like_fallback_requires_unicode_subject_in_mixed_query() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("api-only", "The API client retries requests", "[]", _NOW),
+                (
+                    "relevant",
+                    "API の課金エラーを修正する手順",
+                    "[]",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API の課金エラーを修正",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
 def test_token_empty_literal_lookup_is_bounded_escaped_and_scoped() -> None:
     calls: list[tuple[str, list[Any]]] = []
 

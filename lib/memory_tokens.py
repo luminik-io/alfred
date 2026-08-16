@@ -9,6 +9,7 @@ import cycle.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterator
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
@@ -70,6 +71,52 @@ def _compound_matches(text: str) -> list[re.Match[str]]:
     return list(_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text))
 
 
+def _unicode_script(char: str, previous: str | None) -> str:
+    """Classify one Unicode character into a stable stdlib script bucket."""
+
+    name = unicodedata.name(char, "")
+    if "CJK UNIFIED IDEOGRAPH" in name or "CJK COMPATIBILITY IDEOGRAPH" in name:
+        return "cjk"
+    if "KATAKANA-HIRAGANA" in name and previous in {"hiragana", "katakana"}:
+        return previous
+    if "HIRAGANA" in name:
+        return "hiragana"
+    if "KATAKANA" in name:
+        return "katakana"
+    if "HANGUL" in name:
+        return "hangul"
+    if unicodedata.category(char).startswith("M") and previous is not None:
+        return previous
+    return name.partition(" ")[0].lower() or unicodedata.category(char)
+
+
+def _unicode_concepts(text: str) -> Iterator[str]:
+    """Yield non-ASCII word chunks and their meaningful script runs."""
+
+    for match in _UNICODE_WORD_RE.finditer(text):
+        raw = match.group(0)
+        if raw.isascii():
+            continue
+        normalized = unicodedata.normalize("NFKC", raw).casefold()
+        if len(normalized) > 1:
+            yield normalized
+
+        segment: list[str] = []
+        script: str | None = None
+        for char in normalized:
+            next_script = "ascii" if char.isascii() else _unicode_script(char, script)
+            if script is not None and next_script != script:
+                token = "".join(segment)
+                if not token.isascii() and len(token) > 1:
+                    yield token
+                segment = []
+            segment.append(char)
+            script = next_script
+        token = "".join(segment)
+        if token and not token.isascii() and len(token) > 1:
+            yield token
+
+
 def meaningful_tokens(text: str) -> Iterator[str]:
     """Yield meaningful overlap concepts without applying the query cap.
 
@@ -84,6 +131,8 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     compounds = _compound_matches(text)
     for match in compounds:
         yield re.sub(r"\s+", "", match.group(0)).lower()
+
+    yield from _unicode_concepts(text)
 
     compound_index = 0
     for match in _WORD_RE.finditer(text):
@@ -105,14 +154,26 @@ def tokenize(text: str) -> list[str]:
     """Return bounded, de-duplicated concepts for a lexical query."""
 
     seen: set[str] = set()
-    out: list[str] = []
+    ascii_tokens: list[str] = []
+    unicode_tokens: list[str] = []
     for token in meaningful_tokens(text):
         if token in seen:
             continue
         seen.add(token)
-        out.append(token)
-        if len(out) >= _MAX_QUERY_TOKENS:
+        target = ascii_tokens if token.isascii() else unicode_tokens
+        if len(target) < _MAX_QUERY_TOKENS:
+            target.append(token)
+        if len(ascii_tokens) >= _MAX_QUERY_TOKENS and len(unicode_tokens) >= _MAX_QUERY_TOKENS:
             break
+    # Pure non-ASCII queries retain the bounded escaped literal path. Mixed
+    # queries keep both their ASCII anchor and Unicode subject concepts.
+    if not ascii_tokens:
+        return []
+    if not unicode_tokens:
+        return ascii_tokens
+    unicode_reserve = min(4, len(unicode_tokens))
+    out = ascii_tokens[: _MAX_QUERY_TOKENS - unicode_reserve]
+    out.extend(unicode_tokens[: _MAX_QUERY_TOKENS - len(out)])
     return out
 
 

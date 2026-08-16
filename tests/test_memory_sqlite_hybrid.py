@@ -211,6 +211,29 @@ def test_default_chain_falls_through_to_fleet_for_identifier_concepts(tmp_path: 
     assert [item.id for item in out] == [lesson.id]
 
 
+def test_default_chain_requires_mixed_query_unicode_subject(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="The API client retries requests")
+    relevant = FleetBrain.from_env(env).reflect(
+        codename="c",
+        repo="r",
+        body="API の課金エラーを修正する手順",
+    )
+
+    out = load_provider(env).recall(
+        query="API の課金エラーを修正",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 @pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,
@@ -317,6 +340,19 @@ def test_recall_requires_two_meaningful_terms_for_multiword_queries(
         codename="c",
         repo="r",
     )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridProvider) -> None:
+    provider.reflect(codename="c", repo="r", body="The API client retries requests")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="API の課金エラーを修正する手順",
+    )
+
+    out = provider.recall(query="API の課金エラーを修正", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -447,6 +483,15 @@ def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
         "schema",
         "loader",
     ]
+
+
+def test_tokenize_mixed_query_emits_unicode_subject_concepts() -> None:
+    tokens = mod._tokenize("API の課金エラーを修正")
+
+    assert "api" in tokens
+    assert {"課金", "エラー", "修正"}.issubset(tokens)
+    assert not mod._has_meaningful_lexical_overlap("The API client retries requests", tokens)
+    assert mod._has_meaningful_lexical_overlap("API の課金エラーを修正する手順", tokens)
 
 
 @pytest.mark.parametrize(

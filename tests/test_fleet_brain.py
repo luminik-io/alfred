@@ -334,6 +334,20 @@ def test_recall_query_accepts_japanese_issue_title(brain: FleetBrain) -> None:
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+def test_recall_query_requires_unicode_subject_in_mixed_query(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="The API client retries requests")
+    relevant = "API の課金エラーを修正する手順"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="API の課金エラーを修正",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
 def test_recall_query_token_empty_literal_is_escaped_and_never_backfills(
     brain: FleetBrain,
 ) -> None:
