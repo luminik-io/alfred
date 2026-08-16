@@ -18,7 +18,7 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Launch quality
 
-- Publish v0.7.1 with signed and notarized macOS packages, Linux packages,
+- Publish v0.7.2 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
 - Match every Desktop screen to the approved Signal Edge, Category Standard,
   and Linked Fold references. Verify light and dark mode at desktop and phone

@@ -18,6 +18,22 @@ The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
 currently has no pending changes.
 
+## 0.7.2 (2026-08-17)
+
+Version 0.7.2 adds the public launch gallery, keeps the selected agent visible
+in short windows, and restores the approved approval-card treatment.
+
+- Three fixture-backed screenshots show the Work board, agent run, and approval
+  decision in light mode at 1270 by 760.
+- The short-window Inbox keeps the selected agent card visible.
+- The run view identifies sample data.
+- Linked Fold approval cards use the approved clipped-corner treatment.
+- The capture command and tests keep the documentation and site images
+  identical.
+
+Read the complete
+[`0.7.2` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#072---2026-08-17).
+
 ## 0.7.1 (2026-08-17)
 
 Version 0.7.1 unifies engine checks, tightens memory recall, and refreshes the

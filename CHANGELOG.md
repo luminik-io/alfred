@@ -8,6 +8,29 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes are pending.
 
+## [0.7.2] - 2026-08-17
+
+### Highlights
+
+- Added three fixture-backed light-mode screenshots for the Work board, agent
+  run, and approval decision.
+- Fixed the short-window Inbox layout so the selected agent card stays visible.
+- Added a visible sample-data notice and restored the Linked Fold approval-card
+  edge.
+
+### Added
+
+- A repeatable gallery capture command that produces three 1270 by 760 images
+  for launch pages and listings.
+- Tests that require fixture data, light mode, fixed image dimensions, and
+  identical copies in the documentation and site.
+
+### Fixed
+
+- The agent-role rail no longer clips in short desktop windows.
+- Sample run data is now identified in the run view.
+- Approval decisions use the approved Linked Fold clipped-corner treatment.
+
 ## [0.7.1] - 2026-08-17
 
 ### Highlights
