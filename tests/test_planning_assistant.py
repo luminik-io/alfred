@@ -287,7 +287,7 @@ def test_refine_issue_draft_recalls_planning_memory() -> None:
     assert "Plan threads should state approval" in result.spec_body
 
 
-def test_recall_planning_memory_falls_back_to_repo_recent_lessons() -> None:
+def test_recall_planning_memory_keeps_query_miss_empty() -> None:
     class Provider:
         name = "test"
 
@@ -296,28 +296,28 @@ def test_recall_planning_memory_falls_back_to_repo_recent_lessons() -> None:
 
         def recall(self, *, repo=None, query=None, limit=3):
             self.calls.append((repo, query, limit))
-            if query is not None:
-                return []
-            return [{"repo": repo, "body": "Use existing test factories."}]
+            if query is None:
+                return [{"repo": repo, "body": "Use existing test factories."}]
+            return []
 
     provider = Provider()
     memory = recall_planning_memory(_draft(), provider)
 
-    assert memory[0].body == "Use existing test factories."
-    assert provider.calls[0][1] is not None
-    assert provider.calls[1][1] is None
+    assert memory == ()
+    assert provider.calls
+    assert all(query is not None for _repo, query, _limit in provider.calls)
 
 
-def test_recall_planning_memory_swallows_provider_fallback_errors() -> None:
+def test_recall_planning_memory_swallows_provider_errors_without_retry() -> None:
     class Provider:
         name = "test"
 
         def recall(self, *, repo=None, query=None, limit=3):
-            if query is not None:
-                raise TypeError("query is not supported")
-            raise RuntimeError("memory store is unavailable")
+            raise TypeError("memory store is unavailable")
 
-    assert recall_planning_memory(_draft(), Provider()) == ()
+    provider = Provider()
+
+    assert recall_planning_memory(_draft(), provider) == ()
 
 
 def test_render_planning_memory_is_prompt_safe() -> None:

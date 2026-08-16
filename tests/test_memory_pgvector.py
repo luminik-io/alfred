@@ -705,6 +705,36 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
     return provider, fake
 
 
+def test_query_miss_does_not_backfill_recent_lessons(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, _ = _fake_provider()
+    provider._vec_ok = False
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+
+    recency_calls: list[bool] = []
+
+    def track_recency(*args: Any, **kwargs: Any) -> list[str]:
+        recency_calls.append(True)
+        return ["recent"]
+
+    monkeypatch.setattr(provider, "_recency_ids", track_recency)
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    assert provider.recall(query="missing topic", repo="acme/api") == []
+    assert recency_calls == []
+
+
+def test_unfiltered_recall_uses_recent_lessons(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, _ = _fake_provider()
+    provider._vec_ok = False
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_recency_ids", lambda *args, **kwargs: ["recent"])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    assert provider.recall(repo="acme/api") == ["recent"]
+
+
 def test_union_reuse_counts_moves_and_clears() -> None:
     provider, fake = _fake_provider()
     provider.bump_reuse_counts(["survivor", "survivor"])

@@ -899,9 +899,10 @@ class PgvectorProvider:
         """Return up to ``limit`` lessons for the scope, hybrid-ranked.
 
         Same contract and shape as the SQLite hybrid ``recall``: anchored lessons
-        lead, then lexical + dense arms fused with RRF, then a recency baseline so
-        a scoped rail is never blank. Any DB error returns ``[]`` so the chained
-        provider falls through -- recall never breaks a firing.
+        lead, then lexical + dense arms are fused with RRF. A nonempty query miss
+        stays empty. Calls without a query use a recency baseline. Any DB error
+        returns ``[]`` so the chained provider falls through without breaking a
+        firing.
         """
         cap = max(1, int(limit))
         text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
@@ -913,7 +914,7 @@ class PgvectorProvider:
                 dense: list[str] = []
                 if self._vec_ok:
                     dense = self._dense_ids(conn, text, codename=codename, repo=repo, now=now)
-                if not lexical and not dense:
+                if not lexical and not dense and not (query or "").strip():
                     fused_ids = self._recency_ids(
                         conn, codename=codename, repo=repo, limit=cap, now=now
                     )
