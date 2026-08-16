@@ -125,3 +125,14 @@ The command records the synthetic contract data in
 `clients/desktop/e2e/alfred-api.fixture.ts`. It writes the MP4 and poster to
 `docs/media/` and `site/public/media/`. Do not record a live Alfred runtime,
 operator account, Slack workspace, or repository for public media.
+
+Build the public screenshot gallery with:
+
+```sh
+npm --prefix clients/desktop run capture:gallery
+```
+
+The gallery command writes 1270 by 760 pixel images of Work evidence, an agent
+run, and the approval queue. Both capture commands force light mode and use the
+same synthetic fixture. Public Alfred screenshots and recordings must use light
+mode. Dark mode remains part of the internal visual test matrix.

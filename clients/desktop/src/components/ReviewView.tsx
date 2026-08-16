@@ -677,7 +677,10 @@ function DecisionCard({
     busyPlanAction.startsWith(`${item.planId}:`),
   );
   return (
-    <Card size="sm" className="border-border/70 bg-card/80">
+    <Card
+      size="sm"
+      className="command-center__decision border-border/70 bg-card/80"
+    >
       <CardHeader className="gap-2">
         <div className="flex min-w-0 items-start gap-3">
           <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-accent/30 bg-accent/10 text-accent">
