@@ -12,6 +12,10 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
+- Memory auto-promotion now holds judge-classified behavior-changing lessons
+  for operator review by default. Set
+  `ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=1` to opt into automatic saves for this
+  class. Judge-approved factual lessons continue to auto-promote.
 - Model routing now reads only the namespaced `ALFRED_CLAUDE_MODEL` and
   `ALFRED_CODEX_MODEL` fleet settings. The former bare `CODEX_MODEL` setting is
   no longer read.

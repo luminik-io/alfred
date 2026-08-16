@@ -62,7 +62,7 @@ vi.mock("./components/CustomThemeEditor", () => ({ CustomThemeEditor: () => null
 vi.mock("./lib/useTheme", () => ({
   useTheme: () => ({
     toggle: vi.fn(),
-    themeName: "alfred",
+    themeName: "mineral",
     setThemeName: vi.fn(),
     mode: "dark",
     setMode: vi.fn(),

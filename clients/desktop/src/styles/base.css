@@ -1,12 +1,6 @@
-/* Base layer: menu/select WCAG guard, body floor + painted atmosphere, accent-glow primitives, reduced-motion base. */
+/* Base layer: accessible controls, the app floor, glass, and focus primitives. */
 
-/* WCAG guard for the loud steel-violet --accent used as a menu/select FOCUS fill.
- * shadcn menus pair `bg-accent` with `text-accent-foreground` (white), but the
- * signature --accent (L 0.68) only clears AA-large against white (~3.3). Small
- * menu text must clear AA (4.5), so on these highlighted items we swap the
- * foreground to a near-black cool ink, which reads 5.5:1+ on the violet fill.
- * The bright accent stays for glows/borders/buttons where --primary (L 0.58,
- * white text 4.5 AA) or decoration carries it. */
+/* Highlighted menu items always use the paired semantic foreground. */
 @layer components {
   [role="menuitem"][data-highlighted],
   [role="menuitemcheckbox"][data-highlighted],
@@ -15,14 +9,14 @@
   [data-slot="dropdown-menu-item"][data-highlighted],
   [data-slot="select-item"][data-highlighted],
   [data-slot="command-item"][data-selected="true"] {
-    color: oklch(0.15 0.03 275);
+    color: var(--accent-foreground);
   }
   [role="menuitem"][data-highlighted] svg,
   [role="option"][data-highlighted] svg,
   [data-slot="dropdown-menu-item"][data-highlighted] svg,
   [data-slot="select-item"][data-highlighted] svg,
   [data-slot="command-item"][data-selected="true"] svg {
-    color: oklch(0.15 0.03 275);
+    color: var(--accent-foreground);
   }
 }
 
@@ -41,12 +35,6 @@
   }
 }
 
-/* The body is now just the flat near-black floor. The depth (the single biggest
- * "Giga" move) is a real, large, off-center accent bloom PAINTED by the
- * .alfred-app-atmosphere layer, mounted once at the app root behind everything.
- * Keeping the floor flat here and the bloom on a dedicated fixed layer lets the
- * glass sidebar/panels bleed it through their blur, and keeps the whole thing
- * GPU-cheap (one fixed layer of static radial gradients, no animation). */
 body {
   min-width: 320px;
   margin: 0;
@@ -54,50 +42,21 @@ body {
   background: var(--background);
 }
 
-/* The painted atmosphere: a broad accent bloom off the top-right, a fainter
- * counter-leak from the lower-left, and a soft center lift. --ambient /
- * --ambient-2 / --ambient-center are ALL theme tokens, so this one rule serves
- * every theme and each mode tints + places the lift for itself: Alfred Dark
- * lifts a dark indigo, warm-paper light lifts a faint warm glow (never a dark
- * blotch), and Linear Crisp zeroes the lift for a flat plane. It sits at z-index
- * 0 behind the content plane (#root is z-index 1) and never intercepts pointer
- * events. */
+/* Broad linear light fields give translucent chrome something to refract. */
 .alfred-app-atmosphere {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(120% 80% at 78% -8%, var(--ambient), transparent 55%),
-    radial-gradient(90% 70% at 6% 108%, var(--ambient-2), transparent 60%),
-    radial-gradient(60% 50% at 50% 50%, var(--ambient-center), transparent 70%);
+    linear-gradient(132deg, var(--ambient), transparent 38%),
+    linear-gradient(318deg, var(--ambient-2), transparent 44%),
+    linear-gradient(180deg, var(--ambient-center), transparent 58%);
 }
 
-/* A faint hairline grid, masked to the top, adds texture the glass distorts so
- * panels read as real frosted glass. Kept on the atmosphere layer so it rides
- * behind the content plane with the bloom. Linear Crisp drops it for a clean
- * flat plane; light mode softens it. */
 .alfred-app-atmosphere::before {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  content: "";
-  opacity: 0.5;
-  background-image:
-    linear-gradient(color-mix(in oklch, var(--foreground), transparent 94%) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in oklch, var(--foreground), transparent 95%) 1px, transparent 1px);
-  background-size: 38px 38px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 70%);
+  content: none;
 }
-
-/* Linear Crisp is flatter: it zeroes --ambient-center (below) so the center lift
- * drops out via the token, and drops the grid here for a clean plane. */
-:root[data-theme="linear"] .alfred-app-atmosphere::before {
-  opacity: 0;
-}
-
-/* Onboarding leans into spectacle: the takeover amps the same bloom (see
- * .alfred-onboarding). */
 
 /* ACCENT THAT EMITS LIGHT. Reusable glow utilities, used sparingly: the single
  * primary CTA per surface, the active nav item, live/running status, focus.
@@ -184,4 +143,3 @@ body {
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
-

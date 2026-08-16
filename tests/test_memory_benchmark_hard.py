@@ -145,8 +145,10 @@ def test_stub_ab_shows_full_delta_on_hard_fixture():
     assert report.memory_on.repeated_mistake_rate == pytest.approx(0.0)
     assert report.repeated_mistake_rate_delta == pytest.approx(1.0)
 
-    # Retrieval: the right lesson is recalled for all ten tasks; distractors in
-    # the top-3 keep precision at 1/3 (one relevant of three recalled per task).
+    # Retrieval: the right lesson is recalled for all ten tasks. The shipped
+    # SQLite-first chain returns 18 lessons across those tasks, including eight
+    # distractors where fixture terms overlap.
     assert report.memory_on.retrieval.recall == pytest.approx(1.0)
     assert report.memory_on.retrieval.recalled_relevant == EXPECTED_N
-    assert report.memory_on.retrieval.precision == pytest.approx(1 / 3, abs=1e-3)
+    assert report.memory_on.retrieval.recalled_total == 18
+    assert report.memory_on.retrieval.precision == pytest.approx(10 / 18, abs=1e-3)

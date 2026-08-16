@@ -4,11 +4,10 @@ This is the review loop that turns a staged ``MemoryCandidate`` into a trusted,
 recall-able lesson written to the memory backend (Redis AMS / SQLite hybrid),
 plus the reversal levers (revert an auto-promotion, retire a single lesson).
 
-Behavior here is doctrine and preserved exactly: the AMS write happens FIRST
-with no local fallback, the LLM judge is the primary save/skip decision (a light
-structural pre-filter gates access to it, and the judge can only LOWER
-confidence, never rescue), and every destructive lever confirms the recall
-lesson is actually gone before it records the state change locally.
+This path is safety-critical. The recall-store write happens before local
+validation, the LLM judge can only lower confidence, behavior-changing lessons
+require operator approval by default, and every destructive lever confirms the
+recall lesson is gone before it records the state change locally.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from .base import LedgerBase
 from .config import (
     _auto_promote_switches_allow_learning,
     _env_float,
+    auto_promote_behavior_changes_enabled,
 )
 from .config import direct_auto_promote_env as _direct_auto_promote_env
 from .store import _AUTO_HELD_MARKER, Lesson, MemoryCandidate
@@ -315,10 +315,9 @@ class PromotionMixin(LedgerBase):
         structural gate, an LLM is asked whether the lesson is safe to save.
         The verdict shapes the outcome:
 
-          * ``changes_agent_behavior`` => still AUTO-SAVED like any other safe
-            verdict (the judge decides; the save is reversible), just recorded
-            with a distinct note and counted under ``auto_saved_behavior_change``
-            so the audit trail flags it. It no longer holds for a human;
+          * ``changes_agent_behavior`` => held for a human by default. Set
+            ``ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=1`` to let the judge save
+            these candidates automatically;
           * ``is_duplicate``           => held for a human (dedup owns merging);
           * the judge confidence is taken as the LOWER of itself and the
             structural confidence (never a rescue), and a candidate that falls
@@ -336,6 +335,7 @@ class PromotionMixin(LedgerBase):
         summary: dict[str, Any] = {
             "enabled": self.auto_promote_enabled(env_src),
             "judge_enabled": False,
+            "behavior_changes_enabled": auto_promote_behavior_changes_enabled(env_src),
             "threshold": None,
             "cap": None,
             "considered": 0,
@@ -346,9 +346,6 @@ class PromotionMixin(LedgerBase):
             "skipped_duplicate": 0,
             "skipped_flagged": 0,
             "auto_saved_behavior_change": 0,
-            # Kept at 0 for back-compat: behavior-changing verdicts are now
-            # auto-saved (counted under ``auto_saved_behavior_change``) rather
-            # than held, so nothing increments this any more.
             "flagged_behavior_change": 0,
             "held_low_confidence": 0,
             "judge_errors": 0,
@@ -500,13 +497,19 @@ class PromotionMixin(LedgerBase):
                     summary["held_low_confidence"] += 1
                     continue
                 if verdict.changes_agent_behavior:
-                    # Behavior-changing but otherwise safe and above the bar:
-                    # AUTO-SAVE it (the judge decided; every auto-save is
-                    # reversible) with a distinct note so the audit trail flags
-                    # it. Counted separately from ordinary saves.
+                    if not summary["behavior_changes_enabled"]:
+                        self.hold_candidate_for_review(
+                            candidate.id,
+                            note=(
+                                "LLM judge: behavior-changing; operator approval required "
+                                f"(confidence={confidence:.3f})"
+                            ),
+                        )
+                        summary["flagged_behavior_change"] += 1
+                        continue
                     summary["auto_saved_behavior_change"] += 1
                     note = (
-                        f"auto-saved (behavior-changing; structural + LLM judge "
+                        f"auto-saved (behavior-changing opt-in; structural + LLM judge "
                         f"confidence={confidence:.3f} >= {bar:.3f})"
                     )
                 else:

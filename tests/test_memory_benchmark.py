@@ -111,8 +111,20 @@ def test_judge_malformed_marker_falls_back_to_substring():
 
 
 # --------------------------------------------------------------------------
-# Real recall + injection (in-memory FleetBrain, no model)
+# Real recall + injection (shipped in-memory provider chain, no model)
 # --------------------------------------------------------------------------
+
+
+def test_seed_default_provider_matches_shipped_chain():
+    fixture = mb.load_fixture(FIXTURE_DIR)
+    provider = mb.seed_default_provider(
+        fixture.lessons,
+        codename=fixture.codename,
+        repo=fixture.repo,
+    )
+
+    assert provider.name == "chained"
+    assert [member.name for member in provider.providers] == ["sqlite", "fleet"]
 
 
 def test_seed_provider_recalls_relevant_lesson_first():
@@ -269,12 +281,12 @@ def test_stub_ab_retrieval_and_off_arm_recalls_nothing():
     fixture = mb.load_fixture(FIXTURE_DIR)
     report = mb.run_memory_ab(fixture, solver=mb.make_stub_solver())
 
-    # memory ON: the right lesson is always recalled (recall 1.0); distractors
-    # in the top-3 keep precision below 1 (4 relevant of 12 recalled).
+    # The shipped SQLite-first chain recalls only the relevant lesson for each
+    # eligible task in the built-in fixture.
     assert report.memory_on.retrieval.recall == pytest.approx(1.0)
     assert report.memory_on.retrieval.recalled_relevant == 4
-    assert report.memory_on.retrieval.recalled_total == 12
-    assert report.memory_on.retrieval.precision == pytest.approx(4 / 12, abs=1e-3)
+    assert report.memory_on.retrieval.recalled_total == 4
+    assert report.memory_on.retrieval.precision == pytest.approx(1.0)
 
     # memory OFF: a true no-memory control - nothing recalled at all.
     off_attempts = [a for a in report.attempts if a.arm == "memory_off"]
@@ -291,6 +303,7 @@ def test_report_to_dict_shape():
     assert payload["delta"]["repeated_mistake_rate"] == pytest.approx(1.0)
     assert len(payload["attempts"]) == 10  # 5 tasks x 2 arms
     assert payload["solver_kind"] == "stub"
+    assert payload["memory_provider"] == "sqlite,fleet"
 
 
 def test_benchmark_module_reexports_memory_ab():
@@ -326,6 +339,7 @@ def test_cli_memory_stub_table(capsys):
     assert "N=4" in out
     assert "ILLUSTRATIVE" in out
     assert "memory OFF" in out and "memory ON" in out
+    assert "memory: sqlite,fleet" in out
 
 
 def test_cli_prioritizes_checkout_lib_over_deployed_runtime(tmp_path: Path, monkeypatch):

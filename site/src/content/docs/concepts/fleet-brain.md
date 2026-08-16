@@ -140,25 +140,24 @@ when there is something to review. The full fleet also schedules
 
 ## Autonomous capture and save
 
-The goal is that memory captures AND saves itself through the LLMs, not through a
-human review queue. `alfred brain auto-promote` makes an LLM safety judge the
-primary save decision. It is enabled by default when `ALFRED_AUTO_PROMOTE` is
-unset, blank, or a recognized truthy value (`1`, `true`, `yes`, `on`,
-`enabled`). Set `ALFRED_AUTO_PROMOTE=0` to opt out, or
+`alfred brain auto-promote` lets an LLM safety judge save evidenced factual
+lessons without routine human review. It is enabled by default when
+`ALFRED_AUTO_PROMOTE` is unset, blank, or a recognized truthy value (`1`,
+`true`, `yes`, `on`, `enabled`). Set `ALFRED_AUTO_PROMOTE=0` to opt out, or
 `ALFRED_AUTO_PROMOTE_KILL=1` to halt it immediately. Any other nonblank
 `ALFRED_AUTO_PROMOTE` value fails closed.
 
 The structural confidence bar (default 0.5,
 `ALFRED_AUTO_PROMOTE_THRESHOLD`) is a light pre-filter, and the judge
-(`lib/memory_judge.py`) decides: it saves both safe and behavior-changing
-lessons (behavior-changing is no longer held for a human, and every auto-save is
-reversible with `alfred brain forget`), holds duplicates, and can only lower the
-score, never rescue a below-bar candidate. The judge fails closed, so a failed
-or empty verdict leaves the candidate pending. With the judge disabled, the bar
-rises to a conservative no-judge floor (`ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD`,
-default 0.9). A per-run cap, a judge-call budget, and the conflict check bound
-each run. Saved candidates go through the normal promotion path and reach Redis
-Agent Memory like any promoted lesson.
+(`lib/memory_judge.py`) decides. It saves factual lessons, holds duplicates, and
+can only lower the score. A behavior-changing classification also stays in the
+review queue by default. Set `ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=1` only when
+you want that class saved without operator approval. The judge fails closed, so
+a failed or empty verdict leaves the candidate pending. With the judge disabled,
+the bar rises to a conservative no-judge floor
+(`ALFRED_AUTO_PROMOTE_NO_JUDGE_THRESHOLD`, default 0.9). Disabling the judge
+also removes behavior classification. Direct reflection bypasses this review
+loop. A per-run cap, a judge-call budget, and the conflict check bound each run.
 
 ## MCP access
 

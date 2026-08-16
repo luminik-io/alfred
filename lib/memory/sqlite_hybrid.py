@@ -84,6 +84,7 @@ _EMBED_TIMEOUT_S = 5.0
 # dropped as noise; the list is capped so a giant issue-body query cannot build
 # a pathological MATCH expression.
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
+_COMPOUND_TOKEN_RE = re.compile(r"\b[A-Za-z0-9]+(?:\s*[+/#-]\s*[A-Za-z0-9]+)+\b")
 _MAX_QUERY_TOKENS = 24
 
 
@@ -1185,7 +1186,12 @@ def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
 
 
 def _tokenize(text: str) -> list[str]:
-    tokens = [t.lower() for t in _TOKEN_RE.findall(text) if len(t) > 1]
+    # Keep compact technical terms such as ``N+1`` intact. FTS5 interprets a
+    # quoted ``N+1`` token as the adjacent ``n 1`` phrase, while the LIKE
+    # fallback matches the literal spelling. Splitting first would discard both
+    # one-character parts and turn the query into an unrelated recency lookup.
+    compounds = [re.sub(r"\s+", "", t).lower() for t in _COMPOUND_TOKEN_RE.findall(text)]
+    tokens = compounds + [t.lower() for t in _TOKEN_RE.findall(text) if len(t) > 1]
     # De-dupe preserving order, then cap.
     seen: set[str] = set()
     out: list[str] = []

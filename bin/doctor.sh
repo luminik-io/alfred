@@ -127,7 +127,7 @@ memory_auto_promote_stop_control_active() {
   token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
   [ -n "$token" ] || return 1
   case "$key" in
-    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
       memory_auto_promote_value_is_enabled "$token" && return 1
       return 0
       ;;

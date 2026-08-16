@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // reads index.css, treats the base :root block as the canonical token set, and
 // fails CI if any theme block drops one of those tokens.
 //
-// The base :root block is Alfred Dark (the default), so it doubles as the
+// The base :root block is Mineral Dark (the default), so it doubles as the
 // reference set. Theme blocks may add tokens, but must never define fewer color
 // tokens than the base.
 
@@ -83,6 +83,13 @@ const COLOR_TOKEN_PREFIXES = [
 const css = readIndexCss();
 const baseTokens = declaredTokens(blockBody(css, ":root {"));
 const radixVariants = readFileSync(resolve(srcDir, "styles/radix-variants.css"), "utf8");
+const atmosphereStyles = ["base.css", "onboarding.css", "shell.css"]
+  .map((file) => readFileSync(resolve(srcDir, "styles", file), "utf8"))
+  .join("\n");
+const foregroundVariants = [
+  readFileSync(resolve(srcDir, "components/ui/button.tsx"), "utf8"),
+  readFileSync(resolve(srcDir, "components/ui/badge.tsx"), "utf8"),
+].join("\n");
 
 // The color tokens the base defines (the canonical required set).
 const requiredColorTokens = [...baseTokens].filter((token) =>
@@ -90,9 +97,9 @@ const requiredColorTokens = [...baseTokens].filter((token) =>
 );
 
 const THEME_BLOCKS: Array<{ name: string; selector: string }> = [
-  { name: "Alfred Light", selector: ':root[data-theme="alfred"].light {' },
-  { name: "Linear Crisp Dark", selector: ':root[data-theme="linear"],' },
-  { name: "Linear Crisp Light", selector: ':root[data-theme="linear"].light {' },
+  { name: "Mineral Light", selector: ':root[data-theme="mineral"].light {' },
+  { name: "Carbon Dark", selector: ':root[data-theme="carbon"],' },
+  { name: "Carbon Light", selector: ':root[data-theme="carbon"].light {' },
 ];
 
 describe("theme token completeness (do not revert)", () => {
@@ -112,25 +119,28 @@ describe("theme token completeness (do not revert)", () => {
   }
 
   it("each theme sets a glass-blur token so glass dials per theme", () => {
-    // Alfred uses the base --glass-blur; Linear overrides it to near-flat. The
-    // base and the Linear block must both declare it.
+    // Mineral uses the base --glass-blur; Carbon defines its own denser glass.
     expect(baseTokens.has("--glass-blur")).toBe(true);
-    const linearBody = blockBody(css, ':root[data-theme="linear"],');
-    expect(declaredTokens(linearBody).has("--glass-blur")).toBe(true);
+    const carbonBody = blockBody(css, ':root[data-theme="carbon"],');
+    expect(declaredTokens(carbonBody).has("--glass-blur")).toBe(true);
   });
 
-  it("defines the steel-violet (Giga-grade) signature accent on the Alfred default", () => {
+  it("keeps the Mineral default cool-neutral with a cyan signal", () => {
     const body = blockBody(css, ":root {");
-    // The operator-directed Alfred accent (2026-07 Giga-grade dark overhaul): a
-    // saturated steel-violet (hue ~286) over a near-black cool-indigo floor, so
-    // the accent emits light onto near-black. It lives on --accent / --ring
-    // (active + focus glow); the filled --primary sits a touch deeper (L 0.58) so
-    // white button text clears WCAG AA on the fill.
-    expect(body).toMatch(/--accent:\s*oklch\(0\.68 0\.21 286\)/);
-    expect(body).toMatch(/--ring:\s*oklch\(0\.68 0\.21 286\)/);
-    // The accent-glow emission primitives (not a color swap) must be present.
+    expect(body).toMatch(/--background:\s*oklch\(0\.145 0\.008 235\)/);
+    expect(body).toMatch(/--accent:\s*oklch\(0\.76 0\.105 210\)/);
+    expect(body).toMatch(/--ring:\s*oklch\(0\.70 0\.12 215\)/);
     expect(body).toMatch(/--accent-glow:/);
     expect(body).toMatch(/--accent-glow-soft:/);
+  });
+
+  it("does not use decorative radial blooms in app chrome", () => {
+    expect(atmosphereStyles).not.toContain("radial-gradient(");
+  });
+
+  it("keeps light accent colors out of white-text fills", () => {
+    expect(foregroundVariants).not.toContain("var(--accent)");
+    expect(foregroundVariants).toContain("color-mix(in_oklch,var(--primary),black_18%)");
   });
 });
 

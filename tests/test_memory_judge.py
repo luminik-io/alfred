@@ -1,8 +1,8 @@
 """Tests for the LLM memory-promotion judge (lib/memory_judge.py).
 
 The judge is fail-soft: any malformed, empty, or non-finite verdict must parse
-to None so the caller falls back to the heuristic gate and never auto-promotes
-on a bad judgment. The CLI seam is injected, so these never spawn a real model.
+to None so the caller leaves the candidate pending. The CLI seam is injected,
+so these tests never spawn a real model.
 """
 
 from __future__ import annotations
@@ -52,6 +52,15 @@ def test_parse_verdict_clamps_confidence_to_unit_interval() -> None:
         '"changes_agent_behavior": false, "rationale": "x"}'
     )
     assert v is not None and v.confidence == 1.0
+
+
+def test_parse_verdict_missing_behavior_classification_fails_closed() -> None:
+    verdict = parse_verdict(
+        '{"confidence": 0.9, "is_duplicate": false, "rationale": "missing field"}'
+    )
+
+    assert verdict is not None
+    assert verdict.changes_agent_behavior is True
 
 
 def test_parse_verdict_rejects_bad_shapes() -> None:
