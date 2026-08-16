@@ -79,13 +79,20 @@ def repo_to_local() -> dict[str, str]:
 
 
 def engine_inventory(
-    *, environ: Mapping[str, str], search_path: str | None
+    *,
+    environ: Mapping[str, str],
+    search_path: str | None,
+    deadline_seconds: float = 8.0,
 ) -> list[dict[str, Any]]:
-    """Return the runtime's protocol-checked coding-engine inventory."""
+    """Return bounded readiness checks and candidate-harness detection."""
 
     from agent_runner.engine_registry import DEFAULT_ENGINE_REGISTRY
 
-    return DEFAULT_ENGINE_REGISTRY.inventory(environ=environ, search_path=search_path)
+    return DEFAULT_ENGINE_REGISTRY.inventory(
+        environ=environ,
+        search_path=search_path,
+        deadline_seconds=deadline_seconds,
+    )
 
 
 def model_providers() -> frozenset[str]:

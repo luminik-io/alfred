@@ -112,7 +112,13 @@ _SUBTYPE_CLASS: dict[str, FailureClass] = {
     "error_overloaded": FailureClass.TRANSIENT,
     "error_timeout": FailureClass.TRANSIENT,
     "error_api": FailureClass.TRANSIENT,
-    "error_engine_probe": FailureClass.TRANSIENT,
+    # A readiness probe is part of dispatch, not the engine invocation.
+    # Repeating it inside the same firing multiplies the setup timeout and
+    # cannot establish that a different engine is safe to run.
+    "error_engine_probe": FailureClass.FATAL,
+    # The selected engine is installed but cannot satisfy its invocation
+    # contract. A different engine may still be able to handle the work.
+    "error_engine_unavailable": FailureClass.CAPABILITY,
     # Auth is fatal here: the one-shot stale-credential repair already
     # ran upstream in result.py before we ever classify, so a surviving
     # error_authentication means real bad credentials. Surface, do not

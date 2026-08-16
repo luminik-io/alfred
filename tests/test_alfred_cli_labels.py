@@ -641,6 +641,82 @@ def test_engine_doctor_discovers_launchd_roster_without_agents_conf(
     assert cli_module._configured_engine_selections() == {"codex": ("reviewer",)}
 
 
+@pytest.mark.parametrize(
+    "label",
+    (
+        "alfred.bad/path",
+        "alfred.foo.x/../../owned",
+        "alfred.foo.../tmp/owned",
+    ),
+)
+def test_configured_roster_rejects_unsafe_agents_conf_codenames(
+    cli_module,
+    tmp_path: Path,
+    label: str,
+) -> None:
+    home = Path(os.environ["ALFRED_HOME"])
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        f"{label}\treviewer.py\tinterval:3600\tno\t\tReviewer\n",
+        encoding="utf-8",
+    )
+
+    assert cli_module._configured_agent_records() == []
+
+
+@pytest.mark.parametrize(
+    "label",
+    (
+        "alfred.bad/path",
+        "alfred.foo.x/../../owned",
+        "alfred.foo.../tmp/owned",
+    ),
+)
+def test_scheduler_roster_rejects_unsafe_launchd_codenames(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    label: str,
+) -> None:
+    launch_dir = tmp_path / "launch-agents"
+    launch_dir.mkdir()
+    (launch_dir / "unsafe.plist").write_bytes(
+        plistlib.dumps(
+            {
+                "Label": label,
+                "ProgramArguments": [
+                    "/opt/alfred/bin/agent-launch",
+                    "/opt/alfred/bin/reviewer.py",
+                ],
+            }
+        )
+    )
+    monkeypatch.setenv("ALFRED_LAUNCH_DIR", str(launch_dir))
+
+    assert cli_module._scheduler_agent_records() == []
+
+
+@pytest.mark.parametrize("agent", ("bad/path", "x/../../owned", "/tmp/owned"))
+def test_engine_state_file_rejects_unsafe_codenames(cli_module, agent: str) -> None:
+    with pytest.raises(ValueError, match="agent codename"):
+        cli_module._engine_state_file(agent)
+
+
+def test_engine_state_file_rejects_a_symlink_outside_engines_root(
+    cli_module,
+    tmp_path: Path,
+) -> None:
+    engines_root = cli_module.agent_runner.STATE_ROOT / "engines"
+    engines_root.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (engines_root / "reviewer").symlink_to(outside / "reviewer")
+
+    with pytest.raises(ValueError, match="engines root"):
+        cli_module._engine_state_file("reviewer")
+
+
 def test_engine_doctor_excludes_runtime_disabled_opt_in_agents(
     cli_module,
     monkeypatch: pytest.MonkeyPatch,

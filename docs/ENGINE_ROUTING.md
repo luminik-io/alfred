@@ -15,10 +15,10 @@ details cannot leak into setup status or logs. A changed or expired CLI fails
 closed and onboarding tells the operator what needs attention.
 
 The desktop app may detect additional harnesses under **Advanced: engine probe**.
-OpenCode and Cline are visible there as candidates, but Alfred does not dispatch
-autonomous work to either one yet. Each must pass a hermetic temporary-worktree
-mutation, cancellation, permissions, and structured-output suite before its
-descriptor can become dispatchable. Detection is not advertised as support.
+Setup checks only whether an OpenCode or Cline executable is present. Setup does
+not run these candidate harnesses. Alfred does not dispatch work to them. Each
+harness needs a runtime adapter and a temporary-worktree test suite before Alfred
+can support it. Detection is not support.
 
 ## Three modes
 
@@ -93,8 +93,8 @@ state files, so simultaneous updates cannot overwrite each other.
 Hybrid mode tries Claude first. Every invocation outcome is run through one classifier (`classify_result`) that maps it to one of three failure classes, and the class decides what happens next:
 
 - **TRANSIENT** (`error_rate_limit`, `error_overloaded`, `error_timeout`, `error_api`, connection resets, context-overflow): a temporary provider or transport fault the same engine is likely to clear. The runner retries the SAME engine with exponential backoff and full jitter, honouring any server `Retry-After` hint (it waits `max(Retry-After, backoff)`). It does NOT fall back. A single transient 429 on the fallback engine no longer kills a task that would have succeeded on retry.
-- **FATAL** (`error_authentication`, `error_budget`, 401/403/422): a problem retrying cannot fix. The runner surfaces it honestly and never burns the fallback. For auth, the credentials remedy is the one the scheduled-firing preflight already names; falling back to Codex would only hide it.
-- **CAPABILITY** (`error_max_turns`, `parse-failed`, `error_loop_detected`, or any failure we cannot place): the engine ran and returned cleanly but produced nothing useful. This is the only class that triggers the Claude->Codex fallback, because a different engine may have the capability this one lacked.
+- **FATAL** (`error_authentication`, `error_budget`, `error_engine_probe`, 401/403/422): a problem that a same-firing retry cannot fix safely. A failed readiness probe stops that firing. The next scheduled firing can probe again.
+- **CAPABILITY** (`error_engine_unavailable`, `error_max_turns`, `parse-failed`, `error_loop_detected`, or any failure we cannot place): the selected engine cannot complete the work. This is the only class that triggers the Claude-to-Codex fallback because a different engine may have the required capability.
 
 The core rule: **the fallback fires only on a capability gap, not on a transient blip.** This is the single biggest reliability change from earlier versions, where any rate-limit or auth subtype dropped straight to Codex.
 
@@ -179,8 +179,9 @@ A new engine needs all of the following before it can join a fleet:
 5. Hermetic mutation tests plus one opt-in live smoke test.
 6. Failure mappings for retry, breaker, and fallback classification.
 
-This registry is the extension point for OpenCode, Cline, Gemini CLI, and local
-model harnesses. Alfred enables them by proven capabilities, not by brand name.
+The registry reports inventory and readiness. It is not a runtime adapter. A new
+harness also needs a command builder, an output parser, cancellation behavior,
+and failure mapping before Alfred can dispatch work to it.
 
 ## See also
 

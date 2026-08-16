@@ -19,14 +19,6 @@ def test_run_returns_124_on_timeout(fresh_agent_runner):
     assert "TIMEOUT" in res.stderr
 
 
-def test_runtime_cli_bin_honors_post_import_override(fresh_agent_runner, monkeypatch):
-    import agent_runner.process as proc
-
-    monkeypatch.setenv("CLAUDE_BIN", "/opt/alfred/bin/claude")
-
-    assert proc._runtime_cli_bin("CLAUDE_BIN", "claude") == "/opt/alfred/bin/claude"
-
-
 def test_claude_subprocess_env_defaults_to_standard_auth_dir(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
@@ -166,10 +158,9 @@ def test_direct_claude_dispatch_allows_classified_repair_for_disk_credentials(
     )
     credentials = tmp_path / ".credentials.json"
     credentials.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(proc, "_probe_dispatch_engine", lambda _engine: readiness)
     monkeypatch.setattr(proc, "_claude_credentials_file", lambda: credentials)
 
-    assert proc._direct_engine_readiness_failure("claude") is None
+    assert proc._engine_readiness_failure("claude", readiness) is None
 
 
 def test_direct_claude_dispatch_never_mutates_auth_on_probe_failure(
@@ -182,27 +173,23 @@ def test_direct_claude_dispatch_never_mutates_auth_on_probe_failure(
     credentials = tmp_path / ".credentials.json"
     credentials.write_text("valid", encoding="utf-8")
     monkeypatch.setattr(proc, "_claude_credentials_file", lambda: credentials)
-    monkeypatch.setattr(
-        proc,
-        "_probe_dispatch_engine",
-        lambda _engine: ar.EngineProbeResult(
-            descriptor=descriptor,
-            installed=True,
-            protocol_compatible=True,
-            ready=False,
-            state="probe_failed",
-            detail="probe timed out",
-            binary="claude",
-            version="test",
-            failures=("auth_probe_failed",),
-        ),
+    readiness = ar.EngineProbeResult(
+        descriptor=descriptor,
+        installed=True,
+        protocol_compatible=True,
+        ready=False,
+        state="probe_failed",
+        detail="probe timed out",
+        binary="claude",
+        version="test",
+        failures=("auth_probe_failed",),
     )
 
-    failure = proc._direct_engine_readiness_failure("claude")
+    failure = proc._engine_readiness_failure("claude", readiness)
 
     assert failure is not None
     assert failure.subtype == "error_engine_probe"
-    assert ar.classify_result(failure) is ar.FailureClass.TRANSIENT
+    assert ar.classify_result(failure) is ar.FailureClass.FATAL
     assert credentials.read_text(encoding="utf-8") == "valid"
 
 
@@ -238,6 +225,95 @@ def test_direct_codex_dispatch_refuses_unready_engine(fresh_agent_runner, monkey
 
     assert result.subtype == "error_engine_unavailable"
     assert result.raw == {"engine": "codex", "engine_readiness": "incompatible"}
+
+
+def test_claude_dispatch_uses_the_executable_that_passed_readiness(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    verified = tmp_path / "verified" / "claude"
+    verified.parent.mkdir()
+    verified.write_text("#!/bin/sh\n", encoding="utf-8")
+    verified.chmod(0o755)
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=True,
+            state="ready",
+            detail="ready",
+            binary=str(verified),
+            version="test",
+        ),
+    )
+    monkeypatch.setenv("CLAUDE_BIN", "./unverified/claude")
+    captured: list[str] = []
+
+    def fake_run(cmd, **_kwargs):
+        captured.extend(cmd)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps({"subtype": "success", "result": "ok"}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(proc, "run", fake_run)
+
+    result = ar.claude_invoke("judge", workdir=tmp_path, allowed_tools="Read")
+
+    assert result.success is True
+    assert captured[0] == str(verified)
+
+
+def test_codex_dispatch_uses_the_executable_that_passed_readiness(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    verified = tmp_path / "verified" / "codex"
+    verified.parent.mkdir()
+    verified.write_text("#!/bin/sh\n", encoding="utf-8")
+    verified.chmod(0o755)
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex")
+    monkeypatch.setattr(
+        proc,
+        "_probe_dispatch_engine",
+        lambda _engine: ar.EngineProbeResult(
+            descriptor=descriptor,
+            installed=True,
+            protocol_compatible=True,
+            ready=True,
+            state="ready",
+            detail="ready",
+            binary=str(verified),
+            version="test",
+        ),
+    )
+    monkeypatch.setenv("CODEX_BIN", "./unverified/codex")
+    captured: list[str] = []
+
+    def fake_run(cmd, **_kwargs):
+        captured.extend(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(proc, "_popen_run_text", fake_run)
+    paths = proc.codex_artifact_paths("reviewer", "verified-path")
+    paths["last_message"].write_text("ok", encoding="utf-8")
+
+    result = ar.codex_invoke(
+        "review", workdir=tmp_path, agent="reviewer", firing_id="verified-path"
+    )
+
+    assert result.success is True
+    assert captured[0] == str(verified)
 
 
 def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypatch):
@@ -621,7 +697,7 @@ def test_hybrid_readiness_gap_can_use_verified_fallback(fresh_agent_runner):
     assert engine_used == "codex-fallback"
 
 
-def test_hybrid_probe_failure_retries_same_engine_before_fallback(
+def test_hybrid_probe_failure_stops_without_retry_or_fallback(
     fresh_agent_runner,
     monkeypatch,
 ):
@@ -687,9 +763,10 @@ def test_hybrid_probe_failure_retries_same_engine_before_fallback(
         engine_probe_fn=readiness,
     )
 
-    assert probes == 2
-    assert calls == ["claude"]
-    assert result.success is True
+    assert probes == 1
+    assert calls == []
+    assert result.success is False
+    assert result.subtype == "error_engine_probe"
     assert engine_used == "claude"
 
 

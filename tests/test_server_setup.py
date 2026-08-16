@@ -22,7 +22,7 @@ if str(LIB) not in sys.path:
 import server.setup as setup_mod  # noqa: E402
 
 
-def _ready_codex_engine() -> list[dict[str, Any]]:
+def _ready_codex_engine(**_kwargs: Any) -> list[dict[str, Any]]:
     return [
         {
             "name": "codex",
@@ -1529,7 +1529,7 @@ def test_bootstrap_status_does_not_treat_queue_only_scope_as_ready(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octo", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
@@ -1573,7 +1573,7 @@ def test_bootstrap_status_uses_active_serve_home_for_board_repo_selection(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octo", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
@@ -1615,7 +1615,7 @@ def test_bootstrap_status_strips_queue_inline_comments(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octo", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
@@ -1656,7 +1656,7 @@ def test_bootstrap_status_rejects_split_queue_and_board_scope(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octo", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
@@ -1697,7 +1697,7 @@ def test_bootstrap_status_requires_enabled_queue_scope(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octo", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
@@ -1736,7 +1736,7 @@ def test_bootstrap_status_preserves_empty_process_queue_override(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octo", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,

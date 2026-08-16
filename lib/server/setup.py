@@ -39,6 +39,7 @@ import threading
 import time
 import urllib.parse
 from collections.abc import Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
@@ -743,15 +744,22 @@ def _parse_gh_account(text: str) -> str | None:
     return None
 
 
-def engine_clis() -> list[dict[str, Any]]:
-    """Return protocol- and auth-checked inventory for every known harness."""
+def engine_clis(*, deadline: float | None = None) -> list[dict[str, Any]]:
+    """Check supported engines and detect candidate harness executables."""
 
     runtime_env = _runtime_config_env()
     search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
     probe_env = dict(os.environ)
     probe_env.update(runtime_env)
     probe_env["PATH"] = search
-    return runtime_facade.engine_inventory(environ=probe_env, search_path=search)
+    deadline_seconds = 8.0
+    if deadline is not None:
+        deadline_seconds = max(0.0, deadline - time.monotonic())
+    return runtime_facade.engine_inventory(
+        environ=probe_env,
+        search_path=search,
+        deadline_seconds=deadline_seconds,
+    )
 
 
 def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -1670,7 +1678,7 @@ def _has_graph_artifact(path: Path) -> bool:
     return False
 
 
-def bootstrap_status() -> dict[str, Any]:
+def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     """One read the client turns into the Set up checklist.
 
     Surfaces what is connected vs missing with a next action per row:
@@ -1679,15 +1687,19 @@ def bootstrap_status() -> dict[str, Any]:
     one engine + at least one board-visible repo selected and covered by queue
     scope (no AWS / Slack required).
     """
-    gh = gh_auth_status()
-    engines = engine_clis()
+    deadline = time.monotonic() + max(0.0, deadline_seconds)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        gh_future = pool.submit(gh_auth_status, deadline=deadline)
+        engines_future = pool.submit(engine_clis, deadline=deadline)
+        gh = gh_future.result()
+        engines = engines_future.result()
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
     queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["ready"] for e in engines)
-    repo_checkouts = _selected_repo_local_paths(repos, runtime_env)
+    repo_checkouts = _selected_repo_local_paths(repos, runtime_env, deadline=deadline)
     code_memory = code_memory_status(runtime_env)
     code_memory_coverage = _code_memory_coverage(
         repos, code_memory, runtime_env, resolved=repo_checkouts

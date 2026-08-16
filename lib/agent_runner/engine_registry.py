@@ -9,9 +9,12 @@ boundary has contract coverage.
 
 from __future__ import annotations
 
+import concurrent.futures
+import contextlib
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from collections.abc import Callable, Collection, Mapping
@@ -24,7 +27,9 @@ _ENGINE_ID = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _SEMVER = re.compile(r"\b(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)\b")
 _PROBE_TIMEOUT_SECONDS = 4.0
+_INVENTORY_DEADLINE_SECONDS = 8.0
 _CACHE_TTL_SECONDS = 15.0
+_DEFAULT_PROBE_RUNNER = subprocess.run
 _SAFE_PROBE_ENV_VARS = frozenset(
     {
         "COLORTERM",
@@ -60,6 +65,17 @@ class EngineCapability(StrEnum):
     EXTRA_DIRECTORIES = "extra-directories"
     STRUCTURED_OUTPUT = "structured-output"
     NON_INTERACTIVE = "non-interactive"
+
+
+class EngineProbeState(StrEnum):
+    """One closed readiness state shared by setup and dispatch policy."""
+
+    MISSING = "missing"
+    NEEDS_VALIDATION = "needs_validation"
+    PROBE_FAILED = "probe_failed"
+    INCOMPATIBLE = "incompatible"
+    AUTH_REQUIRED = "auth_required"
+    READY = "ready"
 
 
 @dataclass(frozen=True)
@@ -105,11 +121,15 @@ class EngineProbeResult:
     installed: bool
     protocol_compatible: bool
     ready: bool
-    state: str
+    state: EngineProbeState
     detail: str
     binary: str | None
     version: str | None
     failures: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.state, EngineProbeState):
+            object.__setattr__(self, "state", EngineProbeState(self.state))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -119,7 +139,7 @@ class EngineProbeResult:
             "protocol_compatible": self.protocol_compatible,
             "ready": self.ready,
             "dispatchable": self.descriptor.dispatchable,
-            "state": self.state,
+            "state": self.state.value,
             "detail": self.detail,
             "path": self.binary,
             "version": self.version,
@@ -270,7 +290,7 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
 
 
 class EngineRegistry:
-    """Validated descriptor index and inventory facade."""
+    """Validated descriptor index and bounded local inventory."""
 
     def __init__(self, descriptors: Collection[EngineDescriptor]) -> None:
         rows = tuple(descriptors)
@@ -304,17 +324,58 @@ class EngineRegistry:
         *,
         environ: Mapping[str, str] | None = None,
         search_path: str | None = None,
+        runner: Callable[..., subprocess.CompletedProcess[str]] = _DEFAULT_PROBE_RUNNER,
+        which: Callable[..., str | None] = shutil.which,
+        clock: Callable[[], float] = time.monotonic,
+        deadline_seconds: float = _INVENTORY_DEADLINE_SECONDS,
         use_cache: bool = True,
     ) -> list[dict[str, Any]]:
-        return [
-            probe_engine(
-                descriptor,
-                environ=environ,
-                search_path=search_path,
-                use_cache=use_cache,
-            ).as_dict()
-            for descriptor in self._descriptors
-        ]
+        deadline = clock() + max(0.0, deadline_seconds)
+        dispatchable = [row for row in self._descriptors if row.dispatchable]
+        probed: dict[str, EngineProbeResult] = {}
+        if dispatchable:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(dispatchable)) as pool:
+                futures = {
+                    pool.submit(
+                        probe_engine,
+                        descriptor,
+                        environ=environ,
+                        search_path=search_path,
+                        runner=runner,
+                        which=which,
+                        use_cache=use_cache,
+                        refresh_auth=False,
+                        deadline=deadline,
+                        clock=clock,
+                    ): descriptor
+                    for descriptor in dispatchable
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    descriptor = futures[future]
+                    try:
+                        probed[descriptor.id] = future.result()
+                    except Exception:
+                        probed[descriptor.id] = _unexpected_probe_failure(
+                            descriptor,
+                            environ=environ,
+                            search_path=search_path,
+                            which=which,
+                        )
+
+        rows: list[dict[str, Any]] = []
+        for descriptor in self._descriptors:
+            result = (
+                probed[descriptor.id]
+                if descriptor.dispatchable
+                else detect_candidate_engine(
+                    descriptor,
+                    environ=environ,
+                    search_path=search_path,
+                    which=which,
+                )
+            )
+            rows.append(result.as_dict())
+        return rows
 
 
 DEFAULT_ENGINE_REGISTRY = EngineRegistry(ENGINE_DESCRIPTORS)
@@ -337,10 +398,63 @@ def _resolve_binary(
     configured = environ.get(descriptor.binary_env, "").strip()
     candidate = configured or descriptor.default_binary
     expanded = os.path.expanduser(candidate)
+    resolved: str | None
     if os.path.isabs(expanded):
-        path = Path(expanded)
-        return str(path) if path.is_file() and os.access(path, os.X_OK) else None
-    return which(candidate, path=search_path)
+        resolved = expanded
+    else:
+        resolved = which(candidate, path=search_path)
+    if not resolved:
+        return None
+    try:
+        path = Path(resolved).resolve(strict=True)
+    except OSError:
+        return None
+    return str(path) if path.is_file() and os.access(path, os.X_OK) else None
+
+
+def detect_candidate_engine(
+    descriptor: EngineDescriptor,
+    *,
+    environ: Mapping[str, str] | None = None,
+    search_path: str | None = None,
+    which: Callable[..., str | None] = shutil.which,
+) -> EngineProbeResult:
+    """Detect a candidate harness without running it during setup inventory."""
+
+    env = environ if environ is not None else os.environ
+    resolved_search_path = search_path if search_path is not None else env.get("PATH")
+    binary = _resolve_binary(
+        descriptor,
+        environ=env,
+        search_path=resolved_search_path,
+        which=which,
+    )
+    if not binary:
+        return EngineProbeResult(
+            descriptor=descriptor,
+            installed=False,
+            protocol_compatible=False,
+            ready=False,
+            state=EngineProbeState.MISSING,
+            detail=f"{descriptor.display_name} is not installed.",
+            binary=None,
+            version=None,
+            failures=("missing_binary",),
+        )
+    return EngineProbeResult(
+        descriptor=descriptor,
+        installed=True,
+        protocol_compatible=False,
+        ready=False,
+        state=EngineProbeState.NEEDS_VALIDATION,
+        detail=(
+            f"{descriptor.display_name} was detected, but autonomous dispatch stays disabled "
+            "until its permission boundary passes a deep probe."
+        ),
+        binary=binary,
+        version=None,
+        failures=("deep_probe_required",),
+    )
 
 
 def _fingerprint(path: str) -> tuple[int, int]:
@@ -378,21 +492,116 @@ def _has_protocol_marker(output: str, marker: str) -> bool:
     return re.search(rf"(?<![\w-]){re.escape(marker)}(?![\w-])", output) is not None
 
 
+def _unexpected_probe_failure(
+    descriptor: EngineDescriptor,
+    *,
+    environ: Mapping[str, str] | None,
+    search_path: str | None,
+    which: Callable[..., str | None],
+) -> EngineProbeResult:
+    """Keep one broken probe from hiding healthy engines in the inventory."""
+
+    env = environ if environ is not None else os.environ
+    try:
+        binary = _resolve_binary(
+            descriptor,
+            environ=env,
+            search_path=search_path if search_path is not None else env.get("PATH"),
+            which=which,
+        )
+    except Exception:
+        binary = None
+    return EngineProbeResult(
+        descriptor=descriptor,
+        installed=binary is not None,
+        protocol_compatible=False,
+        ready=False,
+        state=EngineProbeState.PROBE_FAILED,
+        detail=f"Alfred could not verify {descriptor.display_name} readiness.",
+        binary=binary,
+        version=None,
+        failures=("unexpected_probe_failure",),
+    )
+
+
+def _terminate_probe_process_group(process: subprocess.Popen[str]) -> None:
+    """Kill a timed-out probe and every helper process it started, then reap it."""
+
+    try:
+        if os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except (ProcessLookupError, OSError):
+        if process.poll() is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                process.kill()
+    try:
+        process.communicate(timeout=1)
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        with contextlib.suppress(ProcessLookupError, OSError):
+            process.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+            process.wait(timeout=1)
+        for pipe in (process.stdout, process.stderr):
+            if pipe is not None:
+                with contextlib.suppress(OSError):
+                    pipe.close()
+
+
+def _run_production_probe(
+    command: list[str],
+    *,
+    child_env: Mapping[str, str],
+    timeout_seconds: float,
+) -> subprocess.CompletedProcess[str] | None:
+    """Run a real probe in its own process group so timeout cleanup is complete."""
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=child_env,
+        start_new_session=(os.name != "nt"),
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        _terminate_probe_process_group(process)
+        return None
+    return subprocess.CompletedProcess(
+        command,
+        process.returncode,
+        stdout or "",
+        stderr or "",
+    )
+
+
 def _run_probe(
     command: list[str],
     *,
     environ: Mapping[str, str],
     runner: Callable[..., subprocess.CompletedProcess[str]],
+    timeout_seconds: float = _PROBE_TIMEOUT_SECONDS,
     extra_env_vars: Collection[str] = (),
 ) -> subprocess.CompletedProcess[str] | None:
     allowed = _SAFE_PROBE_ENV_VARS | frozenset(extra_env_vars)
     child_env = {key: value for key, value in environ.items() if key in allowed}
     try:
+        if runner is _DEFAULT_PROBE_RUNNER:
+            return _run_production_probe(
+                command,
+                child_env=child_env,
+                timeout_seconds=timeout_seconds,
+            )
         return runner(
             command,
             capture_output=True,
             text=True,
-            timeout=_PROBE_TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
             env=child_env,
         )
     except (FileNotFoundError, PermissionError, subprocess.TimeoutExpired, OSError):
@@ -404,9 +613,12 @@ def probe_engine(
     *,
     environ: Mapping[str, str] | None = None,
     search_path: str | None = None,
-    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = _DEFAULT_PROBE_RUNNER,
     which: Callable[..., str | None] = shutil.which,
     use_cache: bool = True,
+    refresh_auth: bool = True,
+    deadline: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> EngineProbeResult:
     """Probe one engine without retaining command output or account details."""
 
@@ -424,7 +636,7 @@ def probe_engine(
             installed=False,
             protocol_compatible=False,
             ready=False,
-            state="missing",
+            state=EngineProbeState.MISSING,
             detail=f"{descriptor.display_name} is not installed.",
             binary=None,
             version=None,
@@ -435,7 +647,9 @@ def probe_engine(
     cache_key = (descriptor.id, binary, mtime_ns, size)
     cached = _probe_cache.get(cache_key) if use_cache else None
     cached_result = cached[1] if cached and cached[0] > time.monotonic() else None
-    if cached_result and (not descriptor.dispatchable or not cached_result.protocol_compatible):
+    if cached_result and (
+        not descriptor.dispatchable or not cached_result.protocol_compatible or not refresh_auth
+    ):
         return cached_result
 
     version = cached_result.version if cached_result else None
@@ -443,10 +657,19 @@ def probe_engine(
     probe_failed = False
     if cached_result is None:
         for index, requirement in enumerate(descriptor.protocol_commands):
+            remaining = (
+                _PROBE_TIMEOUT_SECONDS
+                if deadline is None
+                else min(_PROBE_TIMEOUT_SECONDS, deadline - clock())
+            )
+            if remaining <= 0:
+                probe_failed = True
+                break
             completed = _run_probe(
                 [binary, *requirement.args],
                 environ=env,
                 runner=runner,
+                timeout_seconds=remaining,
             )
             if completed is None:
                 probe_failed = True
@@ -473,7 +696,7 @@ def probe_engine(
             installed=True,
             protocol_compatible=False,
             ready=False,
-            state="probe_failed",
+            state=EngineProbeState.PROBE_FAILED,
             detail=f"Alfred could not verify {descriptor.display_name}'s required CLI protocol.",
             binary=binary,
             version=version,
@@ -485,7 +708,7 @@ def probe_engine(
             installed=True,
             protocol_compatible=False,
             ready=False,
-            state="incompatible",
+            state=EngineProbeState.INCOMPATIBLE,
             detail=f"{descriptor.display_name} does not expose Alfred's required CLI protocol.",
             binary=binary,
             version=version,
@@ -497,7 +720,7 @@ def probe_engine(
             installed=True,
             protocol_compatible=True,
             ready=False,
-            state="needs_validation",
+            state=EngineProbeState.NEEDS_VALIDATION,
             detail=(
                 f"{descriptor.display_name} was detected, but autonomous dispatch stays disabled "
                 "until its permission boundary passes a deep probe."
@@ -508,23 +731,27 @@ def probe_engine(
         )
     else:
         auth = descriptor.auth_command
-        completed = (
-            _run_probe(
+        remaining = (
+            _PROBE_TIMEOUT_SECONDS
+            if deadline is None
+            else min(_PROBE_TIMEOUT_SECONDS, deadline - clock())
+        )
+        completed = None
+        if auth is not None and remaining > 0:
+            completed = _run_probe(
                 [binary, *auth.args],
                 environ=env,
                 runner=runner,
+                timeout_seconds=remaining,
                 extra_env_vars=auth.env_vars,
             )
-            if auth
-            else None
-        )
         if auth and completed is None:
             result = EngineProbeResult(
                 descriptor=descriptor,
                 installed=True,
                 protocol_compatible=True,
                 ready=False,
-                state="probe_failed",
+                state=EngineProbeState.PROBE_FAILED,
                 detail=f"Alfred could not verify {descriptor.display_name} authentication.",
                 binary=binary,
                 version=version,
@@ -536,7 +763,7 @@ def probe_engine(
                 installed=True,
                 protocol_compatible=True,
                 ready=False,
-                state="auth_required",
+                state=EngineProbeState.AUTH_REQUIRED,
                 detail=f"{descriptor.display_name} is installed but is not signed in.",
                 binary=binary,
                 version=version,
@@ -548,7 +775,7 @@ def probe_engine(
                 installed=True,
                 protocol_compatible=True,
                 ready=True,
-                state="ready",
+                state=EngineProbeState.READY,
                 detail=f"{descriptor.display_name} is compatible and signed in.",
                 binary=binary,
                 version=version,

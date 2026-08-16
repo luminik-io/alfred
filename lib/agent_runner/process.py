@@ -66,9 +66,7 @@ from .memory_runtime import (
     with_memory_prompt,
 )
 from .paths import (
-    CLAUDE_BIN,
     CODEX_APPROVAL_POLICY,
-    CODEX_BIN,
     CODEX_DEFAULT_SANDBOX,
 )
 from .reliability import (
@@ -142,10 +140,9 @@ def _engine_not_ready_result(engine: str, readiness: EngineProbeResult) -> Claud
     )
 
 
-def _direct_engine_readiness_failure(engine: str) -> ClaudeResult | None:
-    """Gate every real CLI adapter call on the canonical readiness probe."""
+def _engine_readiness_failure(engine: str, readiness: EngineProbeResult) -> ClaudeResult | None:
+    """Translate one readiness result into a fail-closed dispatch result."""
 
-    readiness = _probe_dispatch_engine(engine)
     if (
         engine == "claude"
         and readiness.state == "auth_required"
@@ -178,12 +175,6 @@ def _disabled_engine_result() -> ClaudeResult:
         stop_reason="error",
         error_message="invalid engine configuration",
     )
-
-
-def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
-    """Resolve a CLI at invocation time so setup detection can supply its path."""
-
-    return os.environ.get(env_name, "").strip() or imported_default
 
 
 def _claude_subprocess_env(
@@ -836,9 +827,12 @@ def claude_invoke(
         )
         return dry_run_claude_result(prompt, model=model, engine="claude")
 
-    readiness_failure = _direct_engine_readiness_failure("claude")
+    readiness = _probe_dispatch_engine("claude")
+    readiness_failure = _engine_readiness_failure("claude", readiness)
     if readiness_failure is not None:
         return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("claude", readiness)
 
     effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
     # Resolve the memory-MCP server path ONCE so the allowlist augmentation and
@@ -846,7 +840,7 @@ def claude_invoke(
     # independent Path.exists() checks).
     memory_script = _memory_mcp_script()
     cmd = [
-        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
+        readiness.binary,
         "-p",
         prompt,
         "--allowedTools",
@@ -974,16 +968,19 @@ def claude_invoke_streaming(
         )
         return dry_run_claude_result(prompt, model=model, engine="claude")
 
-    readiness_failure = _direct_engine_readiness_failure("claude")
+    readiness = _probe_dispatch_engine("claude")
+    readiness_failure = _engine_readiness_failure("claude", readiness)
     if readiness_failure is not None:
         return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("claude", readiness)
 
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS
 
     memory_script = _memory_mcp_script()
     cmd = [
-        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
+        readiness.binary,
         "-p",
         prompt,
         "--allowedTools",
@@ -1275,9 +1272,12 @@ def codex_invoke(
             ),
         )
 
-    readiness_failure = _direct_engine_readiness_failure("codex")
+    readiness = _probe_dispatch_engine("codex")
+    readiness_failure = _engine_readiness_failure("codex", readiness)
     if readiness_failure is not None:
         return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("codex", readiness)
 
     if firing_id is None:
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -1285,7 +1285,7 @@ def codex_invoke(
 
     paths = codex_artifact_paths(agent, firing_id)
     cmd = [
-        _runtime_cli_bin("CODEX_BIN", CODEX_BIN),
+        readiness.binary,
         "exec",
         "--skip-git-repo-check",
         "--cd",

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import signal
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -55,6 +60,22 @@ def test_registry_rejects_duplicate_and_unsafe_ids(fresh_agent_runner):
             default_binary="unsafe",
             capabilities=frozenset(),
             protocol_commands=(),
+        )
+
+
+def test_probe_result_rejects_unknown_readiness_state(fresh_agent_runner):
+    ar = fresh_agent_runner
+
+    with pytest.raises(ValueError, match="not a valid EngineProbeState"):
+        ar.EngineProbeResult(
+            descriptor=ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude"),
+            installed=True,
+            protocol_compatible=True,
+            ready=False,
+            state="future_state",
+            detail="unknown",
+            binary="/bin/claude",
+            version="test",
         )
 
 
@@ -535,6 +556,255 @@ def test_candidate_probe_never_claims_dispatch_readiness(fresh_agent_runner, tmp
     assert result.failures == ("deep_probe_required",)
 
 
+def test_inventory_detects_candidates_without_running_their_protocol_commands(
+    fresh_agent_runner, tmp_path: Path
+):
+    ar = fresh_agent_runner
+    marker = tmp_path / "candidate-called"
+    candidate = tmp_path / "opencode"
+    candidate.write_text(
+        f"#!/bin/sh\nprintf called >> {marker}\n",
+        encoding="utf-8",
+    )
+    candidate.chmod(0o755)
+
+    rows = ar.DEFAULT_ENGINE_REGISTRY.inventory(
+        environ={"OPENCODE_BIN": str(candidate), "PATH": ""},
+        search_path="",
+        use_cache=False,
+    )
+
+    opencode = next(row for row in rows if row["name"] == "opencode")
+    assert marker.exists() is False
+    assert opencode["installed"] is True
+    assert opencode["protocol_compatible"] is False
+    assert opencode["ready"] is False
+    assert opencode["state"] == "needs_validation"
+    assert opencode["version"] is None
+
+
+def test_probe_returns_a_canonical_absolute_executable(
+    fresh_agent_runner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    ar = fresh_agent_runner
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    target = _executable(tools / "opencode-real")
+    link = tools / "opencode"
+    link.symlink_to(target)
+    monkeypatch.chdir(tmp_path)
+    runner, _calls = _runner(
+        {
+            ("--version",): (0, "opencode 2.0.0\n", ""),
+            ("run", "--help"): (0, "--format --model --dir --agent\n", ""),
+        }
+    )
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("opencode"),
+        environ={"OPENCODE_BIN": "./tools/opencode", "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.binary == str(target.resolve())
+
+
+def test_inventory_probes_dispatchable_engines_concurrently(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    claude = _executable(tmp_path / "claude")
+    codex = _executable(tmp_path / "codex")
+    first_commands = threading.Barrier(2)
+
+    def runner(command, **_kwargs):
+        args = tuple(command[1:])
+        if args == ("--version",):
+            first_commands.wait(timeout=5)
+        outputs = {
+            (str(claude), "--version"): "Claude Code 2.1.41\n",
+            (str(claude), "auth", "status"): "signed in\n",
+            (str(codex), "--version"): "codex 1.2.3\n",
+            (str(codex), "exec", "--help"): (
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n"
+            ),
+            (str(codex), "login", "status"): "signed in\n",
+        }
+        return subprocess.CompletedProcess(command, 0, outputs[tuple(command)], "")
+
+    rows = ar.DEFAULT_ENGINE_REGISTRY.inventory(
+        environ={
+            "CLAUDE_BIN": str(claude),
+            "CODEX_BIN": str(codex),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+        use_cache=False,
+    )
+
+    by_name = {row["name"]: row for row in rows}
+    assert by_name["claude"]["ready"] is True
+    assert by_name["codex"]["ready"] is True
+
+
+@pytest.mark.parametrize(
+    "unexpected_error",
+    (
+        ValueError("runner returned malformed output with private details"),
+        RuntimeError("unexpected runner failure with private details"),
+    ),
+)
+def test_inventory_isolates_unexpected_runner_exceptions(
+    fresh_agent_runner,
+    tmp_path: Path,
+    unexpected_error: Exception,
+):
+    ar = fresh_agent_runner
+    claude = _executable(tmp_path / "claude")
+    codex = _executable(tmp_path / "codex")
+
+    def runner(command, **_kwargs):
+        if command[0] == str(codex):
+            raise unexpected_error
+        output = "Claude Code 2.1.41\n" if command[1:] == ["--version"] else "signed in\n"
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    rows = ar.DEFAULT_ENGINE_REGISTRY.inventory(
+        environ={
+            "CLAUDE_BIN": str(claude),
+            "CODEX_BIN": str(codex),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+        use_cache=False,
+    )
+
+    by_name = {row["name"]: row for row in rows}
+    assert by_name["claude"]["ready"] is True
+    assert by_name["codex"]["installed"] is True
+    assert by_name["codex"]["ready"] is False
+    assert by_name["codex"]["state"] == "probe_failed"
+    assert by_name["codex"]["failures"] == ["unexpected_probe_failure"]
+    assert "private details" not in str(by_name["codex"])
+
+
+def test_inventory_keeps_a_ready_engine_when_another_probe_stalls(
+    fresh_agent_runner, tmp_path: Path
+):
+    ar = fresh_agent_runner
+    claude = _executable(tmp_path / "claude")
+    codex = _executable(tmp_path / "codex")
+
+    def runner(command, **kwargs):
+        if command[0] == str(codex):
+            raise subprocess.TimeoutExpired(command, timeout=kwargs["timeout"])
+        output = "Claude Code 2.1.41\n" if command[1:] == ["--version"] else "signed in\n"
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    rows = ar.DEFAULT_ENGINE_REGISTRY.inventory(
+        environ={
+            "CLAUDE_BIN": str(claude),
+            "CODEX_BIN": str(codex),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+        use_cache=False,
+    )
+
+    by_name = {row["name"]: row for row in rows}
+    assert by_name["claude"]["ready"] is True
+    assert by_name["codex"]["ready"] is False
+    assert by_name["codex"]["state"] == "probe_failed"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Alfred schedules agents on macOS and Linux")
+def test_production_probe_timeout_terminates_helper_process_group(
+    fresh_agent_runner,
+    tmp_path: Path,
+):
+    ar = fresh_agent_runner
+    child_pid_path = tmp_path / "helper-child.pid"
+    binary = tmp_path / "claude"
+    binary.write_text(
+        "#!/bin/sh\n"
+        "sleep 30 >/dev/null 2>&1 &\n"
+        "child=$!\n"
+        f"printf '%s\\n' \"$child\" > {child_pid_path}\n"
+        'wait "$child"\n',
+        encoding="utf-8",
+    )
+    binary.chmod(0o755)
+    child_pid: int | None = None
+
+    try:
+        result = ar.probe_engine(
+            ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude"),
+            environ={"CLAUDE_BIN": str(binary), "PATH": os.environ.get("PATH", "")},
+            use_cache=False,
+            deadline=time.monotonic() + 0.75,
+        )
+
+        assert result.state == "probe_failed"
+        child_pid = int(child_pid_path.read_text(encoding="utf-8").strip())
+        reap_deadline = time.monotonic() + 2
+        while time.monotonic() < reap_deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.02)
+        else:
+            pytest.fail("probe helper child survived the timeout")
+    finally:
+        if child_pid is not None:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
+
+
+def test_probe_stops_starting_commands_after_shared_deadline(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    codex = _executable(tmp_path / "codex")
+    now = 0.0
+    calls: list[tuple[str, ...]] = []
+    timeouts: list[float] = []
+
+    def clock() -> float:
+        return now
+
+    def runner(command, **kwargs):
+        nonlocal now
+        calls.append(tuple(command[1:]))
+        timeouts.append(kwargs["timeout"])
+        now += 5.0
+        output = (
+            "codex 1.2.3\n"
+            if command[1:] == ["--version"]
+            else (
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n"
+            )
+        )
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ={"CODEX_BIN": str(codex), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+        deadline=8.0,
+        clock=clock,
+    )
+
+    assert result.state == "probe_failed"
+    assert calls == [("--version",), ("exec", "--help")]
+    assert timeouts == [4.0, 3.0]
+
+
 def test_missing_binary_does_not_run_a_probe(fresh_agent_runner):
     ar = fresh_agent_runner
 
@@ -597,4 +867,43 @@ def test_cached_protocol_still_rechecks_auth(fresh_agent_runner, tmp_path: Path)
     assert first.state == "auth_required"
     assert second.state == "ready"
     assert protocol_calls == 2
+    assert auth_calls == 2
+
+
+def test_inventory_reuses_fresh_auth_while_direct_probe_rechecks_it(
+    fresh_agent_runner,
+    tmp_path: Path,
+):
+    ar = fresh_agent_runner
+    ar.clear_engine_probe_cache()
+    binary = _executable(tmp_path / "claude")
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    registry = ar.EngineRegistry((descriptor,))
+    protocol_calls = 0
+    auth_calls = 0
+
+    def runner(command, **_kwargs):
+        nonlocal auth_calls, protocol_calls
+        args = tuple(command[1:])
+        if args == ("--version",):
+            protocol_calls += 1
+            return subprocess.CompletedProcess(command, 0, "Claude Code 2.1.41\n", "")
+        if args == ("auth", "status"):
+            auth_calls += 1
+            return subprocess.CompletedProcess(command, 0, "signed in\n", "")
+        raise AssertionError(f"unexpected probe: {args}")
+
+    options = {
+        "environ": {"CLAUDE_BIN": str(binary), "PATH": ""},
+        "search_path": "",
+        "runner": runner,
+    }
+    first = registry.inventory(**options)
+    second = registry.inventory(**options)
+    direct = ar.probe_engine(descriptor, **options)
+
+    assert first[0]["ready"] is True
+    assert second[0]["ready"] is True
+    assert direct.ready is True
+    assert protocol_calls == 1
     assert auth_calls == 2

@@ -93,7 +93,7 @@ The shipped fleet is designed to run on subscriptions you already have. No doubl
 
 ## Multi-engine contract
 
-Claude Code and Codex are dispatchable today. The registry also knows how to identify OpenCode and Cline without pretending they are ready. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` regardless of which engine produced it.
+Claude Code and Codex are dispatchable today. Setup can detect an OpenCode or Cline executable, but it does not run these candidate harnesses. Detection is not support. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` for supported engines.
 
 Claude Code 2.1.41 or newer is required because Alfred's readiness contract uses `claude auth status`, introduced in that release. Alfred uses the stable version command for compatibility because Claude's top-level help is intentionally incomplete and cannot prove that a documented flag is absent.
 
@@ -106,7 +106,9 @@ A new engine needs all of the following before it can join a fleet:
 5. Hermetic mutation tests plus one opt-in live smoke test.
 6. Failure mappings for retry, breaker, and fallback classification.
 
-This registry is the extension point for OpenCode, Cline, Gemini CLI, and local model harnesses. Alfred enables them by proven capabilities, not by brand name.
+The registry reports inventory and readiness. It is not a runtime adapter. A new harness also needs a command builder, an output parser, cancellation behavior, and failure mapping before Alfred can dispatch work to it.
+
+A readiness probe failure stops the current firing. Alfred does not repeat a failed probe or fall back within that firing. The next scheduled firing can probe again.
 
 ## See also
 

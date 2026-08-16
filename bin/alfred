@@ -203,6 +203,7 @@ OPT_IN_AGENTS = {"architect", "spec-planner"}
 ENGINE_AGENTS = ENGINE_AGENT_CODENAMES
 ENGINE_SCRIPTS = ENGINE_AGENT_SCRIPTS
 NATIVE_DRY_RUN_SCRIPTS = {"senior-dev.py", "hello.py", "echo_summarise.py"}
+_AGENT_CODENAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
 def _safe_expanduser(path: Path) -> Path:
@@ -492,7 +493,7 @@ def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
         # Pad to 6 columns so missing trailing fields don't IndexError.
         cols = cols + [""] * (6 - len(cols))
         label, script, schedule, needs_java, log_stem, role = cols[:6]
-        if not label:
+        if not label or not _codename_from_label(label):
             continue
         out.append(
             {
@@ -555,7 +556,11 @@ def _scheduler_agent_records() -> list[dict[str, str]]:
             label = str(payload.get("Label") or "")
             args = payload.get("ProgramArguments") or []
             script = _scheduled_python_script(args)
-            if label.startswith(("alfred.", "my.fleet.")) and script:
+            if (
+                label.startswith(("alfred.", "my.fleet."))
+                and _codename_from_label(label)
+                and script
+            ):
                 discovered.append((label, script))
     else:
         systemd_dir = Path(
@@ -566,7 +571,7 @@ def _scheduler_agent_records() -> list[dict[str, str]]:
         )
         for unit in sorted(systemd_dir.glob("*.service")):
             label = unit.stem
-            if not label.startswith(("alfred.", "my.fleet.")):
+            if not label.startswith(("alfred.", "my.fleet.")) or not _codename_from_label(label):
                 continue
             try:
                 lines = unit.read_text(encoding="utf-8").splitlines()
@@ -633,7 +638,9 @@ def _configured_agent_records() -> list[dict[str, str]]:
 
 def _codename_from_label(label: str) -> str:
     """Last dot-segment of a launchd label is the codename."""
-    return label.rsplit(".", 1)[-1] if "." in label else label
+
+    codename = label.rsplit(".", 1)[-1] if "." in label else label
+    return codename if _AGENT_CODENAME_RE.fullmatch(codename) else ""
 
 
 def cmd_agents(_args: argparse.Namespace) -> int:
@@ -1760,7 +1767,14 @@ def _normalize_agent_name(agent: str) -> str:
 
 
 def _engine_state_file(agent: str) -> Path:
-    return agent_runner.STATE_ROOT / "engines" / agent
+    codename = _normalize_agent_name(agent)
+    if not _AGENT_CODENAME_RE.fullmatch(codename):
+        raise ValueError("agent codename must use lowercase letters, digits, and hyphens")
+    root = (agent_runner.STATE_ROOT / "engines").resolve(strict=False)
+    target = (root / codename).resolve(strict=False)
+    if target.parent != root:
+        raise ValueError("engine state file must be a direct child of the engines root")
+    return target
 
 
 def _engine_agent_codenames() -> tuple[str, ...]:

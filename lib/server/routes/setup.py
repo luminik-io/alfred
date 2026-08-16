@@ -17,11 +17,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/api/setup/status", response_class=JSONResponse)
+@router.get(
+    "/api/setup/status",
+    response_class=JSONResponse,
+    dependencies=[Depends(views.require_mutation_token)],
+)
 async def api_setup_status(request: Request) -> JSONResponse:
     """First-run bootstrap status for the Set up tab.
 
-    Read-only. Surfaces GitHub auth and protocol-checked coding engines,
+    Privileged read. Surfaces GitHub auth and protocol-checked coding engines,
     the watched-repo selection, whether a demo is seeded, and a ``ready``
     golden-path flag: gh authed + an engine + a repo, with no AWS or Slack
     requirement.

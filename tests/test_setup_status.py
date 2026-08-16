@@ -7,6 +7,8 @@ import os
 import stat
 import subprocess
 import sys
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -22,12 +24,12 @@ def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octocat", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [
+        lambda **_kwargs: [
             {
                 "name": "codex",
                 "display_name": "Codex",
@@ -39,6 +41,52 @@ def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
     monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+
+def test_bootstrap_status_shares_one_deadline_across_slow_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Barrier(2)
+    deadlines: dict[str, float | None] = {}
+
+    def github_probe(*, deadline: float | None = None) -> dict[str, object]:
+        deadlines["github"] = deadline
+        started.wait(timeout=5)
+        return {"ok": True, "account": "octocat", "detail": "Signed in."}
+
+    def engine_probe(*, deadline: float | None = None) -> list[dict[str, object]]:
+        deadlines["engines"] = deadline
+        started.wait(timeout=5)
+        return []
+
+    def repo_probe(
+        _repos: list[str],
+        _env: dict[str, str],
+        *,
+        deadline: float | None = None,
+    ) -> list[dict[str, object]]:
+        deadlines["repos"] = deadline
+        return []
+
+    monkeypatch.setattr(setup_mod, "gh_auth_status", github_probe)
+    monkeypatch.setattr(setup_mod, "engine_clis", engine_probe)
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "setup_board_repos", lambda _env: [])
+    monkeypatch.setattr(setup_mod, "_setup_queue_repos_for_status", lambda _env: set())
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", repo_probe)
+    monkeypatch.setattr(setup_mod, "code_memory_status", lambda _env: {})
+    monkeypatch.setattr(setup_mod, "_code_memory_coverage", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "capability_status", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "install_inventory", lambda **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "first_run_readiness_status", lambda **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+    before = time.monotonic()
+    setup_mod.bootstrap_status()
+
+    assert deadlines["github"] == deadlines["engines"] == deadlines["repos"]
+    assert deadlines["github"] is not None
+    assert before < deadlines["github"] <= before + 10.5
 
 
 def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -65,7 +113,7 @@ def test_bootstrap_rejects_detected_candidate_engine(
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [
+        lambda **_kwargs: [
             {
                 "name": "opencode",
                 "display_name": "OpenCode",
@@ -574,6 +622,31 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
     assert engines["claude"]["path"] == str(claude_bin)
     assert engines["codex"]["path"] == str(codex_bin)
     assert setup_mod._repo_list_owners() == ["env-org"]
+
+
+def test_engine_inventory_does_not_execute_candidate_harnesses_during_setup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    marker = tmp_path / "candidate-called"
+    opencode = tmp_path / "opencode"
+    opencode.write_text(
+        f"#!/bin/sh\nprintf called >> {marker}\n",
+        encoding="utf-8",
+    )
+    opencode.chmod(0o755)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("CLAUDE_BIN", str(tmp_path / "missing-claude"))
+    monkeypatch.setenv("CODEX_BIN", str(tmp_path / "missing-codex"))
+    monkeypatch.setenv("OPENCODE_BIN", str(opencode))
+
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert marker.exists() is False
+    assert engines["opencode"]["installed"] is True
+    assert engines["opencode"]["state"] == "needs_validation"
+    assert engines["opencode"]["protocol_compatible"] is False
 
 
 def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
@@ -1507,12 +1580,12 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octocat", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [
+        lambda **_kwargs: [
             {
                 "name": "codex",
                 "display_name": "Codex",

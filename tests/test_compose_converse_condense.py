@@ -47,15 +47,15 @@ def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
     monkeypatch.setattr(
         cc,
         "_available_engine_clis",
-        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
     )
 
     assert cc.converse_engine_from_env() == "codex"
-    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
-    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+    assert cc.os.environ["CLAUDE_BIN"] == ""
+    assert cc.os.environ["CODEX_BIN"] == ""
 
 
-def test_converse_engine_hydrates_cli_paths_before_using_fleet_choice(monkeypatch) -> None:
+def test_converse_engine_uses_fleet_choice_without_inventory_probe(monkeypatch) -> None:
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
@@ -64,12 +64,12 @@ def test_converse_engine_hydrates_cli_paths_before_using_fleet_choice(monkeypatc
     monkeypatch.setattr(
         cc,
         "_available_engine_clis",
-        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
     )
 
     assert cc.converse_engine_from_env() == "codex"
-    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
-    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+    assert cc.os.environ["CLAUDE_BIN"] == ""
+    assert cc.os.environ["CODEX_BIN"] == ""
 
 
 def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> None:

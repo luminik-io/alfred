@@ -87,7 +87,9 @@ def _request_json(
         return json.loads(response.read().decode("utf-8"))
 
 
-def _wait_for_setup(base_url: str, process: subprocess.Popen[str]) -> dict[str, Any]:
+def _wait_for_setup(
+    base_url: str, process: subprocess.Popen[str], token_path: Path
+) -> dict[str, Any]:
     deadline = time.monotonic() + 20
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -95,7 +97,8 @@ def _wait_for_setup(base_url: str, process: subprocess.Popen[str]) -> dict[str, 
             stdout, stderr = process.communicate()
             raise AssertionError(f"alfred serve exited early\n{stdout}\n{stderr}")
         try:
-            return _request_json(base_url, "/api/setup/status")
+            token = token_path.read_text(encoding="utf-8").strip()
+            return _request_json(base_url, "/api/setup/status", token=token)
         except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
             last_error = exc
             time.sleep(0.1)
@@ -304,7 +307,7 @@ esac
         start_new_session=True,
     )
     try:
-        initial = _wait_for_setup(base_url, process)
+        initial = _wait_for_setup(base_url, process, runtime / "state" / "server-token")
         assert initial["install"]["agents_conf_present"] is True
         assert initial["install"]["scheduled_runs"] >= 6
 
@@ -332,7 +335,7 @@ esac
         assert battery_save["battery"] == "headroom-compression"
         assert battery_save["enabled"] is False
 
-        status = _request_json(base_url, "/api/setup/status")
+        status = _request_json(base_url, "/api/setup/status", token=token)
         checks = {row["key"]: row for row in status["first_run"]["checks"]}
         assert status["ready"] is True, json.dumps(status, indent=2)
         assert status["first_run"]["ready"] is True, json.dumps(status["first_run"], indent=2)
