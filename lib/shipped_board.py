@@ -55,6 +55,7 @@ _PR_EVIDENCE_FIELDS = (
     "headRefOid,reviewDecision,statusCheckRollup,changedFiles,files,commits,latestReviews"
 )
 _PR_EVIDENCE_WORKERS = 8
+_PR_EVIDENCE_LIMIT = 24
 _PR_EVIDENCE_SLOTS = threading.BoundedSemaphore(_PR_EVIDENCE_WORKERS)
 
 # Open issues carrying any of these label substrings are NOT genuine queue
@@ -461,7 +462,8 @@ def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
                     repo,
                     "--json",
                     _PR_EVIDENCE_FIELDS,
-                ]
+                ],
+                timeout=2,
             )
     except Exception:
         evidence = None
@@ -497,7 +499,8 @@ def _fetch_repo(
             str(limit),
             "--json",
             _PR_LIST_FIELDS,
-        ]
+        ],
+        timeout=5,
     )
     if prs is None:
         errored = True
@@ -513,19 +516,31 @@ def _fetch_repo(
                 if merged and merged.timestamp() >= cutoff and _pr_is_agent_shipped(pr):
                     selected_prs.append((pr, "shipped", "mergedAt"))
 
-        if selected_prs:
-            workers = min(len(selected_prs), _PR_EVIDENCE_WORKERS)
+        evidence_prs = selected_prs[:_PR_EVIDENCE_LIMIT]
+        if evidence_prs:
+            workers = min(len(evidence_prs), _PR_EVIDENCE_WORKERS)
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as evidence_pool:
                 evidence_rows = evidence_pool.map(
                     lambda selected: _with_pr_evidence(repo, selected[0]),
-                    selected_prs,
+                    evidence_prs,
                 )
                 for (_pr, lane, ts_field), (enriched, evidence_error) in zip(
-                    selected_prs, evidence_rows, strict=True
+                    evidence_prs, evidence_rows, strict=True
                 ):
                     errored = errored or evidence_error
                     target = in_progress if lane == "in_progress" else shipped
                     target.append(_card(repo, enriched, kind="pr", ts_field=ts_field, now=now))
+        for pr, lane, ts_field in selected_prs[_PR_EVIDENCE_LIMIT:]:
+            target = in_progress if lane == "in_progress" else shipped
+            target.append(
+                _card(
+                    repo,
+                    {**pr, "_github_evidence_unavailable": True},
+                    kind="pr",
+                    ts_field=ts_field,
+                    now=now,
+                )
+            )
 
     issues = _gh_json(
         [
@@ -539,7 +554,8 @@ def _fetch_repo(
             str(limit),
             "--json",
             "number,title,url,author,createdAt,labels",
-        ]
+        ],
+        timeout=5,
     )
     if issues is None:
         errored = True

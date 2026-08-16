@@ -281,11 +281,13 @@ def test_pr_evidence_requests_run_in_a_bounded_concurrent_batch(monkeypatch):
         for number in range(1, 5)
     ]
     all_views_started = threading.Barrier(len(prs))
+    view_timeouts = []
 
     def fake_gh(args, **kwargs):
         if args[:2] == ["pr", "list"]:
             return prs
         if args[:2] == ["pr", "view"]:
+            view_timeouts.append(kwargs.get("timeout"))
             all_views_started.wait(timeout=1)
             return {"headRefOid": args[2] * 40}
         if args[0] == "issue":
@@ -298,6 +300,45 @@ def test_pr_evidence_requests_run_in_a_bounded_concurrent_batch(monkeypatch):
 
     assert len(board["columns"]["in_progress"]) == 4
     assert board["errors"] == []
+    assert view_timeouts == [2] * 4
+
+
+def test_pr_evidence_batch_caps_work_before_the_client_deadline(monkeypatch):
+    prs = [
+        {
+            "number": number,
+            "title": f"ship it {number}",
+            "url": f"u{number}",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": False,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": f"senior-dev/ship-it-{number}",
+        }
+        for number in range(1, sb._PR_EVIDENCE_LIMIT + 2)
+    ]
+    viewed: list[int] = []
+
+    def fake_gh(args, **kwargs):
+        if args[:2] == ["pr", "list"]:
+            return prs
+        if args[:2] == ["pr", "view"]:
+            viewed.append(int(args[2]))
+            return {"headRefOid": args[2] * 40}
+        if args[0] == "issue":
+            return []
+        return None
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+
+    cards = sb.build_board(["acme/api"], now=NOW)["columns"]["in_progress"]
+
+    assert len(viewed) == sb._PR_EVIDENCE_LIMIT
+    deferred = next(card for card in cards if card["number"] == len(prs))
+    assert deferred["github_evidence"] is None
+    assert deferred["github_evidence_unavailable"] is True
 
 
 def test_github_evidence_marks_capped_connections_without_guessing_totals():
