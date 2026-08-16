@@ -20,6 +20,10 @@ latest release. This prevents the release page from offering a desktop
 download before the files exist. Nobody can read
 "download the desktop app" on a published release page until the assets are
 attached. A human attaches the assets and presses Publish.
+Repository release immutability locks the tag and attached assets when the
+draft is published. Draft assets remain editable until that point. The active
+`Protect Release Tags` ruleset blocks updates and deletion of `v*` tags before
+publication.
 
 ## Flow for a version (vX.Y.Z)
 
@@ -34,17 +38,29 @@ attached. A human attaches the assets and presses Publish.
 
    ```sh
    git tag -s "v$(cat VERSION)" -m "v$(cat VERSION)"
-   git push origin main --tags
+   git push origin "v$(cat VERSION)"
    ```
 
-3. **`release.yml` creates a DRAFT release.** On the pushed tag the `Release`
-   workflow:
+3. **Run `release.yml` from protected `main`.** The tag push does not create a
+   release. Dispatch the trusted workflow from `main` and pass the tag as data:
+
+   ```sh
+   gh workflow run release.yml --repo luminik-io/alfred --ref main \
+     -f tag="v$(cat VERSION)"
+   ```
+
+   The `Release` workflow:
+   - rejects a run that is not dispatched from `main`,
+   - verifies that the tag is annotated, signed, and points to a verified
+     commit on `origin/main`,
    - verifies the tag matches the `VERSION` file and fails if they differ,
    - extracts the matching `CHANGELOG.md` section into the release body,
    - creates (or updates) the GitHub release as a **draft**,
    - prints the source tarball `sha256` for the Homebrew formula.
 
-   At this point the release exists but is not public and has no desktop assets.
+   The workflow treats the tag as data. It does not check out or execute files
+   from the tag before verification. At this point the release exists but is
+   not public and has no desktop assets.
 
 4. **Build the desktop packages against the tag.** The trusted signing
    environment builds the signed and notarized macOS `.dmg` /
@@ -68,10 +84,15 @@ attached. A human attaches the assets and presses Publish.
    Publishing marks it as the latest release. Now the download claim in the
    `Highlights` is backed by real, attached assets.
 
-6. **Update the Homebrew formula.** Put the `sha256` from step 3 into
-   `Formula/alfred-os.rb` and push it to the tap.
+6. **Update the Homebrew source formula.** Put the source `sha256` from step 3
+   into `Formula/alfred-os.rb` and push it to the tap.
 
-7. **Verify the download page.** Re-run the `Site` workflow and verify the live
+7. **Update the Homebrew Cask.** Set the release version in
+   `Casks/alfred-os.rb`, calculate the `sha256` of the published `Alfred.dmg`,
+   and put that checksum in the Cask. Commit the Formula and Cask update in a
+   signed follow-up PR. Do not reuse the source archive checksum for the DMG.
+
+8. **Verify the download page.** Re-run the `Site` workflow and verify the live
    page. The page points at the latest release's stable asset names, so no site
    code change is needed when those names are present.
 

@@ -296,7 +296,9 @@ flowchart TB
 
 The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub issues and PRs, and Slack threads. The desktop app adds a safer local UI; it does not replace the fleet. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.
 
-Distribution follows the same shape. The fleet and CLI install from source; Alfred Desktop builds native installers; tagged releases are published from CI; and a secret scan gates every push.
+Distribution follows the same shape. The fleet and CLI install from source;
+Alfred Desktop builds native installers; tagged releases are published through
+the release workflow; and a secret scan runs on every push.
 
 ```mermaid
 flowchart TD
@@ -313,8 +315,9 @@ flowchart TD
     end
 
     subgraph release["release workflow (.github/workflows/release.yml)"]
-        tag["git tag v*.*.*<br/>or workflow_dispatch"]
-        verify["verify VERSION matches tag"]
+        tag["signed annotated tag<br/>v*.*.*"]
+        dispatch["workflow_dispatch<br/>from protected main"]
+        verify["verify tag + commit<br/>main ancestry + VERSION"]
         notes["extract CHANGELOG section"]
         ghrel["gh release create / edit"]
         brew["compute source sha256<br/>for Formula/alfred-os.rb"]
@@ -327,13 +330,20 @@ flowchart TD
     clientTier --> tauri
     tauri --> macbun
     tauri --> linbun
-    tag --> verify --> notes --> ghrel --> brew
-    ci -.->|secret scan gate| ghrel
+    tag --> dispatch --> verify --> notes --> ghrel --> brew
+    ci -.->|secret scan| ghrel
 ```
 
 - **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS 11+ Apple silicon, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Public releases start as drafts; signed macOS assets and Linux packages are attached before publish (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
-- **Tag-triggered release.** `.github/workflows/release.yml` runs on a `v*.*.*` tag (or `workflow_dispatch`). It verifies the tag matches the `VERSION` file, extracts the matching `CHANGELOG.md` section as release notes, creates or edits the GitHub Release, and prints the source-tarball `sha256` for the Homebrew formula (`Formula/alfred-os.rb`).
-- **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs gitleaks on every push and PR to `main`, scanning full history with `.gitleaks.toml` so a detected secret blocks the public release path.
+- **Main-dispatched release.** `.github/workflows/release.yml` runs only through
+  `workflow_dispatch` from protected `main`. It verifies an annotated signed
+  tag and its commit, checks main-branch ancestry and `VERSION`, reads the
+  matching changelog section from the tag, creates or edits the draft GitHub
+  Release, and prints the source-tarball `sha256` for
+  `Formula/alfred-os.rb`.
+- **Secret scan.** `.github/workflows/gitleaks.yml` runs gitleaks on every push
+  and PR to `main`, scanning full history with `.gitleaks.toml`. The release
+  operator verifies that the scan passed before tagging.
 
 ## Where to go next
 

@@ -274,10 +274,11 @@ Rendered documentation: [alfred.luminik.io](https://alfred.luminik.io/).
 
 ## Project status
 
-The latest tagged release is v0.6.0. Alfred supports macOS and Linux, with
-signed packages for Apple silicon and Linux. Claude Code and Codex are the
-validated execution engines. The [roadmap](ROADMAP.md) lists active work and
-future evaluation. The [changelog](CHANGELOG.md) records shipped changes.
+Alfred supports macOS and Linux. Release tags and package downloads are on
+[GitHub Releases](https://github.com/luminik-io/alfred/releases). Claude Code
+and Codex are the validated execution engines. The [roadmap](ROADMAP.md) lists
+active work and future evaluation. The [changelog](CHANGELOG.md) records
+shipped changes.
 
 ## License
 
