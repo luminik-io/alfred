@@ -8,6 +8,21 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes are pending.
 
+## [0.7.4] - 2026-08-17
+
+### Highlights
+
+- Replaced the brown Linked Fold dark field with warm graphite surfaces.
+- Kept the approved gold accent and clipped-corner treatment.
+- Checked the final palette in 144 fixture-backed Desktop captures across all
+  themes, modes, and supported widths.
+
+### Fixed
+
+- Linked Fold dark mode now separates the background, sidebar, cards, and
+  overlays without tinting the whole interface brown.
+- A focused regression test locks the final Linked Fold dark cascade values.
+
 ## [0.7.3] - 2026-08-17
 
 ### Highlights
