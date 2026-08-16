@@ -181,7 +181,7 @@ def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
 
     assert ids == ["stemmed"]
     assert len(conn.calls) == 1
-    assert conn.calls[0][1][0] == ["caching", "cached", "responses"]
+    assert conn.calls[0][1][0] == ["caching", "cached", "response"]
 
 
 @pytest.mark.parametrize(
@@ -647,6 +647,35 @@ def test_lexical_like_fallback_requires_single_character_unicode_subject() -> No
     ids = provider._lexical_ids(
         Connection(),
         "API 税",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_matches_singular_lesson_for_plural_query() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("graphql-only", "graphql resolver guidance", _NOW),
+                ("relevant", "graphql schema guidance", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix GraphQL schemas",
         codename="c",
         repo="r",
         now=_NOW,

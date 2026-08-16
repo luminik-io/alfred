@@ -22,7 +22,24 @@ _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
 )
 _ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
 _MAX_QUERY_TOKENS = 24
+_MAX_INFLECTION_TOKEN_LENGTH = 64
 MAX_LITERAL_QUERY_CANDIDATES = 400
+_IRREGULAR_ENGLISH_INFLECTIONS = {
+    "analyses": "analysis",
+    "statuses": "status",
+}
+_INVARIANT_ENGLISH_S_ENDINGS = frozenset(
+    {
+        "analysis",
+        "class",
+        "css",
+        "news",
+        "redis",
+        "series",
+        "species",
+        "status",
+    }
+)
 _LOW_SIGNAL_QUERY_TOKENS = frozenset(
     {
         "add",
@@ -83,6 +100,34 @@ def _is_identity_token(token: str) -> bool:
     """Return whether a query concept must match rather than only add rank."""
 
     return token in _ONE_CHAR_TECHNICAL_TOKENS or bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
+
+
+def _english_inflection_form(token: str) -> str:
+    """Return a conservative singular form for English overlap only.
+
+    This is intentionally not a general stemmer. It applies a short, bounded
+    rule set only to ASCII alphabetic concepts and leaves technical compounds,
+    Unicode concepts, and protected words unchanged.
+    """
+
+    if (
+        len(token) < 4
+        or len(token) > _MAX_INFLECTION_TOKEN_LENGTH
+        or not token.isascii()
+        or not token.isalpha()
+        or token in _INVARIANT_ENGLISH_S_ENDINGS
+    ):
+        return token
+    irregular = _IRREGULAR_ENGLISH_INFLECTIONS.get(token)
+    if irregular is not None:
+        return irregular
+    if token.endswith("ies") and len(token) > 4:
+        return f"{token[:-3]}y"
+    if token.endswith("sses"):
+        return token[:-2]
+    if token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        return token[:-1]
+    return token
 
 
 def _unicode_script(char: str, previous: str | None) -> str:
@@ -212,6 +257,9 @@ def tokenize(text: str) -> list[str]:
     ascii_tokens: list[str] = []
     unicode_tokens: list[str] = []
     for token in meaningful_tokens(text):
+        token = _english_inflection_form(token)
+        if token in _LOW_SIGNAL_QUERY_TOKENS:
+            continue
         if token in seen:
             continue
         seen.add(token)
@@ -264,17 +312,21 @@ def escape_like_literal(value: str) -> str:
 def required_lexical_overlap(query_tokens: list[str]) -> int:
     """Require one concept for one-term queries and two for longer queries."""
 
-    return 1 if len(query_tokens) == 1 else 2
+    concepts = {_english_inflection_form(token) for token in query_tokens}
+    return 1 if len(concepts) == 1 else 2
 
 
 def has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
     """Return whether text satisfies the canonical exact-concept threshold."""
 
     required = required_lexical_overlap(query_tokens)
-    query_token_set = set(query_tokens)
-    required_identity_tokens = {token for token in query_token_set if _is_identity_token(token)}
+    query_token_set = {_english_inflection_form(token) for token in query_tokens}
+    required_identity_tokens = {
+        _english_inflection_form(token) for token in query_tokens if _is_identity_token(token)
+    }
     matched: set[str] = set()
     for token in meaningful_tokens(text):
+        token = _english_inflection_form(token)
         if token not in query_token_set:
             continue
         matched.add(token)

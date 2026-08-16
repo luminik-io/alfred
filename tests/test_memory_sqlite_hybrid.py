@@ -272,6 +272,21 @@ def test_default_chain_requires_single_character_unicode_subject(tmp_path: Path)
     assert [item.id for item in out] == [relevant.id]
 
 
+def test_default_chain_matches_singular_lesson_for_plural_query(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = writer.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = load_provider(env).recall(query="Fix GraphQL schemas", codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 @pytest.mark.parametrize(
     "query",
     ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
@@ -392,6 +407,17 @@ def test_recall_requires_two_meaningful_terms_for_multiword_queries(
         codename="c",
         repo="r",
     )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_matches_singular_lesson_for_plural_query(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = provider.recall(query="Fix GraphQL schemas", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -637,6 +663,61 @@ def test_tokenize_keeps_single_character_unicode_only_in_mixed_queries() -> None
     assert mod._tokenize("A I X Q") == []
 
 
+def test_overlap_normalizes_bounded_english_inflections() -> None:
+    query_tokens = mod._tokenize("Fix GraphQL schemas")
+
+    assert query_tokens == ["graphql", "schema"]
+    assert mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
+    assert not mod._has_meaningful_lexical_overlap("GraphQL resolver guidance", query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("plural", "singular"),
+    [
+        ("schemas", "schema"),
+        ("policies", "policy"),
+        ("classes", "class"),
+        ("statuses", "status"),
+        ("analyses", "analysis"),
+    ],
+)
+def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
+    plural: str,
+    singular: str,
+) -> None:
+    query_tokens = mod._tokenize(plural)
+
+    assert query_tokens == [singular]
+    assert mod._has_meaningful_lexical_overlap(singular, query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "expected", "damaged_form"),
+    [
+        ("status", "status", "statu"),
+        ("analysis", "analysis", "analysi"),
+        ("class", "class", "clas"),
+        ("CSS", "css", "cs"),
+        ("Redis", "redis", "redi"),
+    ],
+)
+def test_overlap_does_not_strip_technical_s_endings(
+    query: str,
+    expected: str,
+    damaged_form: str,
+) -> None:
+    query_tokens = mod._tokenize(query)
+
+    assert query_tokens == [expected]
+    assert not mod._has_meaningful_lexical_overlap(damaged_form, query_tokens)
+
+
+def test_tokenize_bounds_inflection_normalization_by_token_length() -> None:
+    long_token = f"{'a' * 64}s"
+
+    assert mod._tokenize(long_token) == [long_token]
+
+
 @pytest.mark.parametrize(
     ("unicode_word", "overlapping_ascii_fragment"),
     [("café", "caf"), ("API課金", "api")],
@@ -681,7 +762,7 @@ def test_tokenize_does_not_treat_arbitrary_big_o_prose_as_symbolic() -> None:
 
 
 def test_tokenize_preserves_only_explicit_one_character_languages() -> None:
-    assert mod._tokenize("Fix C compiler warnings") == ["c", "compiler", "warnings"]
+    assert mod._tokenize("Fix C compiler warnings") == ["c", "compiler", "warning"]
     assert mod._tokenize("Use R") == ["r"]
     assert mod._tokenize("A I X Q") == []
 
