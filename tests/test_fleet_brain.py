@@ -342,6 +342,50 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
 
 
 @pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+    ],
+)
+def test_recall_query_preserves_inflection_retrieval_variants(
+    brain: FleetBrain,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="GraphQL resolver guidance")
+    relevant = f"GraphQL {lesson_term} must be reviewed"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query=f"Fix GraphQL {query_term}",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+def test_recall_query_counts_inflection_variants_as_one_concept(brain: FleetBrain) -> None:
+    relevant = "GraphQL policy guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+    brain.reflect(codename="lucius", repo="org/api", body="Policies policy checklist")
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix GraphQL policies",
+        limit=1,
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+@pytest.mark.parametrize(
     "query",
     ["C", "R", "N+12", "C++", "C#", "F#", "HTTP/2.1", "O(n)", "O(log n)", "O(42)", "I/O", "A/B"],
 )

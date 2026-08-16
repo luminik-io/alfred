@@ -73,6 +73,7 @@ from memory_tokens import (
 )
 from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
+from memory_tokens import query_token_groups as _query_token_groups
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
@@ -723,7 +724,8 @@ class SqliteHybridProvider:
         repo: str | None,
     ) -> list[str]:
         text = _lexical_surface(text)
-        tokens = _tokenize(text)
+        token_groups = _query_token_groups(text)
+        tokens = [group[0] for group in token_groups]
         if not tokens:
             literal = _literal_fallback_query(text)
             if literal is None:
@@ -740,7 +742,8 @@ class SqliteHybridProvider:
             return [str(row[0]) for row in rows]
         scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
         if self._fts_ok:
-            match = " OR ".join(f'"{t}"' for t in tokens)
+            retrieval_tokens = dict.fromkeys(variant for group in token_groups for variant in group)
+            match = " OR ".join(f'"{token}"' for token in retrieval_tokens)
             sql = (
                 "SELECT l.id FROM lessons_fts f JOIN lessons l ON l.id = f.lesson_id "
                 "WHERE f.text MATCH ? " + scope_sql + " ORDER BY bm25(f) LIMIT ?"
@@ -762,9 +765,10 @@ class SqliteHybridProvider:
         # identically before the exact Python overlap filter.
         like_params: list[Any] = []
         clauses: list[str] = []
-        for tok in tokens:
-            clauses.append("l.lexical_text LIKE ?")
-            like_params.append(f"%{tok}%")
+        for group in token_groups:
+            group_clauses = ["l.lexical_text LIKE ?" for _variant in group]
+            clauses.append(f"({' OR '.join(group_clauses)})")
+            like_params.extend(f"%{variant}%" for variant in group)
         like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
         base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
         out: list[str] = []

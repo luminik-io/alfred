@@ -22,6 +22,7 @@ _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
 )
 _ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
 _MAX_QUERY_TOKENS = 24
+_MAX_RETRIEVAL_VARIANTS_PER_CONCEPT = 2
 _MAX_INFLECTION_TOKEN_LENGTH = 64
 MAX_LITERAL_QUERY_CANDIDATES = 400
 _IRREGULAR_ENGLISH_INFLECTIONS = {
@@ -40,6 +41,7 @@ _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
         "status",
     }
 )
+_NO_ENGLISH_PLURAL_VARIANT = frozenset({"css", "news", "redis", "series", "species"})
 _LOW_SIGNAL_QUERY_TOKENS = frozenset(
     {
         "add",
@@ -128,6 +130,40 @@ def _english_inflection_form(token: str) -> str:
     if token.endswith("s") and not token.endswith(("ss", "us", "is")):
         return token[:-1]
     return token
+
+
+def _english_plural_form(token: str) -> str:
+    """Return one bounded retrieval-only plural spelling for a concept."""
+
+    if (
+        len(token) < 4
+        or len(token) > _MAX_INFLECTION_TOKEN_LENGTH
+        or not token.isascii()
+        or not token.isalpha()
+        or token in _NO_ENGLISH_PLURAL_VARIANT
+    ):
+        return token
+    if token == "analysis":
+        return "analyses"
+    if token == "status":
+        return "statuses"
+    if token.endswith("y") and token[-2] not in "aeiou":
+        return f"{token[:-1]}ies"
+    if token.endswith(("ss", "x", "z", "ch", "sh")):
+        return f"{token}es"
+    return f"{token}s"
+
+
+def _retrieval_variants(raw: str, canonical: str) -> tuple[str, ...]:
+    """Return bounded spellings that retrieve one canonical concept."""
+
+    variants: list[str] = [canonical]
+    for variant in (raw, _english_plural_form(canonical)):
+        if variant not in variants:
+            variants.append(variant)
+        if len(variants) >= _MAX_RETRIEVAL_VARIANTS_PER_CONCEPT:
+            break
+    return tuple(variants)
 
 
 def _unicode_script(char: str, previous: str | None) -> str:
@@ -250,34 +286,46 @@ def meaningful_tokens(text: str) -> Iterator[str]:
             yield token
 
 
-def tokenize(text: str) -> list[str]:
-    """Return bounded, de-duplicated concepts for a lexical query."""
+def query_token_groups(text: str) -> list[tuple[str, ...]]:
+    """Return bounded canonical concepts with retrieval spelling variants.
+
+    The first item in each group is the canonical overlap concept. Remaining
+    items are retrieval-only spellings. Providers must score each group once,
+    regardless of how many variants match.
+    """
 
     seen: set[str] = set()
-    ascii_tokens: list[str] = []
-    unicode_tokens: list[str] = []
-    for token in meaningful_tokens(text):
-        token = _english_inflection_form(token)
-        if token in _LOW_SIGNAL_QUERY_TOKENS:
+    ascii_groups: list[tuple[str, ...]] = []
+    unicode_groups: list[tuple[str, ...]] = []
+    for raw in meaningful_tokens(text):
+        canonical = _english_inflection_form(raw)
+        if canonical in _LOW_SIGNAL_QUERY_TOKENS:
             continue
-        if token in seen:
+        if canonical in seen:
             continue
-        seen.add(token)
-        target = ascii_tokens if token.isascii() else unicode_tokens
+        seen.add(canonical)
+        group = _retrieval_variants(raw, canonical)
+        target = ascii_groups if canonical.isascii() else unicode_groups
         if len(target) < _MAX_QUERY_TOKENS:
-            target.append(token)
-        if len(ascii_tokens) >= _MAX_QUERY_TOKENS and len(unicode_tokens) >= _MAX_QUERY_TOKENS:
+            target.append(group)
+        if len(ascii_groups) >= _MAX_QUERY_TOKENS and len(unicode_groups) >= _MAX_QUERY_TOKENS:
             break
     # Pure non-ASCII queries retain the bounded escaped literal path. Mixed
     # queries keep both their ASCII anchor and Unicode subject concepts.
-    if not ascii_tokens:
+    if not ascii_groups:
         return []
-    if not unicode_tokens:
-        return ascii_tokens
-    unicode_reserve = min(4, len(unicode_tokens))
-    out = ascii_tokens[: _MAX_QUERY_TOKENS - unicode_reserve]
-    out.extend(unicode_tokens[: _MAX_QUERY_TOKENS - len(out)])
+    if not unicode_groups:
+        return ascii_groups
+    unicode_reserve = min(4, len(unicode_groups))
+    out = ascii_groups[: _MAX_QUERY_TOKENS - unicode_reserve]
+    out.extend(unicode_groups[: _MAX_QUERY_TOKENS - len(out)])
     return out
+
+
+def tokenize(text: str) -> list[str]:
+    """Return bounded, de-duplicated canonical concepts for a lexical query."""
+
+    return [group[0] for group in query_token_groups(text)]
 
 
 def has_meaningful_memory_query(text: str) -> bool:

@@ -106,19 +106,29 @@ def test_dense_query_filters_scope_in_the_same_where_as_vector_order() -> None:
 
 def test_lexical_query_or_joins_tokens_and_scopes() -> None:
     sql, params = _lexical_query(
-        ["gateway", "rate"], table="lessons", codename="c", repo="r", pool=5, now=_NOW
+        [("gateway", "gateways"), ("rate", "rates")],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=5,
+        now=_NOW,
     )
     assert "to_tsquery('english', %s)" in sql
     assert "ts_rank(l.body_tsv" in sql
     assert "l.codename = %s" in sql
     # OR-of-tokens tsquery, like the SQLite FTS arm.
-    assert params[:2] == [["gateway", "rate"], "gateway | rate"]
+    assert params[:4] == [
+        [0, 0, 1, 1],
+        ["gateway", "gateway", "rate", "rate"],
+        ["gateway", "gateways", "rate", "rates"],
+        "gateway | gateways | rate | rates",
+    ]
     assert params[-1] == 5
 
 
 def test_lexical_query_deduplicates_english_lexemes_before_candidate_limit() -> None:
     sql, params = _lexical_query(
-        ["caching", "cached", "responses"],
+        [("caching", "cachings"), ("cached", "cacheds"), ("response", "responses")],
         table="lessons",
         codename="c",
         repo="r",
@@ -128,21 +138,44 @@ def test_lexical_query_deduplicates_english_lexemes_before_candidate_limit() -> 
 
     where, _, order = sql.partition("ORDER BY")
     assert "WITH query_lexemes AS" in where
-    assert "SELECT DISTINCT plainto_tsquery('english', token) AS lexeme_query" in where
-    assert "FROM unnest(%s::text[]) AS raw(token)" in where
+    assert "SELECT DISTINCT concept_index" in where
+    assert "plainto_tsquery('english', canonical) AS canonical_query" in where
+    assert "plainto_tsquery('english', token) AS lexeme_query" in where
+    assert "FROM unnest(%s::int[], %s::text[], %s::text[])" in where
     assert "numnode(plainto_tsquery('english', token)) > 0" in where
     assert "l.body_tsv @@ to_tsquery('english', %s)" in where
-    assert "SELECT COUNT(*) FROM query_lexemes q WHERE l.body_tsv @@ q.lexeme_query" in where
-    assert ">= LEAST(2, (SELECT COUNT(*) FROM query_lexemes))" in where
+    assert "SELECT COUNT(DISTINCT q.canonical_query) FROM query_lexemes q" in where
+    assert ">= LEAST(2, (SELECT COUNT(DISTINCT canonical_query) FROM query_lexemes))" in where
     assert "LIMIT %s" in order
     assert params == [
-        ["caching", "cached", "responses"],
-        "caching | cached | responses",
+        [0, 0, 1, 1, 2, 2],
+        ["caching", "caching", "cached", "cached", "response", "response"],
+        ["caching", "cachings", "cached", "cacheds", "response", "responses"],
+        "caching | cachings | cached | cacheds | response | responses",
         _NOW,
         "c",
         "r",
-        "caching | cached | responses",
+        "caching | cachings | cached | cacheds | response | responses",
         2,
+    ]
+
+
+def test_lexical_query_counts_variants_as_one_required_concept() -> None:
+    sql, params = _lexical_query(
+        [("graphql", "graphqls"), ("policy", "policies")],
+        table="lessons",
+        codename=None,
+        repo=None,
+        pool=2,
+        now=_NOW,
+    )
+
+    assert "COUNT(DISTINCT q.canonical_query)" in sql
+    assert "COUNT(DISTINCT canonical_query)" in sql
+    assert params[:3] == [
+        [0, 0, 1, 1],
+        ["graphql", "graphql", "policy", "policy"],
+        ["graphql", "graphqls", "policy", "policies"],
     ]
 
 
@@ -181,7 +214,11 @@ def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
 
     assert ids == ["stemmed"]
     assert len(conn.calls) == 1
-    assert conn.calls[0][1][0] == ["caching", "cached", "response"]
+    assert conn.calls[0][1][:3] == [
+        [0, 0, 1, 1, 2, 2],
+        ["caching", "caching", "cached", "cached", "response", "response"],
+        ["caching", "cachings", "cached", "cacheds", "response", "responses"],
+    ]
 
 
 @pytest.mark.parametrize(
@@ -247,7 +284,12 @@ def test_fts_enabled_symbolic_queries_use_exact_bounded_fallback(
 
 def test_lexical_like_fallback_matches_body_and_tags() -> None:
     sql, params = _lexical_like_query(
-        ["graphql"], table="lessons", codename=None, repo="r", pool=3, now=_NOW
+        [("graphql", "graphqls")],
+        table="lessons",
+        codename=None,
+        repo="r",
+        pool=3,
+        now=_NOW,
     )
     assert "l.lexical_text ILIKE %s" in sql
     assert "%graphql%" in params
@@ -257,17 +299,24 @@ def test_lexical_like_fallback_matches_body_and_tags() -> None:
 
 def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
     sql, params = _lexical_like_query(
-        ["graphql", "schema"], table="lessons", codename="c", repo="r", pool=2, now=_NOW
+        [("graphql", "graphqls"), ("schema", "schemas")],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
     )
 
     where, _, order = sql.partition("ORDER BY")
-    assert where.count("CAST(l.lexical_text ILIKE %s AS INTEGER)") == 2
+    assert where.count("CAST((l.lexical_text ILIKE %s OR l.lexical_text ILIKE %s) AS INTEGER)") == 2
     assert ") >= %s" in where
     assert "LIMIT %s" in order
     assert "OFFSET" not in order
     assert params == [
         "%graphql%",
+        "%graphqls%",
         "%schema%",
+        "%schemas%",
         2,
         _NOW,
         "c",
@@ -278,7 +327,7 @@ def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
 
 def test_lexical_like_fallback_uses_created_at_id_keyset() -> None:
     sql, params = _lexical_like_query(
-        ["graphql", "schema"],
+        [("graphql", "graphqls"), ("schema", "schemas")],
         table="lessons",
         codename="c",
         repo="r",
@@ -705,6 +754,59 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
     ids = provider._lexical_ids(
         Connection(),
         "Fix src/api GraphQL schema",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+    ],
+)
+def test_lexical_like_fallback_preserves_inflection_retrieval_variants(
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    lexical_text = f"graphql {lesson_term} must be reviewed"
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" not in normalized:
+                raise AssertionError(f"unexpected SQL: {normalized}")
+            patterns = [
+                value.strip("%")
+                for value in params
+                if isinstance(value, str) and value.startswith("%")
+            ]
+            threshold = next(value for value in params if isinstance(value, int))
+            matches = sum(pattern in lexical_text for pattern in patterns)
+            rows = [("relevant", lexical_text, _NOW)] if matches >= threshold else []
+            return Cursor(rows)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        f"Fix GraphQL {query_term}",
         codename="c",
         repo="r",
         now=_NOW,

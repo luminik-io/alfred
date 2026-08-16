@@ -28,8 +28,8 @@ from memory_tokens import (
     has_meaningful_lexical_overlap,
     lexical_surface,
     literal_fallback_query,
+    query_token_groups,
     required_lexical_overlap,
-    tokenize,
 )
 
 from . import schema as schema_mod
@@ -712,7 +712,8 @@ class SQLiteStore:
         limit = int(limit)
         query_body = (query or "").strip() or None
         query_surface = lexical_surface(query_body) if query_body is not None else None
-        query_tokens = tokenize(query_surface) if query_surface is not None else []
+        token_groups = query_token_groups(query_surface) if query_surface is not None else []
+        query_tokens = [group[0] for group in token_groups]
         literal_only_query = (
             literal_fallback_query(query_surface)
             if query_surface is not None and not query_tokens
@@ -795,17 +796,21 @@ class SQLiteStore:
             if repo:
                 wheres.append("repo = ?")
                 params.append(repo)
-            like_clauses = [
-                "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
-                "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
-                "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
-                for _token in query_tokens
-            ]
+            like_clauses = []
+            for group in token_groups:
+                variant_clauses = [
+                    "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                    "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                    "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                    for _variant in group
+                ]
+                like_clauses.append(f"({' OR '.join(variant_clauses)})")
             like_score = " + ".join(f"CAST({clause} AS INTEGER)" for clause in like_clauses)
             wheres.append(f"({like_score}) >= ?")
-            for token in query_tokens:
-                pattern = f"%{escape_like_literal(token)}%"
-                params.extend([pattern, pattern])
+            for group in token_groups:
+                for variant in group:
+                    pattern = f"%{escape_like_literal(variant)}%"
+                    params.extend([pattern, pattern])
             params.append(required_lexical_overlap(query_tokens))
 
             seen = {str(row[0]) for row in matched_rows}

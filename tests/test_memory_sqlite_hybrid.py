@@ -306,6 +306,28 @@ def test_default_chain_does_not_require_ordinary_slash_path(tmp_path: Path) -> N
     assert [item.id for item in out] == [relevant.id]
 
 
+def test_default_chain_preserves_plural_retrieval_variant(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL policies must be reviewed",
+    )
+
+    out = load_provider(env).recall(
+        query="Fix GraphQL policies",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 @pytest.mark.parametrize(
     "query",
     ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
@@ -448,6 +470,85 @@ def test_recall_does_not_require_ordinary_slash_path(
     relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema guidance")
 
     out = provider.recall(query="Fix src/api GraphQL schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+    ],
+)
+def test_fts_recall_preserves_inflection_retrieval_variants(
+    provider: SqliteHybridProvider,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"GraphQL {lesson_term} must be reviewed",
+    )
+
+    out = provider.recall(query=f"Fix GraphQL {query_term}", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+    ],
+)
+def test_like_recall_preserves_inflection_retrieval_variants(
+    monkeypatch: pytest.MonkeyPatch,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"GraphQL {lesson_term} must be reviewed",
+    )
+
+    out = provider.recall(query=f"Fix GraphQL {query_term}", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_retrieval_variants_count_as_one_concept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=1)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL policy guidance",
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="Policies policy checklist",
+    )
+
+    out = provider.recall(query="Fix GraphQL policies", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -699,6 +800,24 @@ def test_overlap_normalizes_bounded_english_inflections() -> None:
     assert query_tokens == ["graphql", "schema"]
     assert mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
     assert not mod._has_meaningful_lexical_overlap("GraphQL resolver guidance", query_tokens)
+
+
+def test_query_token_groups_separate_retrieval_variants_from_overlap_concepts() -> None:
+    groups = mod._query_token_groups("Fix GraphQL policies and analyses")
+
+    assert groups == [
+        ("graphql", "graphqls"),
+        ("policy", "policies"),
+        ("analysis", "analyses"),
+    ]
+    assert [group[0] for group in groups] == mod._tokenize("Fix GraphQL policies and analyses")
+
+
+def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
+    groups = mod._query_token_groups(" ".join(f"concept{index}" for index in range(100)))
+
+    assert len(groups) == 24
+    assert all(1 <= len(group) <= 2 for group in groups)
 
 
 @pytest.mark.parametrize(

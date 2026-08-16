@@ -78,6 +78,7 @@ from memory_tokens import (
 )
 from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
+from memory_tokens import query_token_groups as _query_token_groups
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
@@ -362,7 +363,7 @@ def _backfill_lexical_text(conn: Any, table: str) -> None:
 
 
 def _lexical_query(
-    tokens: list[str],
+    token_groups: list[tuple[str, ...]],
     *,
     table: str,
     codename: str | None,
@@ -382,24 +383,34 @@ def _lexical_query(
     to recency. Scope + validity stay in the same ``WHERE``.
     """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
-    tsquery = " | ".join(tokens)
+    variants = [variant for group in token_groups for variant in group]
+    concept_indexes = [
+        concept_index for concept_index, group in enumerate(token_groups) for _variant in group
+    ]
+    canonical_concepts = [group[0] for group in token_groups for _variant in group]
+    tsquery = " | ".join(variants)
     sql = (
         "WITH query_lexemes AS ("
-        "SELECT DISTINCT plainto_tsquery('english', token) AS lexeme_query "
-        "FROM unnest(%s::text[]) AS raw(token) "
+        "SELECT DISTINCT concept_index, "
+        "plainto_tsquery('english', canonical) AS canonical_query, "
+        "plainto_tsquery('english', token) AS lexeme_query "
+        "FROM unnest(%s::int[], %s::text[], %s::text[]) "
+        "AS raw(concept_index, canonical, token) "
         "WHERE numnode(plainto_tsquery('english', token)) > 0"
         ") "
         f"SELECT l.id FROM {table} l "
         "WHERE l.body_tsv @@ to_tsquery('english', %s) "
-        "AND (SELECT COUNT(*) FROM query_lexemes q "
+        "AND (SELECT COUNT(DISTINCT q.canonical_query) FROM query_lexemes q "
         "WHERE l.body_tsv @@ q.lexeme_query) "
-        ">= LEAST(2, (SELECT COUNT(*) FROM query_lexemes)) "
+        ">= LEAST(2, (SELECT COUNT(DISTINCT canonical_query) FROM query_lexemes)) "
         f"{scope_sql} "
         "ORDER BY ts_rank(l.body_tsv, to_tsquery('english', %s)) DESC, l.created_at DESC "
         "LIMIT %s"
     )
     params = [
-        list(tokens),
+        concept_indexes,
+        canonical_concepts,
+        variants,
         tsquery,
         *scope_params,
         tsquery,
@@ -409,7 +420,7 @@ def _lexical_query(
 
 
 def _lexical_like_query(
-    tokens: list[str],
+    token_groups: list[tuple[str, ...]],
     *,
     table: str,
     codename: str | None,
@@ -431,9 +442,10 @@ def _lexical_like_query(
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
     like_params: list[Any] = []
     clauses: list[str] = []
-    for tok in tokens:
-        clauses.append("l.lexical_text ILIKE %s")
-        like_params.append(f"%{tok}%")
+    for group in token_groups:
+        group_clauses = ["l.lexical_text ILIKE %s" for _variant in group]
+        clauses.append(f"({' OR '.join(group_clauses)})")
+        like_params.extend(f"%{variant}%" for variant in group)
     like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
     cursor_sql = ""
     cursor_params: list[Any] = []
@@ -448,7 +460,7 @@ def _lexical_like_query(
     )
     params = [
         *like_params,
-        _required_lexical_overlap(tokens),
+        _required_lexical_overlap([group[0] for group in token_groups]),
         *scope_params,
         *cursor_params,
         pool,
@@ -1098,7 +1110,8 @@ class PgvectorProvider:
         now: datetime,
     ) -> list[str]:
         text = _lexical_surface(text)
-        tokens = _tokenize(text)
+        token_groups = _query_token_groups(text)
+        tokens = [group[0] for group in token_groups]
         if not tokens:
             literal = _literal_fallback_query(text)
             if literal is None:
@@ -1114,7 +1127,7 @@ class PgvectorProvider:
             return [str(row[0]) for row in conn.execute(sql, params).fetchall()]
         if self._fts_ok and not _requires_exact_lexical_tokens(tokens):
             sql, params = _lexical_query(
-                tokens,
+                token_groups,
                 table=self._lessons,
                 codename=codename,
                 repo=repo,
@@ -1131,7 +1144,7 @@ class PgvectorProvider:
         after: tuple[datetime, str] | None = None
         for _page in range(_MAX_LEXICAL_FALLBACK_PAGES):
             sql, params = _lexical_like_query(
-                tokens,
+                token_groups,
                 table=self._lessons,
                 codename=codename,
                 repo=repo,
