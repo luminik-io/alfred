@@ -66,7 +66,7 @@ def test_issue_templates_match_the_current_product() -> None:
     feature = (ISSUE_TEMPLATES / "feature.yml").read_text()
     question = (ISSUE_TEMPLATES / "question.yml").read_text()
 
-    assert "placeholder: \"0.2.1\"" not in bug
+    assert 'placeholder: "0.2.1"' not in bug
     assert "label: Operating system" in bug
     assert "alfred doctor" in bug
     assert "weekend-maintained" not in feature
