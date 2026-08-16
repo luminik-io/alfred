@@ -2684,6 +2684,43 @@ def test_launcher_and_setup_use_runtime_home_for_mapped_tilde_without_home(
     assert code_memory["graph_dir"] == str(expected)
 
 
+def test_launcher_and_setup_use_runtime_home_for_tilde_workspace_without_home(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    repo = runtime / "workspace" / "api"
+    repo.joinpath(".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    binary.chmod(0o755)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": "~/workspace",
+        "WORKSPACE_SUBDIR": "",
+    }
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+    expected = _scope_cache_dir(cache_root, repo)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert launcher.stdout.strip() == str(expected)
+    assert code_memory["repos"]["configured_existing"] == ["api"]
+    assert code_memory["graph_dir"] == str(expected)
+
+
 @pytest.mark.parametrize(
     ("env", "expected_base"),
     [

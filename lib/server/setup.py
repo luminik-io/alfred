@@ -1526,10 +1526,7 @@ def _code_memory_workspace(env: dict[str, str]) -> Path:
 def _code_memory_workspace_root(env: dict[str, str]) -> Path:
     configured = _code_memory_config(env, "WORKSPACE_ROOT")
     if configured:
-        path = _safe_expand_path(configured)
-        if path:
-            return path
-        return Path(configured)
+        return _code_memory_expand_user_path(env, configured)
     home = env.get("HOME", "").strip()
     if home:
         path = _safe_expand_path(home)
@@ -1674,28 +1671,28 @@ def _code_memory_configured_repo_path(
 ) -> Path:
     mapping = repo_map if repo_map is not None else _code_memory_repo_map(env)
     mapped = mapping.get(name, mapping.get(name.casefold(), name))
-    if mapped == "~" or mapped.startswith("~/"):
-        home = _code_memory_mapped_path_home(env)
-        if home is not None:
-            suffix = mapped.removeprefix("~/") if mapped != "~" else ""
-            mapped_path = home / suffix
-            if mapped_path.is_absolute():
-                return mapped_path
-            mapped = str(mapped_path)
-    path = Path(mapped)
+    path = _code_memory_expand_user_path(env, mapped)
     if path.is_absolute():
         return path
     return _code_memory_workspace(env) / path
 
 
-def _code_memory_mapped_path_home(env: Mapping[str, str]) -> Path | None:
-    """Match the launcher's HOME, ALFRED_HOME, platform fallback order."""
+def _code_memory_expand_user_path(env: Mapping[str, str], raw: str) -> Path:
+    """Expand ``~`` with the same precedence as the code-memory launcher."""
 
-    for key in ("HOME", "ALFRED_HOME"):
-        raw = env.get(key, "").strip()
-        if raw:
-            return Path(raw)
-    return _safe_home({})
+    path = Path(raw)
+    if raw != "~" and not raw.startswith("~/"):
+        return path
+    home = next(
+        (Path(value) for key in ("HOME", "ALFRED_HOME") if (value := env.get(key, "").strip())),
+        None,
+    )
+    if home is None:
+        home = _safe_home({})
+    if home is None:
+        return path
+    suffix = raw.removeprefix("~/") if raw != "~" else ""
+    return home / suffix
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:
