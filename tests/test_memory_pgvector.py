@@ -116,6 +116,71 @@ def test_lexical_query_or_joins_tokens_and_scopes() -> None:
     assert params[-1] == 5
 
 
+def test_lexical_query_applies_english_lexeme_overlap_before_candidate_limit() -> None:
+    sql, params = _lexical_query(
+        ["caching", "invalidations"],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
+    )
+
+    where, _, order = sql.partition("ORDER BY")
+    assert "l.body_tsv @@ to_tsquery('english', %s)" in where
+    assert where.count("CAST(l.body_tsv @@ plainto_tsquery('english', %s) AS INTEGER)") == 2
+    assert ") >= %s" in where
+    assert "LIMIT %s" in order
+    assert params == [
+        "caching | invalidations",
+        "caching",
+        "invalidations",
+        2,
+        _NOW,
+        "c",
+        "r",
+        "caching | invalidations",
+        2,
+    ]
+
+
+def test_fts_lexical_ids_preserve_postgres_stemming_semantics() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            self.calls.append(normalized)
+            if normalized.startswith("SELECT l.id FROM lessons l"):
+                return Cursor([("stemmed",)])
+            if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
+                return Cursor([("stemmed", "cache invalidation", "[]")])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db")
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        "caching invalidations",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["stemmed"]
+    assert len(conn.calls) == 1
+
+
 def test_lexical_like_fallback_matches_body_and_tags() -> None:
     sql, params = _lexical_like_query(
         ["graphql"], table="lessons", codename=None, repo="r", pool=3, now=_NOW
@@ -856,3 +921,49 @@ def test_live_write_recall_merge_forget_round_trip() -> None:
     assert provider.health()["ok"] is True
     assert provider.forget_lesson("pgtest-a") is True
     assert provider.forget_lesson("pgtest-b") is True
+
+
+@pytest.mark.skipif(
+    not _LIVE_DSN or not mod.psycopg_available(),
+    reason="set ALFRED_MEMORY_PG_DSN and install psycopg to run the live pgvector test",
+)
+def test_live_fts_stemming_and_overlap_survive_candidate_limit() -> None:
+    provider = PgvectorProvider.from_env(
+        env={
+            **os.environ,
+            "ALFRED_MEMORY_PG_DSN": _LIVE_DSN,
+            "ALFRED_MEMORY_PG_DENSE": "0",
+            "ALFRED_MEMORY_PG_POOL": "2",
+        }
+    )
+    lesson_ids = ("pgtest-stem-relevant", "pgtest-stem-cache", "pgtest-stem-invalidation")
+    try:
+        relevant = provider.reflect(
+            codename="lucius",
+            repo="acme/api",
+            body="cache invalidation",
+            memory_id=lesson_ids[0],
+        )
+        provider.reflect(
+            codename="lucius",
+            repo="acme/api",
+            body=" ".join(["cache"] * 50),
+            memory_id=lesson_ids[1],
+        )
+        provider.reflect(
+            codename="lucius",
+            repo="acme/api",
+            body=" ".join(["invalidation"] * 50),
+            memory_id=lesson_ids[2],
+        )
+
+        out = provider.recall(
+            query="caching invalidations",
+            codename="lucius",
+            repo="acme/api",
+        )
+
+        assert [lesson.id for lesson in out] == [relevant.id]
+    finally:
+        for lesson_id in lesson_ids:
+            provider.forget_lesson(lesson_id)

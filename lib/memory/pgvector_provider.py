@@ -315,23 +315,35 @@ def _lexical_query(
     pool: int,
     now: datetime,
 ) -> tuple[str, list[Any]]:
-    """Full-text arm: ``to_tsquery`` OR-of-tokens ranked by ``ts_rank``.
+    """Full-text arm: bounded English-lexeme overlap ranked by ``ts_rank``.
 
-    Mirrors the SQLite FTS arm, which OR-joins the query tokens and ranks by
-    BM25. Postgres has no BM25 built in, so ``ts_rank`` over the maintained
-    ``body_tsv`` column is the lexical relevance signal; ties fall back to
-    recency. Scope + validity filtered in the same ``WHERE``.
+    The OR query keeps the GIN-index candidate path broad. Per-token English
+    queries then enforce the shared one-or-two-term overlap before ``LIMIT``.
+    This keeps PostgreSQL stemming authoritative and prevents high-ranked weak
+    matches from crowding out a lower-ranked valid match. ``ts_rank`` over the
+    maintained ``body_tsv`` column is the relevance signal; ties fall back to
+    recency. Scope + validity stay in the same ``WHERE``.
     """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
     tsquery = " | ".join(tokens)
+    term_match = "l.body_tsv @@ plainto_tsquery('english', %s)"
+    overlap_score_sql = " + ".join(f"CAST({term_match} AS INTEGER)" for _ in tokens)
     sql = (
         f"SELECT l.id FROM {table} l "
         "WHERE l.body_tsv @@ to_tsquery('english', %s) "
+        f"AND ({overlap_score_sql}) >= %s "
         f"{scope_sql} "
         "ORDER BY ts_rank(l.body_tsv, to_tsquery('english', %s)) DESC, l.created_at DESC "
         "LIMIT %s"
     )
-    params = [tsquery, *scope_params, tsquery, pool]
+    params = [
+        tsquery,
+        *tokens,
+        _required_lexical_overlap(tokens),
+        *scope_params,
+        tsquery,
+        pool,
+    ]
     return sql, params
 
 
@@ -983,7 +995,7 @@ class PgvectorProvider:
             )
             try:
                 ids = [r[0] for r in conn.execute(sql, params).fetchall()]
-                return self._filter_lexical_ids(conn, ids, tokens)
+                return ids
             except Exception as exc:
                 _LOG.debug("memory.pgvector: full-text query failed, using ILIKE: %s", exc)
         sql, params = _lexical_like_query(
