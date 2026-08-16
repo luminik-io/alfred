@@ -193,6 +193,24 @@ def test_default_chain_matches_hyphenated_spelling_variants(
     assert [item.id for item in out] == [lesson.id]
 
 
+def test_default_chain_falls_through_to_fleet_for_identifier_concepts(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    lesson_body = "The task id schema is validated by the API serializer"
+    brain = FleetBrain.from_env(env)
+    lesson = brain.reflect(codename="c", repo="r", body=lesson_body)
+
+    out = load_provider(env).recall(
+        query="Fix the task_id schema in the API serializer",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [lesson.id]
+
+
 @pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,

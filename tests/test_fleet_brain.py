@@ -351,6 +351,29 @@ def test_recall_query_token_empty_literal_is_escaped_and_never_backfills(
 @pytest.mark.parametrize(
     ("query", "lesson_body"),
     [
+        (
+            "Fix the task_id schema in the API serializer",
+            "The task id schema uses the API serializer",
+        ),
+        ("Fix the API% schema serializer", "The API schema uses the serializer"),
+        (r"Fix the API\schema serializer", "The API schema uses the serializer"),
+    ],
+)
+def test_recall_query_metacharacter_literal_miss_uses_concept_fallback(
+    brain: FleetBrain,
+    query: str,
+    lesson_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=lesson_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [lesson_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
         ("Fix cold-start handling", "Use cold start handling in the request path."),
         ("Fix cold start handling", "Use cold-start handling in the request path."),
     ],

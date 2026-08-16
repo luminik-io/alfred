@@ -755,12 +755,12 @@ class SQLiteStore:
             if literal_only_query is not None:
                 return [self._row_to_lesson(conn, row) for row in rows]
 
-            # Keep exact literal matches first. Queries containing SQLite LIKE
-            # metacharacters stay literal-only so escaping cannot broaden them.
+            # Keep exact literal matches first. The explicit escape keeps LIKE
+            # metacharacters literal without disabling canonical fallback.
             matched_rows = [
                 row for row in rows if has_meaningful_lexical_overlap(str(row[3]), query_tokens)
             ]
-            if len(matched_rows) >= limit or any(char in query_body for char in "%_\\"):
+            if len(matched_rows) >= limit:
                 return [self._row_to_lesson(conn, row) for row in matched_rows]
 
             # A literal miss can still be a spelling variant such as
