@@ -595,12 +595,38 @@ def test_agent_repos_empty_when_nothing_configured():
     assert ar.agent_repos("senior-dev", environ={}) == []
 
 
-def test_engine_preflight_bins_treats_hybrid_as_claude_first():
+def test_engine_preflight_bins_treats_hybrid_as_claude_first(monkeypatch):
     import agent_runner as ar
+    from agent_runner import config
+
+    monkeypatch.setattr(config, "CLAUDE_BIN", "claude")
+    monkeypatch.setattr(config, "CODEX_BIN", "codex")
+
+    def both(binary, **_kwargs):
+        return f"/bin/{binary}"
 
     assert ar.engine_preflight_bins("claude") == [ar.CLAUDE_BIN]
     assert ar.engine_preflight_bins("codex") == [ar.CODEX_BIN]
-    assert ar.engine_preflight_bins("hybrid") == [ar.CLAUDE_BIN]
+    assert config.engine_preflight_bins("hybrid", which=both) == ["claude"]
+
+
+def test_hybrid_preflight_accepts_a_codex_only_host(monkeypatch, tmp_path):
+    import agent_runner as ar
+    from agent_runner import config
+
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    monkeypatch.setattr(config, "CLAUDE_BIN", "claude")
+    monkeypatch.setattr(config, "CODEX_BIN", "codex")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "runtime"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "workspace"))
+
+    bins = config.engine_preflight_bins("hybrid")
+
+    assert bins == ["codex"]
+    ar.preflight(ar.PreflightSpec(agent="test", bins=bins, check_disk=False))
 
 
 def test_codex_sandbox_for_agent_honors_write_flag():

@@ -26,6 +26,8 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
   engine probes. GitHub and engine probes share one request deadline.
 - A failed engine readiness probe now stops the current firing without retry or
   fallback. A later scheduled firing can probe again.
+- Hybrid scheduled agents can now pass preflight on a Codex-only host and reach
+  the documented fallback path.
 - Scheduler labels can no longer select engine state paths outside the engine
   state directory.
 - Conversational desktop onboarding now requires an explicit Batteries choice and a handled Slack choice before finishing. Slack setup opens the existing local, token-gated step so secrets and webhook URLs stay out of the model transcript.

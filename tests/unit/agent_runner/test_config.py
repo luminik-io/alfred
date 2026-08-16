@@ -148,11 +148,23 @@ def test_agent_model_state_rejects_unsafe_codename(fresh_agent_runner):
         fresh_agent_runner.persist_agent_model("../../outside", "codex", "gpt-5-codex")
 
 
-def test_engine_preflight_bins_modes(fresh_agent_runner):
-    """codex needs codex; hybrid defaults to claude-only; opt-in adds codex."""
+def test_engine_preflight_bins_modes(fresh_agent_runner, monkeypatch):
+    """Hybrid accepts one installed engine; opt-in still requires both."""
     ar = fresh_agent_runner
+    from agent_runner import config
+
+    monkeypatch.setattr(config, "CLAUDE_BIN", "claude")
+    monkeypatch.setattr(config, "CODEX_BIN", "codex")
+
+    def both(binary, **_kwargs):
+        return f"/bin/{binary}"
+
+    def codex_only(binary, **_kwargs):
+        return "/bin/codex" if binary == "codex" else None
+
     assert ar.engine_preflight_bins("codex") == [ar.CODEX_BIN]
-    assert ar.engine_preflight_bins("hybrid") == [ar.CLAUDE_BIN]
+    assert config.engine_preflight_bins("hybrid", which=both) == ["claude"]
+    assert config.engine_preflight_bins("hybrid", which=codex_only) == ["codex"]
     assert ar.engine_preflight_bins("hybrid", hybrid_requires_codex=True) == [
         ar.CLAUDE_BIN,
         ar.CODEX_BIN,

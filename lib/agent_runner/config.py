@@ -28,8 +28,10 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import shutil
 import sys
 import tempfile
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -392,12 +394,30 @@ def agent_repos(
     return [r.strip() for r in raw.split(",") if r.strip()]
 
 
-def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -> list[str]:
+def _preflight_binary_available(
+    binary: str,
+    *,
+    environ: Mapping[str, str],
+    which: Callable[..., str | None],
+) -> bool:
+    if "/" in binary:
+        path = Path(binary).expanduser()
+        return path.is_file() and os.access(path, os.X_OK)
+    return which(binary, path=environ.get("PATH")) is not None
+
+
+def engine_preflight_bins(
+    engine: str,
+    *,
+    hybrid_requires_codex: bool = False,
+    environ: Mapping[str, str] | None = None,
+    which: Callable[..., str | None] = shutil.which,
+) -> list[str]:
     """Return load-bearing binaries for an engine mode.
 
-    Hybrid is Claude-first by default, so a missing optional Codex
-    fallback does not stop ordinary scheduled work. Callers that require
-    Codex even in hybrid mode pass ``hybrid_requires_codex=True``.
+    Hybrid prefers Claude, but a Codex-only host can pass preflight and reach
+    the runtime fallback. Callers that require both engines pass
+    ``hybrid_requires_codex=True``.
     """
     if engine == DISABLED_ENGINE:
         # Keep invalid configuration visible to every runner that spreads this
@@ -411,6 +431,11 @@ def engine_preflight_bins(engine: str, *, hybrid_requires_codex: bool = False) -
         return [configured or descriptor.default_binary]
     if mode == "hybrid" and hybrid_requires_codex:
         return [CLAUDE_BIN, CODEX_BIN]
+    env = environ if environ is not None else os.environ
+    if _preflight_binary_available(CLAUDE_BIN, environ=env, which=which):
+        return [CLAUDE_BIN]
+    if _preflight_binary_available(CODEX_BIN, environ=env, which=which):
+        return [CODEX_BIN]
     return [CLAUDE_BIN]
 
 
