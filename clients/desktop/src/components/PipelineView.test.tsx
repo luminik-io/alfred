@@ -817,6 +817,28 @@ describe("PipelineView", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("moves focus into the docked inspector when it opens", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [card()],
+          in_progress: [card({ number: 13, title: "Later work item" })],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /ready issue/i }));
+
+    expect(
+      within(
+        screen.getByRole("complementary", { name: "Work item inspector" }),
+      ).getByRole("button", { name: "Close inspector" }),
+    ).toHaveFocus();
+  });
+
   it("uses a sheet instead of compressing the board at compact viewport widths", async () => {
     const user = userEvent.setup();
     viewport.wide = false;

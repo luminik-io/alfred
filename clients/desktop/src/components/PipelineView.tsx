@@ -5,7 +5,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { supportsMutations } from "../api/client";
 import { exactTime, friendlyTime } from "../format";
@@ -93,6 +93,7 @@ export function PipelineView({
 }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showLowSignal, setShowLowSignal] = useState(false);
+  const inspectorCloseRef = useRef<HTMLButtonElement>(null);
   const dockInspector = useMediaQuery("(min-width: 1280px)");
 
   const loading = state === "loading";
@@ -164,6 +165,11 @@ export function PipelineView({
         ? `updated ${friendlyTime(generatedAt)}`
         : null;
   const hasSelection = Boolean(selectedPlan || selectedCard);
+  useEffect(() => {
+    if (hasSelection && dockInspector) {
+      inspectorCloseRef.current?.focus();
+    }
+  }, [hasSelection, dockInspector]);
   const selectedCardColumn: BoardColumn = selectedCard
     ? (columns?.shipped || []).some((card) => cardKey(card) === cardKey(selectedCard))
       ? "shipped"
@@ -376,6 +382,7 @@ export function PipelineView({
                   <p>{inspectorDescription}</p>
                 </div>
                 <Button
+                  ref={inspectorCloseRef}
                   variant="ghost"
                   size="icon-sm"
                   type="button"
