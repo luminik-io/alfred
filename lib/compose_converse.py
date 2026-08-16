@@ -1685,9 +1685,10 @@ def _available_engine_clis() -> dict[str, str]:
 
     from server.setup import engine_clis
 
+    hydrate_engine_paths("hybrid")
     return {
         str(item.get("name") or "").strip().lower(): str(item.get("path") or "").strip()
-        for item in engine_clis()
+        for item in engine_clis(environment="process")
         if item.get("ready")
     }
 

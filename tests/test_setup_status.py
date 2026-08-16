@@ -264,6 +264,48 @@ def test_engine_inventory_excludes_shell_only_claude_profile(
     assert "CLAUDE_CONFIG_DIR" not in captured["environ"]
 
 
+def test_engine_inventory_can_probe_the_current_process_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    (runtime_home / ".env").write_text(
+        "CLAUDE_CONFIG_DIR=/profiles/static\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/profiles/conversation-process")
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_value",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("process-profile probes must not query the scheduler")
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(
+        deadline=time.monotonic() + 5,
+        environment="process",
+    )
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/conversation-process"
+
+
 def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     home = tmp_path / "home"
     alfred_home = tmp_path / ".alfred"

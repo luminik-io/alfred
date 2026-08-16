@@ -95,9 +95,15 @@ export function useOnboardingActions({
             const engines = (fresh?.engines ?? [])
               .filter((engine) => engine.ready)
               .map((engine) => engine.display_name);
-            if (Boolean(fresh?.engine_ready) || engines.length > 0) {
+            if (fresh?.engine_ready) {
               const list = engines.length ? engines.join(" and ") : "a coding engine";
               return { ok: true, note: `Found ${list} on this Mac.` };
+            }
+            if (engines.length > 0) {
+              return {
+                ok: false,
+                note: `Found ${engines.join(" and ")}, but the configured engine route is blocked. Fix its sign-in or engine selection, then try again.`,
+              };
             }
             return {
               ok: false,

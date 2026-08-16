@@ -44,7 +44,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import batteries
 import skill_packs
@@ -755,28 +755,38 @@ def _parse_gh_account(text: str) -> str | None:
     return None
 
 
-def engine_clis(*, deadline: float | None = None) -> list[dict[str, Any]]:
+def engine_clis(
+    *,
+    deadline: float | None = None,
+    environment: Literal["scheduler", "process"] = "scheduler",
+) -> list[dict[str, Any]]:
     """Check supported engines and detect candidate harness executables."""
 
     runtime_env = _runtime_config_env()
     search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
-    probe_env = dict(os.environ)
-    probe_env.update(runtime_env)
+    if environment == "process":
+        probe_env = dict(os.environ)
+    elif environment == "scheduler":
+        probe_env = dict(os.environ)
+        probe_env.update(runtime_env)
+    else:  # pragma: no cover - Literal callers are statically constrained
+        raise ValueError(f"unknown engine environment: {environment}")
     probe_env["PATH"] = search
-    static_profile = _runtime_env_file_value("CLAUDE_CONFIG_DIR", runtime_env)
-    if static_profile:
-        probe_env["CLAUDE_CONFIG_DIR"] = static_profile
-    else:
-        probe_env.pop("CLAUDE_CONFIG_DIR", None)
     remaining = None if deadline is None else deadline - time.monotonic()
-    if remaining is None or remaining > 0:
-        selected_profile = runtime_facade.scheduler_environment_value(
-            "CLAUDE_CONFIG_DIR",
-            environ={},
-            timeout=2.0 if remaining is None else min(2.0, remaining),
-        )
-        if selected_profile:
-            probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
+    if environment == "scheduler":
+        static_profile = _runtime_env_file_value("CLAUDE_CONFIG_DIR", runtime_env)
+        if static_profile:
+            probe_env["CLAUDE_CONFIG_DIR"] = static_profile
+        else:
+            probe_env.pop("CLAUDE_CONFIG_DIR", None)
+        if remaining is None or remaining > 0:
+            selected_profile = runtime_facade.scheduler_environment_value(
+                "CLAUDE_CONFIG_DIR",
+                environ={},
+                timeout=2.0 if remaining is None else min(2.0, remaining),
+            )
+            if selected_profile:
+                probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
     deadline_seconds = 8.0
     if deadline is not None:
         deadline_seconds = max(0.0, deadline - time.monotonic())

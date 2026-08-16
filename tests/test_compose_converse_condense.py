@@ -178,6 +178,27 @@ def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> Non
     assert cc.converse_engine_from_env() == ""
 
 
+def test_converse_auto_selection_probes_the_process_environment(monkeypatch) -> None:
+    import server.setup as setup
+
+    captured: dict[str, object] = {}
+    for name in (cc.ENGINE_ENV, cc.FALLBACK_ENGINE_ENV, "ALFRED_ENGINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+    monkeypatch.setattr(cc, "hydrate_engine_paths", lambda engine: captured.update(hydrated=engine))
+
+    def inventory(**kwargs):
+        captured.update(kwargs)
+        return [{"name": "claude", "path": "/bin/claude", "ready": True}]
+
+    monkeypatch.setattr(setup, "engine_clis", inventory)
+
+    assert cc.converse_engine_from_env() == "claude"
+    assert captured["hydrated"] == "hybrid"
+    assert captured["environment"] == "process"
+
+
 def test_converse_engine_honors_configured_binary_override(monkeypatch, tmp_path: Path) -> None:
     import server.setup as setup
 
