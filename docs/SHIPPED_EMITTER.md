@@ -1,121 +1,94 @@
-# The `alfred-shipped-public` emitter
+# Public shipped-work evidence
 
-`bin/alfred-shipped-public.py` reads your `$ALFRED_HOME/state/` directory, applies a public field allowlist and a partner-name redaction table, and writes a `weekly.json` feed describing recent merged work. The canonical Alfred site now renders a separate public GitHub board for the `luminik-io/alfred` repository from `site/src/data/impact-proof.json`. Use this emitter when you want a shipped-work page for your own private or customer repos, because it scrubs local state before anything is published.
+Alfred has two separate evidence paths:
 
-This document explains the schema, the scrub rules, and the emit command.
+- The canonical site reads public GitHub data for `luminik-io/alfred`.
+- Operators can generate a scrubbed feed from their own local Alfred state.
 
-## When to use it
-
-You have run Alfred for a while and you want a public-facing shipped-work page. Maybe it's part of your build-in-public story. Maybe it's the verifiability bar your customers ask for. Either way the contract is:
-
-- You run the emitter on your own state directory.
-- The emitter scrubs aggressively before writing.
-- You publish the resulting JSON wherever you want.
-
-The canonical Alfred repository does not render an operator's local emitted feed by default because partner names, customer terms, and internal product codenames vary and should not appear in upstream marketing copy.
-
-## Canonical site product snapshot
-
-The canonical site also has an aggregate-only Luminik product snapshot at
-`site/src/data/luminik-product-proof.json`. It is deliberately not a list of
-PRs. The refresh script reads a configured repo list and writes only
-counts:
+The canonical site never reads an operator's repository list or local shipped
+state. Refresh its public repository dataset with:
 
 ```sh
 cd site
-ALFRED_PRODUCT_PROOF_REPOS="owner/repo-a,owner/repo-b" npm run proof:product
+npm run proof:update
 ```
 
-The repo list stays in the environment and is never written to the data file.
-That lets the public site show real product totals without publishing private
-repo names, PR titles, issue titles, branches, prompts, or code.
+This command updates `site/src/data/impact-proof.json`. Exact provenance labels
+qualify a merged PR. A role-like branch name does not qualify it, and
+Dependabot is excluded.
 
-On the canonical site, `.github/workflows/site.yml` refreshes this aggregate
-snapshot on every main-branch deploy, every manual site dispatch, and the daily
-site build when `ALFRED_PRODUCT_PROOF_REPOS` is set as a repository variable.
-Private repo access comes from the `ALFRED_PRODUCT_PROOF_TOKEN` Actions secret.
-When the repo list is configured, that secret is required on main-branch site
-builds. Without it, the workflow fails instead of deploying stale totals. Forks
-and public PR previews keep using the committed seed file.
+## Operator feed
 
-## The emitter (`bin/alfred-shipped-public.py`)
+`bin/alfred-shipped-public.py` reads
+`$ALFRED_HOME/state/shipped/prs.json`, applies a field allowlist and redaction
+rules, and writes a versioned JSON feed. Use it only when you have reviewed the
+configured repository scope and the generated output.
 
-The emitter is the privacy boundary. It reads state from `$ALFRED_HOME/state/shipped/prs.json` (and optionally `trend.json`), applies the public allowlist, and writes a JSON file that conforms to the schema below.
+The upstream Alfred site does not ingest or publish this feed.
 
-### Allowlist
+### Allowed fields
 
-Allow-list driven, not deny-list. Only fields listed in `PR_ALLOWED_FIELDS` are copied:
+The emitter can copy only these pull-request fields:
 
-```
+```text
 repo, number, title, codename, merged_at,
 lines_added, lines_removed, files_changed,
 reviewed_by, url
 ```
 
-PR diffs, issue bodies, author emails, comments, labels, and any other state are dropped silently. New additions to the allowlist need a deliberate code change.
+It drops diffs, issue bodies, author emails, comments, labels, prompts, and all
+unknown fields. Adding a field requires a code change.
 
-### Repo scrub
+### Repository scope
 
-A PR passes through only when its repo:
+A record passes only when its repository has a valid `owner/name` slug and
+passes the configured public allowlist. Built-in private-name patterns still
+block a record when the allowlist contains it.
 
-1. Matches the public slug format `owner/name`.
-2. Does NOT match the built-in private-name patterns, AND is either in `--public-allowlist` or shipped with no allowlist set. The emitter ships with a denylist for internal product-repo basenames; any owner/name whose name segment matches is dropped. Both `alfred-internal` (the private sibling after the rename) and the legacy bare `alfred` basename are denied under any owner.
+Review old state before you allow a repository whose visibility or ownership
+changed. An allowlist confirms scope. It does not prove that every stored title
+is suitable for publication.
 
-An allowlist entry does NOT bypass the denylist. A private-pattern repo stays denied even when it is listed, so a mis-scoped allowlist can never leak a private feed. The one exception is the renamed public cutover slug `luminik-io/alfred`: it matches the legacy bare `alfred` deny (because that slug was the private repo before the rename, and earlier shipped state still carries it for private PRs), so it is denied by default and publishes only when you list it explicitly, once you have confirmed no stale pre-rename records remain. No other private-pattern repo can be re-allowed this way.
+### Text redaction
 
-Any title containing one of those private tokens has it rewritten in place to a `your-` placeholder.
+The emitter replaces built-in organization, product, partner, and integration
+tokens with generic category terms. Review and extend the redaction table for
+your installation.
 
-### Partner-name redaction
+Redaction is a second control. Repository scope and a manual output review are
+still required before publication.
 
-PR titles often mention the third-party platform an integration targets (event-data vendors, CRMs, mail providers, observability, SSO). These platforms are public companies, but the fact that your install integrates with them is private business context.
+### Reviewer and role names
 
-The emitter collapses partner names to neutral category words:
+- A known role slug remains unchanged.
+- An unknown reviewer becomes `human`.
+- An unknown role name becomes `agent`.
 
-| Category | Sample tokens | Replacement |
-|---|---|---|
-| Event-data vendor | Brella, Cvent, Grip, Swapcard, Whova, Eventbrite, Hopin, Bizzabo, Pheedloop | `vendor` |
-| CRM | Salesforce, HubSpot | `CRM` |
-| Outreach platform | Apollo, Outreach, Salesloft | `outreach platform` |
-| Email provider | Resend, Sendgrid, Mailgun, Postmark | `email provider` |
-| Error tracker / telemetry | Sentry, Datadog, Honeycomb | `error tracker` / `telemetry` |
-| SSO | WorkOS, Auth0, Clerk | `SSO` |
-
-The token table lives at the top of `bin/alfred-shipped-public.py` and is extensible. Add new integrations there.
-
-### Reviewer scrub
-
-Reviewer entries are collapsed:
-
-- A known agent codename passes through (`senior-dev`, `reviewer`, `architect`, ...).
-- Anything else (a human GitHub handle, an email, an unknown name) collapses to the literal string `human`.
-
-### Codename scrub
-
-Per-PR `codename` is normalised the same way. Unknown codenames render as `agent` so downstream renderers can still mark the work as machine-driven.
-
-## CLI
+## Command
 
 ```text
 alfred-shipped-public.py
-  --emit-public-json PATH          required, file path or '-' for stdout
+  --emit-public-json PATH          required; use '-' for stdout
   --state DIR                      override $ALFRED_HOME/state
   --operator NAME                  override $ALFRED_PUBLIC_OPERATOR
-  --public-allowlist REPO          repeatable, overrides $ALFRED_PUBLIC_REPO_ALLOWLIST
-  --since YYYY-MM-DD               window start, UTC
-  --until YYYY-MM-DD               window end, UTC
-  --summary-extra PATH             JSON with prs_reverted/issues_closed/agents_active/spend_cents
-  --quiet                          suppress informational stderr logs
+  --public-allowlist REPO          repeatable repository allowlist
+  --since YYYY-MM-DD               UTC window start
+  --until YYYY-MM-DD               UTC window end
+  --summary-extra PATH             optional aggregate summary JSON
+  --quiet                          suppress informational stderr output
 ```
 
-Env vars (12-factor):
+Environment variables:
 
-- `ALFRED_HOME` (default `~/.alfred`)
-- `ALFRED_PUBLIC_OPERATOR` (default `your-org`)
-- `ALFRED_PUBLIC_REPO_ALLOWLIST` (default empty, comma-separated)
+- `ALFRED_HOME`, default `~/.alfred`
+- `ALFRED_PUBLIC_OPERATOR`, default `your-org`
+- `ALFRED_PUBLIC_REPO_ALLOWLIST`, a comma-separated repository list
 
-## Schema (v1)
+## Schema
 
-JSON Schema 2020-12, `additionalProperties: false` everywhere. The canonical machine-readable schema lives at [`schema/weekly.schema.json`](../schema/weekly.schema.json); a sample feed lives at [`schema/weekly.sample.json`](../schema/weekly.sample.json). If you change the shape in a backward-incompatible way, bump the version and update your renderer to handle both.
+The v1 JSON Schema is
+[`schema/weekly.schema.json`](../schema/weekly.schema.json). A sample feed is
+[`schema/weekly.sample.json`](../schema/weekly.sample.json).
 
 ```json
 {
@@ -133,27 +106,25 @@ JSON Schema 2020-12, `additionalProperties: false` everywhere. The canonical mac
     "merge_clean_pct": "integer 0-100"
   },
   "trend": [
-    { "week": "ISO week e.g. 2026-W21", "prs_merged": "integer >= 0" }
+    { "week": "ISO week", "prs_merged": "integer >= 0" }
   ],
   "prs": [
     {
       "repo": "owner/name",
       "number": "integer >= 1",
-      "title": "string (scrubbed)",
-      "codename": "string (normalised to known codename or 'agent')",
+      "title": "scrubbed string",
+      "codename": "known role or agent",
       "merged_at": "ISO 8601 UTC",
       "lines_added": "integer >= 0",
       "lines_removed": "integer >= 0",
       "files_changed": "integer >= 0",
-      "reviewed_by": ["string (normalised to known codename or 'human')"],
-      "url": "https URL to the PR"
+      "reviewed_by": ["known role or human"],
+      "url": "https URL"
     }
   ]
 }
 ```
 
-## Suggested cadence
-
-A weekly cron is enough for most installs. Add a launchd unit / systemd timer that runs every Saturday morning and writes the JSON to your publishing target (S3, your site's data dir, a Gist, whatever).
-
-The emitter is idempotent: same state in, same JSON out (modulo the `generated_at` stamp). Safe to run repeatedly.
+Run the emitter on a schedule only after the output target and repository
+allowlist are explicit. The same input produces the same feed except for the
+`generated_at` timestamp.

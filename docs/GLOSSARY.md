@@ -81,7 +81,8 @@ the machine uses. See [Identity and themes](IDENTITY_AND_THEMES.md).
   narrates a full firing lifecycle without LLM calls or side effects.
   See also: [Dry-run](DRY_RUN.md).
 - **engine**: The coding backend an agent invokes; Claude Code, Codex, or a
-  hybrid that tries Claude first and falls back to Codex on rate limits.
+  hybrid that retries transient Claude failures and uses Codex only for a
+  classified capability gap.
   See also: [Claude Code guide](CLAUDE_CODE.md).
 - **engine routing**: Per-agent assignment of which engine to use, set via
   `ALFRED_<AGENT>_ENGINE` (`claude`, `codex`, or `hybrid`).

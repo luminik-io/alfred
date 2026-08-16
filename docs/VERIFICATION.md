@@ -19,9 +19,8 @@ tiers, in order of how much a reviewer can rely on them:
 4. **Screenshot evidence** (optional, opt-in per repo). Before/after
    screenshots of a configured route, committed to the PR branch.
 
-The block is honest by construction: anything that could not be generated is
-rendered as `not captured (<reason>)`. Evidence is never silently omitted and
-never fabricated.
+Anything that could not be generated is rendered as
+`not captured (<reason>)`. Evidence is not silently omitted or fabricated.
 
 ## What a block looks like
 
@@ -81,7 +80,7 @@ code), and formats it into the block.
 
 - If a repo has no pre-push command configured, the Tests section says
   `not captured (no pre-push command configured for this repo)`. That is
-  honest: nothing ran, so nothing is claimed.
+  `not captured`; nothing ran, so nothing is claimed.
 - If the checks failed, the PR does not open at all (the runner preserves the
   work and releases the issue). A failed-check block only appears on the WIP
   salvage path.
@@ -109,7 +108,7 @@ criteria and return a small JSON verdict. Each criterion is rendered as:
 
 - `[x]` the engine claims the diff satisfies it,
 - `[ ]` the engine says it does not,
-- `[?]` the engine did not judge it (kept honest rather than assumed met).
+- `[?]` the engine did not judge it.
 
 This tier is explicitly labelled self-reported. It is a fast orientation aid
 for a reviewer ("the author thinks these three are done, this one is not"), not
@@ -156,13 +155,12 @@ screenshot_cmd = "npx --yes playwright screenshot {url} {out}"  # optional; defa
 Readiness: when `ready_regex` is set, the runner polls the preview server's
 output until the pattern appears (up to the boot timeout) before taking the
 shot; when it is not set, a fixed grace period is used. A server that never
-signals ready yields an honest `not captured` line rather than a blank or
+signals ready yields a `not captured` line rather than a blank or
 stale image.
 
 A repo with no `[preview.<repo>]` table (or missing `start_cmd`/`url`) never
 attempts screenshots, and the Screenshots section is omitted entirely rather
-than shown as "not captured" - absence is not dishonest when the feature was
-never requested for that repo.
+than shown as "not captured". The feature was not requested for that repo.
 
 ### Failure is reported, never faked
 
@@ -189,4 +187,4 @@ that already passed its real checks.
   ([`../bin/senior-dev.py`](../bin/senior-dev.py)). The senior-dev is wired first; the same
   helpers can be reused by other agents that open PRs.
 - Evidence generation is wrapped so it can never block a PR: any error inside
-  it degrades to an honest note in the block, and the PR opens regardless.
+  it becomes a `not captured` note, and the PR opens regardless.

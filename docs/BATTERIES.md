@@ -1,8 +1,9 @@
 # Batteries
 
 Alfred includes local memory, context compaction, structural reads, blast-radius checks, and
-codebase memory. The desktop installer fetches and verifies the pinned codebase-memory binary;
-the other included tools need no setup. Advanced integrations are available when you need a
+codebase memory. After you configure a valid repository scope, Alfred can fetch and verify the
+pinned codebase-memory binary. It performs no binary or cache work while scope is empty. The
+other included tools need no setup. Advanced integrations are available when you need a
 different graph engine, semantic recall, or an external memory store. Manage configurable tools
 in desktop onboarding or with `alfred batteries`; an explicit disable is written to
 `$ALFRED_HOME/.env` and always wins. For memory back ends specifically, see
@@ -37,6 +38,6 @@ alfred batteries disable <id>  # turn it back off
 ## Notes
 
 - The default memory store is the built-in embedded SQLite keyword store plus the local FleetBrain relational ledger, so recall works with no daemon. Dense vector recall is off until you enable `dense-embeddings` and install its optional dependency.
-- **Codebase memory (`code-memory-mcp`)** is included by default. Set `ALFRED_CODE_MEMORY_REPOS` or `ALFRED_CODE_MAP_REPOS` before use. Alfred never selects repositories from the workspace on its own. Turn it off with `ALFRED_CODE_MEMORY_MCP=0`.
+- **Codebase memory (`code-memory-mcp`)** is included by default. Set `ALFRED_CODE_MEMORY_REPOS` or `ALFRED_CODE_MAP_REPOS` before use. A resolved scope enables pinned binary fetch and its isolated cache. Alfred never selects repositories from the workspace on its own. Turn it off with `ALFRED_CODE_MEMORY_MCP=0`.
 - `redis-ams` and `pgvector` are alternative memory back ends for larger or heavily concurrent installs; they are mutually exclusive as the primary store and layer in front of the built-in SQLite chain. `pgvector` needs both the `alfred-os[pgvector]` Python extra and a Postgres you run.
 - Everything here is derived from the battery manifest in `lib/batteries.py`, the single source of truth shared by the CLI and the desktop picker.

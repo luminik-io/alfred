@@ -4,7 +4,7 @@
  *
  * Shared <head> + header + footer chrome for every page under src/pages/.
  * Bypasses Starlight; Starlight still serves /docs/, /concepts/, /guides/, etc.
- * Dark-first by intent; no theme toggle.
+ * Supports light and dark themes through the shared token system.
  *
  * Pulls design tokens from src/styles/marketing.css, which is the runtime
  * realization of site/DESIGN.md.
@@ -30,11 +30,12 @@ const {
   path,
   ogImage,
   keywords = [
-    "autonomous coding agents",
+    "supervised coding agents",
     "Claude Code",
     "Codex",
     "Codex CLI",
-    "self-hosted ai agents",
+    "local coding agents",
+    "coding harness orchestration",
     "engineering agents",
     "GitHub agents",
     "multi-repo",
@@ -74,7 +75,7 @@ const orgSchema = {
       name: "Alfred",
       url: SITE_URL,
       description:
-        "Alfred runs autonomous coding agents that turn Slack requests, plans, specs, and GitHub issues into pull requests, reviews, safe merges, and Slack reports while you are away.",
+        "Alfred coordinates Claude Code and Codex through scheduled local roles, isolated worktrees, independent review, memory, and explicit approval gates.",
     },
     {
       "@type": "SoftwareApplication",
@@ -83,7 +84,7 @@ const orgSchema = {
       operatingSystem: "macOS, Linux",
       url: SITE_URL,
       description:
-        "Open-source local agent runtime for Claude Code and Codex. Batman architects cross-repo work, Lucius writes implementation PRs, Drake scopes smaller tasks, and Ra's al Ghul reviews pull requests.",
+        "Open-source coordination and supervision layer for Claude Code and Codex. Stable roles plan, implement, test, review, and report through local runs.",
       downloadUrl: "https://github.com/luminik-io/alfred",
       license: "https://github.com/luminik-io/alfred/blob/main/LICENSE",
       isAccessibleForFree: true,
@@ -97,7 +98,7 @@ const navGroups = [
   {
     label: "Product",
     items: [
-      { label: "How it works", href: "/how-it-works/", description: "From request to merged PR." },
+      { label: "How it works", href: "/how-it-works/", description: "From request to reviewed PR." },
       { label: "Multi-repo teams", href: "/multi-repo/", description: "Coordinate work across separate repos." },
       { label: "Monorepos", href: "/monorepo/", description: "Keep one large repo moving safely." },
       { label: "Solo founders", href: "/for-solo-founders/", description: "Run a small engineering fleet yourself." },
@@ -107,7 +108,7 @@ const navGroups = [
     label: "Resources",
     items: [
       { label: "Docs", href: "/docs/", description: "Install, operate, and extend Alfred." },
-      { label: "Impact", href: "/impact/", description: "Shipping record and aggregate totals." },
+      { label: "Impact", href: "/impact/", description: "Public evidence and anonymous totals." },
       { label: "Changelog", href: "/about/changelog/", description: "What shipped recently." },
       { label: "Roadmap", href: "/about/roadmap/", description: "What is planned next." },
       { label: "GitHub", href: "https://github.com/luminik-io/alfred", description: "Source, issues, and releases.", external: true },
@@ -161,12 +162,12 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:alt" content="Alfred. Coding agents that keep development moving while you are away." />
+    <meta property="og:image:alt" content="Alfred. Supervised Claude Code and Codex fleets on your machine." />
 
     {/* Twitter / X */}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={og} />
-    <meta name="twitter:image:alt" content="Alfred. Coding agents that keep development moving while you are away." />
+    <meta name="twitter:image:alt" content="Alfred. Supervised Claude Code and Codex fleets on your machine." />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
 
@@ -360,7 +361,7 @@ const groupIsCurrent = (items: Array<{ href: string }>) => items.some((item) => 
               Alfred
             </a>
             <p class="m-mute" style="font-size:14px;margin-top:12px;max-width:280px;">
-              A self-hosted runtime for autonomous engineering agents. Open source, MIT.
+              A local supervision layer for Claude Code and Codex. Open source, MIT.
             </p>
           </div>
           <div class="m-footer__col">

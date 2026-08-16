@@ -88,7 +88,7 @@ tier routing. Every public name is re-exported from the package's
 slack_post` keeps working unchanged. See `ARCHITECTURE.md` for the
 per-submodule responsibilities.
 
-### 2. Per-firing git worktree isolation
+### 2. Per-firing git worktrees
 
 Every `claude -p` invocation gets its own worktree:
 
@@ -114,11 +114,11 @@ flowchart TB
     w1 -- "claude -p, cwd pinned" --> w1
     w2 -- "claude -p, cwd pinned" --> w2
     w3 -- "claude -p, cwd pinned" --> w3
-    w1 -. "remove on exit" .-> x1[" "]
+    w1 -. "cleanup after terminal exit" .-> x1[" "]
     style x1 fill:none,stroke:none
 ```
 
-Three Lucius firings against three issues create three worktrees and three branches. None can `git push` to another firing's branch, and none can edit a file you are actively editing in the canonical checkout. The worktree is removed at the end of the firing, success or failure.
+Three Lucius firings against three issues create three worktrees and three branches. Locks and branch checks keep normal runs on their assigned work. The processes still have the permissions of the local Alfred user. Terminal runs clean up their worktrees; partial and interrupted runs retain enough state for bounded retry or recovery.
 
 ### 3. Per-agent IAM
 

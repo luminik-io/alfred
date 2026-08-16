@@ -1,14 +1,14 @@
 # Alfred design system
 
-Single source of truth for typography, color, layout, and motif on alfred.luminik.io. The site is a quiet control surface for an autonomous engineering fleet, not a marketing brochure. Every decision below points at one of three goals:
+Single source of truth for typography, color, layout, and motif on alfred.luminik.io. The site explains a supervised local agent fleet through an operations-style interface. Every decision below points at one of three goals:
 
 1. Distinct from the default dark navy developer-tool template.
-2. Reinforces Alfred's promise: the fleet ships while you are not at the keyboard.
+2. Shows how Alfred coordinates work, evidence, and decisions between harness runs.
 3. Honors the Luminik voice rules (no em-dashes, no banned vocabulary, specific over vague, ≤30-word subheads).
 
 ## Concept
 
-Operations Room. The site looks and feels like a watch desk for a fleet that runs without you. Status indicators, log-style strips, sharp panels, generous quiet. The reader should leave with the sense that Alfred is calmly working in the background.
+Operations Room. The site looks like a watch desk for scheduled local work. Status indicators, log-style strips, sharp panels, and clear spacing keep the evidence readable. The reader should understand what runs, what waits, and who can approve or merge.
 
 ## Color tokens
 
@@ -32,7 +32,8 @@ Operations Room. The site looks and feels like a watch desk for a fleet that run
 --alfred-blue:            #5789FF;  /* logo emblem only, sparingly */
 ```
 
-Light-mode variant is deferred. The site is dark-first by intent.
+The site supports light and dark modes. Both modes must preserve the same state
+colors, contrast hierarchy, and evidence density.
 
 ## Typography
 
@@ -102,7 +103,9 @@ roster should carry the operations-room signal.
 
 ### 3. Log strip
 
-Each page renders a representative-but-static log strip near the footer. Mono font, faded text color, fixed-width characters. Acts as the brand's signature moment.
+Each page can render a representative static log strip near the footer. Label
+sample data as an example. Use the mono font, muted text, and fixed-width
+characters.
 
 ```text
 [12:04:11] drake   triaged 4 issues from /specs   ● green
@@ -137,7 +140,7 @@ No carousels, no parallax. The only motion permitted: a 0.6s ease-in fade on the
 
 ## Voice on the site (binding)
 
-- No em-dashes. Use period, comma, parens, or semicolon.
+- No em dashes. Use periods, commas, colons, or parentheses.
 - No banned vocabulary: seamless, unlock, leverage, transform, synergy, cutting-edge, revolutionize, streamline.
 - No "X. Y. The Z." rhythm. No "X, not Y" inside a single clause. No aphoristic punchlines.
 - Specific over vague. Cite real names (Lucius, Drake, Ras al Ghul, Batman, Bane, Nightwing, agent-cleanup), real labels (`agent:implement`, `agent:in-flight`, `agent:pr-open`, `agent:done`), real intervals ("every 20 minutes").
@@ -151,5 +154,6 @@ No carousels, no parallax. The only motion permitted: a 0.6s ease-in fade on the
 - No fake testimonials.
 - No CTAs ending in "!".
 - No "AI-powered" anywhere on the site.
-- No "Get started in 30 seconds" claims (install is honestly 30 min minimum).
-- No fake screenshots in the hero. Use real log output, real GitHub issue bodies, real Slack message text.
+- No fixed install-time claim. Prerequisites and provider sign-in determine the
+  time.
+- No fake screenshots in the hero. Use public evidence or clearly labelled sample data.

@@ -1,114 +1,89 @@
 ---
 title: Roadmap
-description: Shipped, in flight, committed for next quarter, and on the horizon. Plus the design boundaries that stay.
+description: Current priorities, intended next work, research topics, and product boundaries.
 ---
 
-What's shipped, what's actively being built, what's committed for next quarter, and what's on the horizon. Living doc; updated on every release.
+This roadmap is forward-looking. The [changelog](/about/changelog/) records
+shipped work. The canonical source is
+[`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md).
 
-Full source at [`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md). The roadmap has four tiers, each with a different honesty contract:
+- **Current priorities** have active design or implementation work.
+- **Next** describes the intended sequence after current priorities.
+- **Explore** contains research topics with no delivery commitment.
+- **Non-goals** records product boundaries.
 
-- **Shipped** is in the tree. You can `git log` it.
-- **In flight** has actual work behind it this quarter. IC assigned, scope locked.
-- **Next** is committed for the following quarter. Design first, code second.
-- **Horizon** is candid about being speculative. No quarter, no IC.
+## Current priorities
 
-Effort sizing is uniform across tiers: **S** is roughly a week of focused work, **M** is two to four weeks, **L** is a quarter.
+### Launch quality
 
-## Shipped
+- Publish v0.7.0 with signed packages, concise release notes, and a verified
+  clean-install path.
+- Add a complete scratch-home installation and setup test.
+- Record a current request-to-reviewed-PR demo with real approval and evidence.
+- Keep the README, site, CLI help, and setup copy aligned with the runtime.
+- Launch with a reproducible demo and direct links to the source, install
+  guide, threat model, and benchmark method. Submit only to directories whose
+  published scope matches the shipped product.
 
-The [changelog](/about/changelog/) is the detailed, version-by-version ledger. This tier is the short version, so the roadmap stays a forward-looking document.
+### Harness capability contract
 
-### Main after v0.6.0
+- Validate OpenCode isolation, permissions, structured events, and failure
+  behavior before enabling dispatch.
+- Keep CLI detection separate from support status.
 
-Slack app notifications replaced the legacy webhook path, connector sync now
-parses the documented connector list without PyYAML, Codex usage scans are
-bounded on long-lived hosts, and the README has current battery requirements
-plus real light and dark Desktop screenshots.
+### Session and evidence continuity
 
-### v0.6.0 (2026-07-10)
+- Normalize local session, turn, tool, evidence, repository, branch, PR, role,
+  and firing identifiers across harnesses.
+- Link imported interactive sessions to scheduled work only when the operator
+  chooses the repository scope.
+- Apply redaction before any export.
+- Use the same evidence for recovery, review, and run history.
 
-Stable role identity with configurable roster themes, conversational Desktop and
-Slack setup, embedded zero-daemon SQLite memory, optional scale and efficiency
-batteries, self-halting runners, and a rewritten public product story.
+### Memory quality and proof
 
-### v0.5.3 (2026-06-24)
+- Repeat the real-engine memory A/B after retrieval-policy changes and publish
+  the fixture, provider chain, engine, and limitations with each result.
+- Show a lesson's source, recall reason, and validity period.
+- Keep every memory change visible and reversible.
 
-The signed macOS desktop app and Linux packages published with a working `brew install --cask alfred-os`, a conversational Ask surface, a full-width workflow canvas with a dismissible agent drawer, an honest run timeline with an errors-only filter, a self-healing reliability core (classify, retry, break, loop-detect), a code-structure memory layer over MCP, single-source scheduled auth, and a stronger memory store.
+### Curated batteries
 
-### v0.5.2 (2026-06-22)
+- Keep built-in context controls available without a daemon.
+- Pin external tools and record checksums, versions, licenses, and provenance.
+- Package small, opt-in skill and MCP sets by use case.
+- Preserve user-owned harness configuration during setup and removal.
 
-Design parity between the internal and OSS builds (the refreshed dark UI across Inbox / Ask / Work / Agents / Setup), Redis Agent Memory as the default local memory layer with FleetBrain as the review and reliability layer, smoother Slack planning threads, repo-graph support in the code-map flow, desktop visual-QA tooling, and a fresher public site.
+## Next
 
-### v0.5.1 (2026-06-17)
+- Version the `alfred serve` API and add contract tests.
+- Expand engine diagnostics to report permissions, MCPs, skills, and config
+  ownership alongside the shipped authentication and profile checks.
+- Generate reversible role-specific harness configuration from one capability
+  model.
+- Track approved multi-repository work to a final merged, dropped, or blocked
+  state with one evidence rollup.
+- Give durable goals a first-class desktop and CLI view.
+- Add a full side-effect-free lifecycle simulation for every shipped role.
 
-First-run trust polish and the public download path for the signed native client: a public `/download/` page, `alfred serve` and the desktop app aligned on port 7010, and the docs/site brought in line with the shipped client.
+## Explore
 
-### v0.5.0 (2026-06-15)
+- Gemini, Ollama, Cline, and other harness adapters.
+- Local replay and evaluation of normalized sessions.
+- Portable role packs for documentation, release, and repository maintenance.
+- A local fleet workspace command that measures harness readiness, worktree
+  capacity, repository scope, and queue pressure before it assigns work.
+- More code-graph backends with measured retrieval quality.
+- Optional remote workers that keep Alfred's scope and approval controls.
 
-The native desktop app and the trust features around it: a signed Mac/Linux app over `alfred serve` (Inbox, Ask, Work, Agents, Setup), live Claude and Codex subscription usage, a single-repo approval gate, a disk guardian, an approved-Slack-plan-to-issue bridge, and review-first fleet memory with an optional Redis Agent Memory Server.
+## Non-goals
 
-### v0.4.0 (2026-05-23)
+- A hosted, multi-tenant Alfred service.
+- A model gateway that replaces local CLI authentication.
+- An always-running central orchestrator.
+- Automatic merge authority by default.
+- An uncurated skill or plugin marketplace.
+- Silent repository discovery or configuration takeover.
 
-Substrate, observability, planning, approval, memory, and connector primitives: the `agent_runner` package decomposition, `alfred metrics` / `alfred logs`, the issue-claim state machine and multi-repo coordination, spec-planner and architect planning/execution, the FleetBrain ledger, the connector protocol, `alfred serve` v1, and the slop detector.
-
-### v0.3.0 and earlier
-
-Linux support, dry-run mode, fleet control verbs, and the solo-builder setup wizard. See the [changelog](/about/changelog/) for the full ledger.
-
-## In flight (this quarter)
-
-Items with active work and a committed IC.
-
-- **Plan-review gate as a runtime feature.** Promote `plan() -> review_plan() -> execute() -> review_diff()` from an architecture note to the default lifecycle for codenames that opt in. Today the review step exists in prose; the runtime makes it enforceable. IC: core. Effort: M. Issue: TBD.
-- **Public unattended-SLA emit format.** Extend `alfred-shipped-public` with a 30-day window covering firings, success rate, and unattended hours. People who want a public usage page can render this on their own site. IC: core. Effort: S. Issue: TBD.
-- **Alfred Desktop v2.** Keep Slack as the collaboration surface and build on the packaged Tauri shell with guided setup repair, release/update status, lock recovery, safer command previews, and a first-class Goals inbox with evidence. No extra gateway, no local mirror, no second source of truth. Keep `alfred serve` JSON APIs stable so the Tauri shell stays thin. IC: core. Effort: M. Issue: TBD.
-- **Memory quality loop v2.** Improve duplicate collapse, evidence ranking, stale lesson retirement, and approved follow-up execution before a lesson can shape future runs. IC: core. Effort: M. Issue: TBD.
-
-## Next (next quarter)
-
-Committed for the following quarter. Design first, then code.
-
-- **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
-- **Architect bundle-completion tracking.** After approval, the architect role keeps watch on child issues and PRs, reports per-repo progress, and posts a final shipped rollup once every child has landed or been explicitly dropped. Effort: M. Issue: TBD.
-- **Native lifecycle dry-run for every shipped runner.** `alfred dry-run <codename>` now resolves every codename safely; next step is making every individual runner support the full synthetic lifecycle, not just the safe simulation. Effort: S. Issue: TBD.
-- **`alfred serve` API hardening.** v0.5.1 ships the local control surface used by Alfred Desktop. Next work is a versioned API contract, compatibility tests, richer event-stream traces, and clearer error payloads for native clients. Effort: S. Issue: TBD.
-
-## Horizon (no committed quarter)
-
-Candidly speculative. No IC, no quarter, no committed effort estimate.
-
-- Content-fleet codename pack (Scribe, Herald, Curator) for blog, LinkedIn, and SEO drafts.
-- Sales-fleet codename pack for prospect identification, event-page sourcing, and outreach drafts.
-- Marketing and SEO-fleet codename pack for site-page generation, content-drift detection, and search-visibility monitoring.
-- Ops-fleet codename pack for uptime, release notes, and customer-health signals.
-- Personal-assistant codename pack for inbox triage, calendar, and daily digest.
-
-**How these reach OSS.** Cross-department codename packs build in the private internal orchestrator first, validated against real production usage, then port to OSS once generalised. See the private-to-public boundary workflow for the rules each port has to clear (no local host paths, no internal infra, no customer data, scrubbed prompts).
-
-## Considered, not committed
-
-Decisions considered and left out. Listed so contributors do not re-pitch them.
-
-- **Plugin or skill marketplace bundled into Alfred.** Considered and decided against. Skills are user-installed Claude Code skills; a bundled marketplace would push maintenance onto the framework. The convention-only resolver stays.
-- **Hosted Alfred SaaS.** Not on the roadmap. Alfred is self-hosted by design; multi-tenant is a different product.
-- **First-class GitHub App** instead of local `gh` auth. Larger onboarding surface; deferred until there is demonstrated demand.
-- **Pluggable spend backends** (filesystem, SQLite, Redis). Single-host is the design, so this stays speculative.
-- **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience but the install story is fine.
-
-## Design boundaries
-
-These are the design, not missing features.
-
-- **Single install.** One operator or small team, one host, one config. Not multi-tenant, not a hosted SaaS.
-- **The OS schedules; Alfred runs.** No long-running orchestration loop.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` and `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
-- **Lean on the platform.** Adopt Anthropic-native capabilities (Agent Teams, the Memory Tool) rather than re-implement them.
-- **Browser automation is per-codename**: installed in the codename's own bin script.
-
-## Influence
-
-- **Strong**: a working PR for something already on the in-flight or next list.
-- **Medium**: a well-scoped feature request with a real use case and a proposal.
-- **Low**: "would be cool if" comments.
-
-Want to take Alfred somewhere new? Open a discussion first.
+Read the full [design boundaries and contribution guidance](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md#design-boundaries)
+before proposing a scope expansion.

@@ -360,7 +360,7 @@ invalidate-not-delete pass over validated (promoted) candidates:
 
 A row is retired ONLY once its AMS lesson is actually forgotten, so the ledger
 never claims a decay/merge while the lesson is still live in recall (the same
-honesty guarantee as the auto-promotion rollback lever). It is OFF by default:
+audit guarantee as the auto-promotion rollback lever). It is off by default:
 the pass is a true no-op unless `ALFRED_MEMORY_CONSOLIDATE` is set to a
 recognized truthy value in `$ALFRED_HOME/.env`. Pass `--dry-run` to report the
 counts without forgetting or writing anything, and `--json` for the machine

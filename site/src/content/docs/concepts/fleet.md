@@ -144,15 +144,11 @@ common patterns: lock, preflight, spend, gh, slack, claim/release, engine
 invocation, and event logs. Read the [state machine](/concepts/state-machine/)
 and the [tutorial](/getting-started/tutorial/) before writing bespoke runners.
 
-## Roadmap categories
-
-The default install is engineering-only. Future categories are tracked in [`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md): sales/SDR agents, content agents, personal-assistant agents, finance-ops agents, and product-ops/SRE agents. Each needs its own integration surface (Apollo, Reddit, Gmail, and so on) and its own prompt/test/docs package. PRs proposing individual agents in these categories are welcome when they keep the core runtime optional and single-person.
-
 ## Memory
 
 Every engine-aware codename that knows its target repo can recall what earlier
 firings learned about that repo, file class, or issue type. Embedded SQLite
-hybrid memory is the default, and FleetBrain keeps the review queue and
+lexical memory is the default, and FleetBrain keeps the review queue and
 operational ledger under `$ALFRED_HOME`. The next firing prepends relevant
 lessons to its prompt context, so the fleet stops rediscovering the same
 conventions on every run.

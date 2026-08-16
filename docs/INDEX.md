@@ -5,7 +5,7 @@ Current map of the public docs. Trust code first, then this index.
 ## Start Here
 
 - [`../README.md`](../README.md): overview, quick start, repository map, and status.
-- [`DEMO.md`](DEMO.md): `alfred demo`, the one-run tour. Watch the team plan, build in an isolated worktree, catch a planted bug in review, fix it, and ship locally on a throwaway sample repo, with only an authenticated `claude` CLI.
+- [`DEMO.md`](DEMO.md): `alfred demo`, the one-run tour. Watch the team plan, build in an isolated worktree, review the diff, run tests, and create a local pull-request summary on a throwaway sample repo.
 - [`../INSTALL.md`](../INSTALL.md): from-zero local install.
 - [`AI_ASSISTED_INSTALL.md`](AI_ASSISTED_INSTALL.md): copy-paste prompt and guardrails for Claude Code, Codex, or another local coding assistant to install Alfred.
 - [`ONBOARDING.md`](ONBOARDING.md): the two setup paths (chat with Alfred, or step through the form), the onboarding action allowlist, the human-approval gate on side-effectful actions, and the conversational theme builder for naming your team.
@@ -15,7 +15,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`MULTI_REPO_WORKED_EXAMPLE.md`](MULTI_REPO_WORKED_EXAMPLE.md): one feature shipped across three repos using the full fleet, including Batman.
 - [`SPECS_DRIVEN_DEVELOPMENT.md`](SPECS_DRIVEN_DEVELOPMENT.md): turning specs into issue queues, architect plans, and reviewable PRs.
 - [`SPEC_DRIVEN_FOR_EVERYONE.md`](SPEC_DRIVEN_FOR_EVERYONE.md): the plain-language version of spec-driven work for a non-technical reader. Describe an outcome, answer a question or two, approve a preview.
-- [`INSTALL_TIME.md`](INSTALL_TIME.md): honest read on existing-setup (30 min) and fresh-machine (60 to 120 min) install duration.
+- [`INSTALL_TIME.md`](INSTALL_TIME.md): prerequisites and external steps that affect setup time.
 - [`../BOOTSTRAP.md`](../BOOTSTRAP.md): full operations setup for a first fleet.
 - [`TUTORIAL.md`](TUTORIAL.md): build the Echo example agent end-to-end.
 - [`DRY_RUN.md`](DRY_RUN.md): watch a side-effect-safe firing lifecycle before trusting scheduled work.
@@ -30,8 +30,8 @@ Current map of the public docs. Trust code first, then this index.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
 - [`MERGE_GATE.md`](MERGE_GATE.md): the GitHub-native merge gate. Alfred merges a PR only when its configured approval policy passes, all review threads are resolved, the branch is clean and mergeable, checks are green, and external reviewers have exact-head evidence protected by native merge guards. It documents the policy settings and the `alfred pr check` / `alfred pr merge` commands.
 - [`RECOVERY.md`](RECOVERY.md): failure auto-recovery. When a firing's push step fails on a lint or format hook, a non-fast-forward or conflict, a failing CI check, or a transient network blip, the same engine gets one bounded turn to fix the cause and re-push before the firing holds. Approval-gate, scrub-check, and auth failures are never recovered. The `ALFRED_RECOVERY_MAX_ATTEMPTS` knob and the distinct self-healed telemetry.
-- [`VERIFICATION.md`](VERIFICATION.md): the `## Verification evidence` block on every agent PR. Test-check summary, diff summary, engine self-assessment against the issue's acceptance criteria, and optional opt-in before/after screenshots, with an honest "not captured" for anything that could not run.
-- [`RUBRIC_GATE.md`](RUBRIC_GATE.md): the optional grade-then-revise gate on the build step. A cheap separate grader reads the diff against a rubric derived from the issue, the implementer revises once on `needs_revision`, and the final verdict is shown honestly in the PR body. Off by default (`ALFRED_RUBRIC_GATE`).
+- [`VERIFICATION.md`](VERIFICATION.md): the `## Verification evidence` block on agent PRs by default. Test-check summary, diff summary, engine self-assessment against the issue's acceptance criteria, and optional opt-in before/after screenshots, with `not captured` for anything that could not run.
+- [`RUBRIC_GATE.md`](RUBRIC_GATE.md): the optional grade-then-revise gate on the build step. A separate grader reads the diff against a rubric derived from the issue, the implementer revises once on `needs_revision`, and the final verdict appears in the PR body. Off by default (`ALFRED_RUBRIC_GATE`).
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.
 - [`CODE_MEMORY.md`](CODE_MEMORY.md): the code-structure memory layer. codebase-memory-mcp indexes in-scope repos into a code graph and answers read-only symbol, caller, and ownership queries the fleet can call on demand.
@@ -54,7 +54,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.
 - [`CAPABILITIES.md`](CAPABILITIES.md): read-only local inventory for code graph memory, Alfred's context governor, and engineering skill packs.
 - [`TOOL_COMPACTOR.md`](TOOL_COMPACTOR.md): the tool-output compactor. Shrinks noisy Bash output before it enters context, compacting only on a confirmed-success exit so an error is never hidden, plus config knobs.
-- [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and cost framed as a share of subscription quota.
+- [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and observed turns per PR.
 - [`TELEMETRY.md`](TELEMETRY.md): the opt-out anonymous usage reporter that sends aggregate totals to the public Impact counter, its controls, and how to point it at a self-hosted collector.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook, optional bot-token setup, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.
@@ -85,7 +85,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`../ROADMAP.md`](../ROADMAP.md)
 - [`../CHANGELOG.md`](../CHANGELOG.md)
 - [`../SECURITY.md`](../SECURITY.md)
-- [`THREAT_MODEL.md`](THREAT_MODEL.md): what one run can and cannot do, the containment boundaries, and how to verify the privacy claim yourself.
+- [`THREAT_MODEL.md`](THREAT_MODEL.md): Alfred's workflow controls, local-user boundary, network use, and operator responsibilities.
 - [`MACOS_PERMISSIONS.md`](MACOS_PERMISSIONS.md): every macOS prompt explained, plus the permissions Alfred never requests.
 - [`../SUPPORT.md`](../SUPPORT.md)
 - [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md)

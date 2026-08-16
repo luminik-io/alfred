@@ -139,13 +139,16 @@ the memory provider chain, with embedded SQLite first by default.
 
 ## Privacy model
 
-Everything in this tree is local to your machine. Nothing in Alfred transmits state files, transcripts, lessons, or spend ledgers off-host. The only outbound channels are:
+Alfred stores run state, transcripts, lessons, and local ledgers under
+`$ALFRED_HOME`. The selected harness sends prompt context to its model provider.
+Alfred can also contact GitHub, optional Slack, telemetry when enabled, and
+package or battery download endpoints. Harnesses, skills, MCP servers, and
+project commands can add other destinations.
 
-- The configured engine (`claude -p` or `codex exec`), which sends the prompt you compose to Anthropic or OpenAI on your existing CLI auth.
-- The GitHub CLI (`gh`), which talks to GitHub on your existing `gh auth login` token.
-- The Slack incoming webhook, when configured.
-
-If you delete `$ALFRED_HOME/`, you delete every byte Alfred remembers about your fleet. Treat the directory the way you treat your shell history: it is your data, not fleet data, and never leaves the host unless you put it somewhere yourself.
+Deleting `$ALFRED_HOME/` removes Alfred's local state. It does not remove data
+already sent to an external provider or service. Read the
+[threat model](https://github.com/luminik-io/alfred/blob/main/docs/THREAT_MODEL.md)
+and [telemetry contract](/reference/telemetry/).
 
 ## See also
 

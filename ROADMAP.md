@@ -1,322 +1,126 @@
 # Roadmap
 
-What's shipped, what's actively being built, what's committed for next quarter, and what's on the horizon. Living doc; updated on every release.
+This document lists forward-looking work. It does not repeat release history.
+See [CHANGELOG.md](CHANGELOG.md) for shipped changes and
+[GitHub releases](https://github.com/luminik-io/alfred/releases) for tagged
+artifacts.
 
-The roadmap has four tiers. Each tier has a different honesty contract:
+The sections have different commitment levels:
 
-- **Shipped** is in the tree. You can `git log` it.
-- **In flight** has actual work behind it this quarter. IC assigned, scope locked.
-- **Next** is committed for the following quarter. Design first, code second.
-- **Horizon** is candid about being speculative. No quarter, no IC.
+- **Current priorities** have active design or implementation work.
+- **Next** describes the intended sequence after current priorities.
+- **Explore** contains research topics with no delivery commitment.
+- **Non-goals** records product boundaries.
 
-Effort sizing is uniform across tiers: **S** is roughly a week of focused work, **M** is two to four weeks, **L** is a quarter.
+The order can change when testing finds a reliability or safety problem.
 
-## Shipped
+## Current priorities
 
-What is in the OSS tree today.
+### Launch quality
 
-### Main after v0.6.0
+- Publish v0.7.0 with signed packages, concise release notes, and a verified
+  clean-install path.
+- Add a complete scratch-home test. It must install Alfred, configure a fleet,
+  start the local API, exercise the desktop-ready setup path, verify optional
+  battery status, and remove its temporary state.
+- Record a current end-to-end demo from request through reviewed PR. Show real
+  failures, approval points, and verification evidence.
+- Keep the README, site, CLI help, and setup copy aligned with the shipped
+  runtime.
+- Launch with a reproducible demo and direct links to the source, install
+  guide, threat model, and benchmark method. Submit only to directories whose
+  published scope matches the shipped product.
 
-This is merged on `main` and will be part of the next release.
+### Harness capability contract
 
-- Slack flat notifications now use the configured Slack app path instead of a
-  legacy webhook path.
-- The connector-sync fallback parser accepts the documented top-level connector
-  list even when PyYAML is unavailable.
-- Codex usage scans are bounded by recency and file count, avoiding expensive
-  full-history reads on long-lived hosts.
-- README battery requirements and current light/dark Desktop screenshots now
-  match the shipped setup experience.
+- Validate OpenCode before enabling dispatch. The adapter must prove isolated
+  config, repository scope, permission behavior, structured events, and a
+  fail-closed response to interactive prompts.
+- Separate detection from support. A detected CLI must not become dispatchable
+  until its full contract passes.
 
-### v0.6.0: 2026-07-10
+### Session and evidence continuity
 
-Conversational setup and steering, stable role identity with themes on top, a
-zero-daemon memory that recalls past lessons by default, optional efficiency and
-scale batteries, and a rewritten public story.
+- Define one local event envelope for sessions, turns, tools, evidence,
+  repositories, branches, pull requests, roles, and firing IDs.
+- Link interactive harness sessions to scheduled Alfred work when the operator
+  chooses to import them.
+- Keep collection local by default. Require explicit repository scope and apply
+  redaction before any export.
+- Make recovery and review use the same evidence instead of separate harness
+  transcripts and Alfred event logs.
 
-- Role-slug identity is now canonical. Runtime files, scheduler labels, GitHub
-  labels, worktrees, and engine overrides use stable roles such as `architect`,
-  `senior-dev`, `reviewer`, and `test-engineer`; Batman, Lucius, Ra's al Ghul,
-  and Bane are the default-theme display names layered on top, and custom themes
-  resolve across Desktop, Slack, onboarding, and runtime status without changing
-  the role contracts.
-- Conversational setup and theming ship in the desktop app. Alfred can run
-  first-run onboarding as a conversation, propose fixed allowlisted actions,
-  preview team names, and let you build a full roster theme by chatting, all
-  routed through the same approval gates as the stepped setup form.
-- Slack and the desktop Ask surface are real conversational agents: a plain
-  question gets a direct, streamed answer, the plan-and-issue flow opens only for
-  build requests, and long conversations are condensed in the middle so the goal
-  and recent turns survive.
-- The zero-daemon memory default. An embedded SQLite hybrid store (FTS5 lexical,
-  optional `sqlite-vec` dense arm, fused with Reciprocal Rank Fusion) recalls past
-  lessons with no Redis and no daemon; Redis Agent Memory stays a supported
-  opt-in. Phase 2 adds typed, linked, time-aware lessons and a repo-profile
-  injector; Phase 3 adds consolidation and persisted reuse; a Postgres and
-  pgvector scale tier is an opt-in.
-- Token-efficiency batteries: a tool-output compactor that compacts on confirmed
-  success and tees full output through on failure, structure-first skeleton and
-  delta code reads, ranked/decayed/delta memory injection under a budget, and
-  blast-radius briefings in the code map.
-- Optional batteries are first-class and opt-in. A shared manifest, an
-  `alfred batteries` command, and a desktop picker toggle Redis memory, the
-  headroom compression engine, the code-structure memory server, dense
-  embeddings, and the Postgres scale tier. Alfred runs fully with zero batteries.
-- Reliability: every engineering runner has a consecutive-failure self-halt, so a
-  broken runner stops itself instead of burning through work.
-- Security: contained a path-traversal risk in the conversational
-  repository-grounding checkout path.
-- The public README, hero, and docs were rewritten to plain-language enterprise
-  positioning, with new guides for identity and themes, onboarding, memory
-  providers, the tool compactor, skeleton reads, compression engines, and the
-  `alfred demo` one-command walkthrough.
+### Memory quality and proof
 
-### v0.5.3: 2026-06-24
+- Repeat the real-engine memory A/B after retrieval-policy changes and publish
+  the fixture, provider chain, engine, and limitations with each result.
+- Show why a lesson was recalled, where it came from, and when it expires.
+- Keep promotion, retirement, merge, and revert actions visible and reversible.
 
-The signed macOS desktop app and Linux packages published with a working
-`brew install --cask alfred-os`, honest and conversational desktop surfaces, a
-self-healing reliability core, a code-structure memory layer, and a stronger
-memory store.
+### Curated batteries
 
-- Published install paths: the signed, notarized macOS app and Linux packages
-  ship on the release. `brew install --cask alfred-os` installs the desktop app
-  and `brew install alfred-os` installs the CLI; the formula tracks the current
-  release tarball.
-- Conversational Ask: the desktop Ask surface answers a plain question directly
-  and only opens the plan-and-issue flow when you are describing work to build.
-- Workflow canvas rebuild: the canvas is the full-width primary surface with
-  automatic left-to-right DAG layout, fit and zoom controls, a status-colored
-  minimap, and richer node cards; agent detail opens in a dismissible drawer.
-- Honest activity timeline: each run opens on a one-line headline and expands to
-  the full step timeline, an "Errors only" filter shows failures, and a failure
-  reports its real cause instead of a misleading provider message.
-- Self-healing reliability core: failures are classified into transient, fatal,
-  and capability. Transient errors retry the same engine with backoff, fatal
-  errors surface honestly without retrying, the engine fallback fires only on a
-  real capability gap, and repeated identical attempts are detected so a run
-  cannot loop forever.
-- Code-memory over MCP: Alfred can attach an external code-structure memory
-  server to each Claude run for code search, call-graph, blast-radius, and
-  ownership lookups while planning. On by default, opts out with
-  `ALFRED_CODE_MEMORY_MCP=0`, never vendored, and a clean no-op when not
-  installed.
-- Single-source auth: the sign-in token and runtime config live in one store
-  read by the scheduler, with an early auth preflight, closing the silent
-  authentication-failure class where a misplaced token looked like a rate limit.
-- Autonomous lesson capture: a confidence reviewer reads each evidence-backed
-  candidate and, when it is confident the lesson is sound and worth keeping,
-  saves it into recall without a human. It stays off until armed, holds anything
-  it is unsure about in the review queue, and every automatic save is reversible.
-- Reliable memory store: the local memory server is now a plain place to store
-  and look up lessons. The small on-device model no longer rewrites or merges
-  saved lessons, so recalled memory stays true to what was written and the
-  decisions about what to keep live in Alfred.
-- Cleaner lessons queue: draft plans and specs are kept out of the lesson
-  candidates, so reviews are about real lessons from real runs, and the reviewer's
-  prompt now matches what it actually does.
-- Disk emergency recovery: when free space runs critically low, the emergency
-  cleanup also reclaims regenerable build and download caches across the machine,
-  so a full disk no longer wedges the fleet off work.
-- Single home setting: the runtime reads `ALFRED_HOME` only across the runtime,
-  the desktop client, and the launchers.
+- Keep built-in context controls enabled without a daemon.
+- Pin external tools and record checksums, versions, licenses, and provenance.
+- Package small, opt-in skill and MCP sets by use case. Do not bundle an
+  unreviewed marketplace.
+- Make setup and removal idempotent. Preserve user-owned harness configuration.
 
-### v0.5.2: 2026-06-22
+## Next
 
-Desktop interface parity, Redis Agent Memory as the default local memory layer,
-a smoother Slack planning thread, and fresher public proof.
+- Add a versioned `alfred serve` API contract with contract tests and
+  stable error payloads.
+- Extend engine diagnostics to report permissions, MCPs, skills, and config
+  ownership alongside the shipped version, authentication, and scheduler
+  profile checks.
+- Add role-specific harness configuration writers that derive from the same
+  capability model and can undo only the settings Alfred owns.
+- Track approved multi-repository work until each child PR is merged, dropped,
+  or blocked. Produce one final evidence rollup.
+- Give durable goals a first-class desktop and CLI view with constraints,
+  verification, evidence, and blocked-state history.
+- Expand lifecycle dry runs until every shipped role can execute a full
+  side-effect-free simulation.
 
-- Redis Agent Memory is now the default local memory layer, with FleetBrain kept
-  as the review and reliability layer. Install and integration docs describe both
-  as bundled local components.
-- Desktop interface parity: the native app ships the refreshed dark Inbox / Ask /
-  Work / Agents / Setup interface, with screenshot parity checks and pixel-sweep
-  hardening for local desktop routes.
-- Code-map repo graph: the code-map flow now builds a repo graph, giving Alfred a
-  stronger base for understanding codebase relationships before planning.
-- Slack planning threads are easier to use: only the first message needs the
-  Alfred mention, and follow-up replies stay attached to the same plan.
-- Proof telemetry reports anonymous aggregate counts to the hosted collector by
-  default unless disabled with `ALFRED_TELEMETRY_ENABLED=0`; the Worker stays
-  self-hostable for forks and private deployments, and the hosted counters handle
-  missing or stale live data defensively.
-- Site polish: fresher impact proof seed data, cleaner mobile hero layouts, and
-  launch copy that explains the real value, coding agents that keep work moving
-  from Slack, GitHub, or a rough plan while you are away.
-- Reliability fixes: workflow validation now resolves `actionlint` from common
-  local install paths so scheduled agents do not fail under a narrower launchd
-  PATH, and desktop visual QA uses isolated browser contexts with validated route
-  and navigation timeouts.
+## Explore
 
-### v0.5.1: 2026-06-17
+These items need research and proof before they can enter the delivery plan:
 
-Reliability, first-run trust polish, the first packaged native client, and the
-public download path for signed desktop artifacts.
+- Gemini, Ollama, Cline, and other harness adapters under the same capability
+  and containment contract.
+- Local replay and evaluation of normalized harness sessions.
+- Portable role packs for documentation, release, and repository maintenance.
+- A local fleet workspace command that measures harness readiness, worktree
+  capacity, repository scope, and queue pressure before it assigns work.
+- Additional code-graph backends with measured retrieval and blast-radius
+  quality.
+- Optional remote workers that preserve Alfred's approval, evidence, and
+  repository-scope rules.
 
-- Public download page: `/download/` links to stable latest-release assets for
-  `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
-- Native runtime alignment: `alfred serve` defaults to 7010, the desktop client
-  stops probing legacy 7000 after a 7010 failure, and stale saved 7000 URLs are
-  normalized before any browser or Tauri request.
-- Launch polish: the docs/site describe signed macOS and Linux artifacts, the
-  current Inbox / Ask / Work / Agents / Setup app IA, and the desktop health
-  pill now says "Needs attention" consistently.
-- Audit cleanup: high-severity frontend audit findings were cleared across the
-  desktop and site lockfiles, and diagram-free docs pages no longer log
-  `astro-mermaid` noise in the browser console.
-- `alfred dry-run <codename>`: scheduler-free dry-run resolution for every shipped codename. Native dry-run runners execute with side effects stubbed; every other codename gets a safe no-side-effect simulation.
-- `fleet-github-poll.py` and `alfred github-poll`: local GitHub issue/PR polling into fleet-brain.
-- Bundle memory: `agent:bundle:<slug>` and `bundle:<slug>` labels are mirrored into `bundle_items` for Batman-style rollout inspection.
-- Worker heartbeat memory: `alfred brain heartbeat`, `alfred brain workers --stale`, and richer doctor output for stale-worker detection.
-- Memory promotion loop: `alfred brain promotions` surfaces high-confidence candidates with evidence before they enter recall.
-- Reliability governor: `alfred brain failure-patterns` and `alfred brain governor` classify repeated failures into operator actions; `alfred brain harvest` turns those patterns into reviewable lesson candidates when the operator applies it.
-- Redis Agent Memory is the primary lesson store: the default provider chain is `redis,fleet`, `alfred brain ams-status` checks the local server, and `alfred brain redis-sync` carries older reviewed FleetBrain lessons into Redis.
-- Slack memory curation: trusted users can run `memory` from Slack to review
-  pending candidates and promotion suggestions, `remember [repo:] <lesson>` to
-  stage a reviewable candidate from conversation, and operator-only
-  `memory promote <id>` / `memory reject <id>` to decide what enters recall.
-  `memory harvest` / `memory harvest now` handle repeated-failure candidates,
-  while `memory redis` and `memory sync` keep the memory server inspectable.
-- Scheduled memory harvest: `memory-harvest.py` can run from launchd/systemd,
-  queue repeated-failure candidates automatically, and notify Slack only when
-  there is something to review.
-- Planning memory loop: the Planning tab recalls promoted repo lessons while drafting, embeds prompt-safe hints into saved specs, and proposes reviewable spec-to-issue memory candidates when a spec is saved.
-- `alfred serve` cockpit polish: the local dashboard now surfaces governor status, repeated failure patterns, stale workers, memory review suggestions, saved Alfred plans, Planning intake, human-readable timestamps, and mobile card layouts.
-- Batman plan clarity: Slack plan messages now show actionable titles, GitHub parent links, readiness verdicts, child issue scopes, done-when checks, and explicit approve/reject/reply instructions before child issues are filed.
-- Slack planning assistant: Batman approval threads and the local Planning tab now share `acceptance:`, `test:`, `add repo:`, `remove repo:`, and `question:` commands so operators can adjust plans before implementation. Repo add/remove replies are applied to execution scope before child issues or worktrees are created. Trusted Slack feedback users can shape plans without being able to approve them, and explicit `question:` feedback blocks execution until the plan is resolved. Registered plan-thread replies are also saved under `$ALFRED_HOME/state/plan-revisions/`, update the thread registry as `revised` or `needs_resolution`, and acknowledge the execution scope if approved now.
-- Slack follow-up loop: trusted replies after Batman reports or PR links are classified as `change`, `fix`, `test`, `question`, `scope`, or notes, acknowledged in-thread, saved under `$ALFRED_HOME/state/followups`, surfaced in Plans as `needs follow-up`, and can be converted into a local planning draft or marked handled without silently approving, merging, or changing code.
-- Slack planning inbox commands: trusted users can run `plans` and `plan <id>`
-  from Slack to inspect saved plans, drafts, and follow-ups. `draft <id>`
-  converts a captured follow-up into a local planning draft with readiness and
-  memory recall, while `handled <id>` archives it. Both remain local and never
-  approve execution.
-- Slack planning listener: optional Socket Mode listener for trusted DMs, app
-  mentions, and registered plan/report threads. It writes local planning drafts
-  and feedback context without making chat text an approval mechanism.
-- Slack trusted collaborators: operators can add or remove local Slack users
-  with `trust <@user>` / `untrust <@user>` or the desktop Setup gear. Trusted
-  collaborators can discuss plans and create drafts, while execution approval
-  remains operator-only.
-- Native local client: `clients/desktop` ships a Tauri Mac/Linux shell
-  over the local Alfred runtime. It opens to "what needs attention?", shows
-  Inbox, Ask, Work, Agents, and Setup surfaces, keeps
-  local plan/run details inside native inspector panes, uses responsive
-  icon/tab navigation instead of horizontal menu scrolling, opens only explicit
-  Slack/GitHub links outside the app, can start or reconnect to the local
-  runtime, run safe dry-runs and memory checks, pause/resume/run agents through
-  the native allowlist, promote or reject local memory candidates through
-  `alfred serve`, preview Redis AMS sync, queue failure-pattern memories, and
-  can convert trusted follow-ups into planning drafts or mark them handled
-  without bypassing Slack approval.
-- Signed desktop packages: the public release workflow creates a draft release.
-  Signed macOS DMG/app zip and Linux AppImage/Debian assets are attached before
-  that release is published under stable asset names.
-- Goal contract design: `docs/GOALS.md` defines Alfred-owned durable goals
-  across Slack, CLI, native client, planner, evaluator, and memory. Engine
-  native goal modes can be used as execution hints, but Slack threads,
-  operator gates, and the evidence ledger remain Alfred-owned.
-- Plain intake mode: `ALFRED_INTAKE_PROFILE=plain` turns the planning assistant into a non-technical front door. A teammate can describe work in plain language; the assistant asks at most one or two plain questions, hides specs, scope, readiness scores, and PRs, and renders a "Here's what I'll do … OK to go ahead?" plan framed around reviewing a preview. The same structured draft is built invisibly, so the downstream bridge and fleet are unchanged. Default (unset) stays technical. See `docs/PLAIN_MODE.md`.
+## Non-goals
 
-### v0.4.0: 2026-05-23
-
-Substrate, observability, planning, approval, memory, and connector primitives. Merged to `main` on 2026-05-23 via PRs #89 and #90; tagged as `v0.4.0`.
-
-- `lib/agent_runner.py` decomposed into a 10-file `lib/agent_runner/` package (preflight, lock, spend, engines, gh, slack, event-log, commit-trailer, transcripts, dedup). Public import surface preserved.
-- `alfred-metrics` CLI: per-agent firings, cost, success rate, p50/p95 turn count from on-disk state.
-- `alfred-logs` CLI: tail and filter per-firing transcripts without grepping `state/` by hand.
-- `alfred-label-state` CLI: read-only inspector for the issue-claim state machine across all configured repos.
-- Damian spec-bundle planner: a planner codename that turns a spec document into an `agent:large-feature` bundle that Batman can execute.
-- `slack_surface.approval`: reaction-based approval gate. An agent posts a proposal, the operator reacts with the configured emoji, the agent proceeds.
-- `slop-detector`: PR-time linter for AI-authored prose patterns. Used by the new `curator` codename.
-- `curator` codename: documentation hygiene agent. Runs slop-detector against docs PRs, flags drift between code and docs.
-- FleetBrain operational ledger: reviewable memory candidates, failure-event history, worker heartbeats, GitHub cache, `alfred brain doctor`, and a read-only memory MCP bridge.
-- `MemoryProvider` protocol plus `gbrain` bridge: agents read and write through a stable interface, Redis handles recalled lessons, and operators can add read-only fallbacks.
-- `alfred spec`: template and lint helpers for specs-driven development.
-- `Connector` protocol with reference implementations for Linear (issue handoff) and Sentry (read-only error pulls).
-- Batman execute-after-approval: once a bundle plan is approved, Batman files the approved per-repo child issues and reports status rather than stopping at the plan.
-- `alfred serve` v1: read-only local dashboard over `state/` and per-firing transcripts. Live firing feed, per-agent trends, single-firing trace tree.
-- `alfred-shipped-public` emitter: a self-host CLI that reads `$ALFRED_HOME/state`, scrubs against a public field allowlist and a partner-name redaction table, and writes a `weekly.json` that operators can publish on their own site. The canonical site also has `/impact/`, a separate opt-in usage counter backed by the telemetry collector.
-- Three new concept pages on the docs site covering the memory protocol, the connector protocol, and the approval gate.
-
-### v0.3.0 and earlier
-
-See [`CHANGELOG.md`](CHANGELOG.md) for the full ledger.
-
-## In flight (this quarter)
-
-Items with active work and a committed IC.
-
-- **Batteries-included context plane.** Make context graph, output compaction,
-  and session continuity first-class local capabilities. Keep permissive tools
-  optional or pinned (`codebase-memory-mcp`, code-review-graph-style AST
-  indexes, Headroom-style reversible compression, RTK/token-savior-style command
-  compactors), and reimplement non-permissive or invasive hook ideas natively.
-  IC: core. Effort: M. Issue: TBD.
-- **True scratch-home onboarding E2E.** Add an automated test that creates a
-  temporary `ALFRED_HOME`, seeds the full fleet, starts `alfred serve`, drives
-  setup APIs/native-ready payloads, verifies starter skills/code-memory
-  readiness, and tears every artifact down. This is the missing proof before a
-  serious Show HN launch. IC: core. Effort: S. Issue: TBD.
-- **Role-neutral architect config.** Remove remaining Batman-specific runtime
-  names from code and docs where they are not theme names. No backward
-  compatibility requirement: prefer `ARCHITECT_*`, role slugs, and clean config
-  over permanent legacy aliases. IC: core. Effort: S. Issue: TBD.
-- **Public launch proof.** Refresh README/site around the real product promise:
-  native full install, full fleet by default, multi-repo architect loop, memory
-  and code graph, skills, screenshots/GIF/video, and honest public evidence.
-  IC: core. Effort: S. Issue: TBD.
-- **Goals inbox and evidence ledger.** Promote the durable goal contract into the
-  native client and Slack flow so long-running work has visible outcome,
-  verification, constraints, evidence, and blocked-state history. IC: core.
-  Effort: M. Issue: TBD.
-
-## Next (next quarter)
-
-Committed for the following quarter. Design first, then code.
-
-- **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
-- **Better Batman v2.** Bundle-completion tracking after approval: Batman keeps watch on child issues and PRs, reports per-repo progress, and closes the bundle once every child has landed or been explicitly dropped. Effort: M. Issue: TBD.
-- **Native lifecycle dry-run for every shipped runner.** `alfred dry-run <codename>` now resolves every codename safely; next step is making every individual runner support the full synthetic lifecycle, not just the safe simulation. Effort: S. Issue: TBD.
-- **`alfred serve` API hardening.** v0.5.1 ships the local control surface used by Alfred Desktop. Next work is a versioned API contract, compatibility tests, richer event-stream traces, and clearer error payloads for native clients. Effort: S. Issue: TBD.
-
-## Horizon (no committed quarter)
-
-Candidly speculative. No IC, no quarter, no committed effort estimate.
-
-- Content-fleet codename pack (Scribe, Herald, Curator) for blog, LinkedIn, and SEO drafts.
-- Sales-fleet codename pack for prospect identification, event-page sourcing, and outreach drafts.
-- Marketing and SEO-fleet codename pack for site-page generation, content-drift detection, and search-visibility monitoring.
-- Ops-fleet codename pack for uptime, release notes, and customer-health signals.
-- Personal-assistant codename pack for inbox triage, calendar, and daily digest.
-
-**How these reach OSS.** Cross-department codename packs build in the private operator orchestrator first, validated against real production usage, then port to OSS once generalised. See the private-to-public boundary workflow for the rules each port has to clear (no operator paths, no internal infra, no customer data, scrubbed prompts).
-
-## Considered, not committed
-
-Decisions considered and left out. Listed so contributors do not re-pitch them.
-
-- **Hosted skill marketplace bundled into Alfred.** Not committed. Alfred now
-  ships curated first-party and vendored skill packs plus optional pinned
-  reference installs, but it is not becoming a hosted marketplace. New batteries
-  must stay local, inspectable, reversible, and license-clean.
-- **Hosted Alfred SaaS.** Not on the roadmap. Alfred is self-hosted by design; multi-tenant is a different product.
-- **First-class GitHub App** instead of the operator's `gh` PAT. Larger onboarding surface; deferred until there is demonstrated demand.
-- **Pluggable spend backends** (filesystem, SQLite, Redis). Single-host is the design, so this stays speculative.
-- **`pipx` / PyPI install.** Git clone is the supported path today; a packaged install would widen the audience but the install story is fine.
+- A hosted, multi-tenant Alfred service.
+- A model gateway that replaces local harness authentication.
+- An always-running central orchestrator. The host OS remains the scheduler.
+- Automatic merge authority by default.
+- An uncurated skill or plugin marketplace.
+- Silent repository discovery, credential import, or configuration takeover.
 
 ## Design boundaries
 
-Alfred has a deliberate shape. These are not missing features; they are the design.
+- **One installation.** Alfred supports one operator or small team on one
+  trusted host with one local configuration.
+- **Short-lived runs.** `launchd` or `systemd --user` starts each firing.
+- **Local harnesses.** Alfred invokes authenticated local CLIs and does not
+  proxy model traffic.
+- **Explicit repository scope.** Operators choose which repositories Alfred can
+  read or change.
+- **Reviewable output.** Plans, diffs, tests, evidence, and PRs remain visible.
+- **Reversible integration.** Alfred must not overwrite user-owned harness
+  settings or make optional tools hard to remove.
 
-- **Single install.** One operator or small team, one host, one config. Alfred is not multi-tenant and will not become a hosted SaaS. It is software you install and run yourself.
-- **The OS schedules; Alfred runs.** No long-running orchestration loop. `launchd` and `systemd` own cadence; each firing is a fresh, isolated process. Better failure isolation, and it survives reboots.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` and `codex` through your local CLI auth. The default path uses subscription-backed CLI accounts and does not require provider API keys.
-- **Lean on the platform.** When Anthropic ships a capability natively (Agent Teams, the Memory Tool), Alfred adopts it rather than re-implementing it.
-- **Browser automation is per-codename.** If a codename needs a browser, it installs Playwright in its own bin script. The core stays lean.
+## Contributing to the roadmap
 
-## Influence
-
-- **Strong.** A working PR for something already on the in-flight or next list.
-- **Medium.** A well-scoped feature request with a real use case and a proposal.
-- **Low.** "Would be cool if" comments.
-
-Want to take Alfred somewhere new, like a new department or a runtime change? Open a discussion first, so the design fits before the code does.
+A useful proposal includes a real use case, the affected boundary, a small
+first increment, failure behavior, and a verification method. Open a discussion
+before implementing a change that expands repository access, credentials,
+network destinations, merge authority, or the supported-host model.

@@ -87,7 +87,7 @@ $ALFRED_HOME/state/
   transcripts/<codename>/<YYYY-MM>/<firing_id>.jsonl
 ```
 
-Forward-compatible optional paths the reader also honors if a future runtime writes them:
+Optional paths the reader also checks:
 
 ```
 $ALFRED_HOME/state/codenames/<codename>/...

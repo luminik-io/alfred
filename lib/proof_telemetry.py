@@ -25,7 +25,18 @@ What is sent (the entire payload)::
       "issues_closed": <int>,
       "files_changed": <int>,
       "lines_changed": <int>,
-      "loc_added":     <int>  # legacy alias for files_changed
+      "loc_added":     <int>,  # legacy alias for files_changed
+      "stale_fields":  [<count field>, ...],  # optional
+      "last_30_days": {                         # optional
+        "window_days": <int>,
+        "prs_opened": <int>,
+        "prs_merged": <int>,
+        "prs_reviewed": <int>,
+        "issues_opened": <int>,
+        "issues_closed": <int>,
+        "files_changed": <int>,
+        "lines_changed": <int>
+      }
     }
 
 The counts are CUMULATIVE LIFETIME totals (everything the local brain has
@@ -37,8 +48,8 @@ the same install therefore changes nothing, forever, no matter how often or for
 how long an install reports (the record is replaced with an identical value, so
 the sum is unchanged). ``period`` is advisory metadata only (always the constant
 ``"lifetime"`` here); the Worker does NOT use it as part of the storage key, so a
-calendar rollover can never re-add a constant lifetime total. This contract is
-the whole reason the public counter stays honest.
+calendar rollover can never re-add a constant lifetime total. This contract
+keeps the public counter accurate.
 
 What is NEVER sent: repo names, file paths, code, commit text, branch names,
 hostnames, IP addresses, Slack handles, codenames, or anything that identifies
@@ -363,8 +374,8 @@ def load_or_create_persisted_install_id(path: Path | None = None) -> str | None:
     every run, and since the Worker de-duplicates on ``install_id`` alone, every
     scheduled report from such a host would look like a brand-new install and
     inflate the public install count. Returning ``None`` lets the caller skip
-    reporting entirely on that run, which keeps the distinct-install count
-    honest. See ``report_once``.
+    reporting entirely on that run, which prevents an inflated distinct-install
+    count. See ``report_once``.
     """
     target = path or _install_id_path()
     existing = load_persisted_install_id(target)
@@ -430,7 +441,7 @@ def _count_rows(
     ``FleetBrain`` clamps to 500), this fallback cannot count past that clamp:
     raising ``limit`` does nothing once it is clamped, so the raw ``got == last``
     trips and we stop at the clamp. That is exactly why the exact ``count_*`` path
-    exists and is tried first; this fallback's honest stop at a clamp is strictly
+    exists and is tried first; this fallback's stop at a clamp is strictly
     better than the old ``len(list(limit=500))`` that always froze at 500, but it
     is still bounded by whatever clamp the list method imposes.
 
@@ -454,7 +465,7 @@ def _count_rows(
         if got == last_raw:
             # The brain returned a full page but no new RAW rows beyond the
             # previous request: it has hit its own internal cap (or a list clamp).
-            # Honest stop. The exact count_* path avoids this; see the docstring.
+            # Bounded stop. The exact count_* path avoids this; see the docstring.
             return matched
         if limit >= _COUNT_HARD_LIMIT:
             # The caller has observed the largest raw prefix we are willing to
@@ -534,7 +545,7 @@ def _count_github_items(
 
     Uses ``brain.count_github_items(**filters)`` when available (a SQL
     ``COUNT(*)`` that is NOT bounded by the list 500-row clamp, so a busy install
-    with thousands of PRs is counted honestly). Falls back to the paginating
+    with thousands of PRs is counted accurately). Falls back to the paginating
     ``_count_rows`` over ``list_github_items`` only for brains/test-doubles that
     do not expose the count method. The result is bounded by ``_COUNT_HARD_LIMIT``
     so a runaway brain can never blow the field past the wire clamp.
@@ -831,9 +842,9 @@ def derive_counts(brain: Any, *, now: datetime | None = None) -> TelemetryCounts
     ``_count_file_touches`` rather than ``len()`` of a ``list_*`` fetch: the list
     methods CLAMP ``limit`` to 500, so a busy install with thousands of PRs would
     otherwise freeze every total at 500. Brains that predate the count methods
-    fall back to paginating ``list_*`` (honest up to the list clamp).
+    fall back to paginating ``list_*`` up to the list clamp.
 
-    Derivation, with an honest mapping to what the brain actually stores:
+    Derivation from the records that the brain stores:
 
       prs_opened   distinct AGENT-AUTHORED PRs the brain has cached (github_items
                    where kind == "pr" AND the row is agent-authored: it carries

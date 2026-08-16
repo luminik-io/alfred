@@ -33,7 +33,7 @@ Know these values:
 | Value | Example | Notes |
 |---|---|---|
 | GitHub org/user | `my-org` | Must match the owner of the repo Alfred will operate on. |
-| Repos | `my-api,my-web` or `my-org/my-api,my-org/my-web` | Use one repo for a one-repo product, or a comma-separated list for a multi-repo product. Start with the smallest honest scope you want agents to operate on. |
+| Repos | `my-api,my-web` or `my-org/my-api,my-org/my-web` | Use one repo for a one-repo product, or a comma-separated list for a multi-repo product. Start with the smallest scope you want agents to operate on. |
 | Specs repo | `my-specs` | Optional. Keep it checked out for context; do not assign write-capable agents to it unless you want them editing specs. |
 | Operator name | `Jane Builder` | Used in generated prompts and config. |
 | Operator email | `jane@example.com` | Used in generated prompts and config. |
@@ -334,7 +334,7 @@ Expected:
 
 ## Adding Slack, AWS, or More Repos Later
 
-Start with the smallest honest repo set. Once the full fleet passes doctor:
+Start with the smallest repository set. Once the full fleet passes doctor:
 
 - Add Slack: [`SLACK_SETUP.md`](SLACK_SETUP.md)
 - Add AWS IAM-per-agent: [`AWS_SETUP.md`](AWS_SETUP.md)

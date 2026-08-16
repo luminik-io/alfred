@@ -1,14 +1,25 @@
 # Desktop app guide
 
-Alfred Desktop (`clients/desktop`) is the recommended native Mac/Linux full-install, onboarding, and control surface for a local Alfred fleet. The core fleet and CLI still run fully standalone without it, but most local users should start here because first-run onboarding can install or repair Alfred core from bundled resources, detect existing installs, seed and deploy the full built-in fleet, install starter engineering skills, attempt the pinned code-memory doctor, start or reconnect the runtime, verify auth, pick repos, choose roster naming, and run curated repair/status checks from one place. After onboarding, those controls live in Settings.
+Alfred Desktop (`clients/desktop`) is the recommended native Mac/Linux installer,
+onboarding path, and control surface for a local Alfred fleet. The core fleet and
+CLI also run without it. First-run onboarding can install or repair Alfred core,
+detect an existing install, deploy the built-in fleet, and install starter
+engineering skills. It can also check code memory, start the runtime, verify
+authentication, select repositories, and configure appearance and roster names.
+After onboarding, those controls remain available in Settings.
 
-Slack stays Alfred's collaboration surface. The desktop app is for local installation, onboarding, trust, and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is the friendly installer and control surface for the same local runtime, not a separate scheduler or hosted service.
+Slack remains Alfred's collaboration surface. The desktop app handles local
+installation, onboarding, status, and repair. It shows decisions, waiting plans,
+run failures, memory candidates, and safe local actions. It uses the same local
+runtime. It is not a second scheduler or a hosted service.
 
-For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is both the design rationale and the user-facing tour: why the desktop app is shaped the way it is, what each tab does, and how to build installers.
+For the JSON API, see [`SERVE.md`](SERVE.md). This guide explains the desktop
+structure, each tab, and the installer build process.
 
 ## Decision
 
-Build the native Mac/Linux app as the recommended full local installer and control surface, not a second Alfred scheduler or hosted runtime.
+Use the native Mac/Linux app as the recommended local installer and control
+surface. Do not make it a second scheduler or a hosted runtime.
 
 Slack remains the primary collaboration UI because it already has threads, reactions, search, mobile push, and shared context. The native client makes Alfred easier to set up, trust, and repair: install detection, dependency checks, auth, repo selection, full-fleet roster seed, roster themes, custom display names, health, logs, approvals, memory review, safe pause/resume, dry-run launch, and recovery.
 
@@ -34,7 +45,7 @@ The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary 
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
 | **Code** | The local code-map catalog and a bounded impact view for one file: direct dependents, dependencies, symbols, contract surfaces, contract drift, nearby files, and recommended checks. | Select an indexed repository, analyze a file path without sending source away, and inspect the evidence Alfred should use before changing it. |
 | **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
-| **Settings** | Runtime repair and configuration after first-run onboarding: existing install inventory, auth, repos, engine checks, capability checks, roster naming, Slack collaborators, and appearance. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, change repository scope, choose a roster theme, set custom display names, and manage trusted Slack collaborators. |
+| **Settings** | Runtime repair and configuration after first-run onboarding: existing install inventory, auth, repos, engine checks, capability checks, roster naming, Slack collaborators, and appearance. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, change repository scope, choose an appearance and mode, choose a roster theme, set custom display names, and manage trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -71,7 +82,15 @@ The app can help draft or refine a spec, but the final collaboration loop stays 
 
 ### Agents in detail
 
-Agents is the operational surface. The agent roster is the default view: a cinematic deck of themed agent cards, each carrying the agent's accent, status, cadence, runs-today, latest signal, and a monogram. A Cinematic / List toggle (persisted to local storage) switches to a dense list when you want every agent at a glance. Motion respects `prefers-reduced-motion`, and the cards are real buttons announced as actionable controls.
+Agents is the operational surface. The Workflow view is the default. It shows
+roles in delivery lanes and labels the handoffs between them. The operator
+approval handoff has a distinct dashed edge and text label.
+
+A Workflow / List control stores the selected view in local storage. The List
+view uses a responsive card grid for the full roster. Both views open agent
+details in a drawer, so they do not reserve a permanent inspector column. The
+view control uses labelled buttons with `aria-pressed`. Motion respects
+`prefers-reduced-motion`.
 
 Per-agent controls: enabled/paused state, schedule, last run, last failure, dry-run, pause/resume, run once, clear stale lock with proof, and open prompt/config files. Every destructive or state-changing action has a dry-run preview where the CLI supports one.
 
@@ -93,7 +112,20 @@ The app visibly separates promoted lessons from candidates and raw logs.
 
 First-run onboarding takes over the window without the normal sidebar. It discovers existing Alfred files, installs or repairs bundled Alfred core, seeds the full built-in runtime roster, deploys the CLI and agents into `~/.alfred`, installs starter engineering skills, checks code memory, starts or reconnects the runtime, verifies GitHub auth and engine CLIs, selects watched repos, and configures roster names. After onboarding, the same repair and configuration controls live under Settings. Repo-scoped agents stay idle until repositories are saved, and the `architect` role (Batman in the default theme) stays idle until `ARCHITECT_PARENT_REPO` is configured. Failures tell you what Alfred checked, why it matters, and the smallest next step.
 
-Onboarding runs two ways, and they land the same config. You can **chat with Alfred**: it asks a setup question, then proposes the next action (check the engines, connect GitHub, set repos, pick agents, propose or save a theme, set a schedule, finish). Only the engine check auto-proceeds; every other proposed action, including starting the GitHub sign-in and previewing a theme, runs after you click its button, and anything that changes config, such as saving repos, saving a theme, or setting a schedule, waits for that Approve. Or you can **step through the form** with the same fields. Both paths call the same underlying setup handlers, so they cannot drift. When no engine is configured, the chat path falls back to the stepped form. Naming the team has its own small chat, the **theme builder**: describe a vibe and Alfred proposes a full role-to-name mapping you tweak and save through the normal theme editor. Full walkthrough in [`ONBOARDING.md`](ONBOARDING.md).
+Onboarding has a chat path and a form path. Both paths use the same setup
+handlers and write the same configuration. In chat, Alfred asks one setup
+question and proposes the next action. Only the engine check starts without a
+button click. All other proposed actions wait for the operator to select their
+button. A configuration change also waits for approval.
+
+If no engine is ready, the chat path returns to the setup form. The roster theme
+builder is a separate chat. It proposes role names, which the operator can edit
+and save in the theme editor. See [`ONBOARDING.md`](ONBOARDING.md) for the full
+sequence.
+
+Settings separates visual appearance from roster naming. Appearance selects
+Signal Edge, The Category Standard, or Linked Fold. A separate control selects
+light or dark mode. Roster themes only change the names shown for roles.
 
 ## How it talks to the fleet
 
@@ -166,7 +198,10 @@ npm run tauri -- build --no-bundle --ci
 
 ## Plain mode
 
-The desktop Ask box can act as a plain-language intake when the runtime is started with `ALFRED_INTAKE_PROFILE=plain`. A non-technical user types a request, answers a question or two, and approves a plan; the same structured draft and every downstream gate are unchanged. See [`PLAIN_MODE.md`](PLAIN_MODE.md).
+The desktop Ask box can use plain-language intake when the runtime has
+`ALFRED_INTAKE_PROFILE=plain`. A non-technical user enters a request, answers
+one or two questions, and approves a plan. The structured draft and all later
+gates stay the same. See [`PLAIN_MODE.md`](PLAIN_MODE.md).
 
 ## API shape to stabilize next
 
@@ -261,14 +296,25 @@ Distribution sequence:
 
 ## UI direction
 
-Use the Alfred site design system:
+The desktop uses the two-axis system in
+[`THEME_SYSTEM.md`](THEME_SYSTEM.md):
 
-- primary display font: Instrument Sans
-- secondary UI font: Quicksand
-- mono (Fragment Mono) for IDs, command previews, and logs only
-- dark-first, high contrast, no decorative gradients
-- compact cards for repeated items, not nested card stacks
-- stable table-to-card responsive layouts
-- links to GitHub and Slack open outside the app
+- Signal Edge is the default appearance.
+- The Category Standard and Linked Fold are the other shipped appearances.
+- Light and dark are separate modes within each appearance.
+- Components use semantic tokens from `clients/desktop/src/styles/tokens.css`.
+- Liquid-glass material is for chrome, dialogs, popovers, inspectors, and other
+  elevated surfaces.
+- Dense lists, lifecycle columns, logs, and tables use flat surfaces.
+- Health states use the shared ok, warning, and error meanings.
+- Workflow edges distinguish normal handoffs from operator approval. They use
+  line style and text as well as color.
+- Repeated cards must not become nested card stacks.
+- Narrow layouts become one column. The roster becomes a responsive card grid,
+  and Settings keeps full tab labels at phone widths.
+- Phone-width controls have a 36-pixel minimum height.
+- Every animation has a reduced-motion path.
+- GitHub and Slack links open outside the app.
 
-The app should feel like a calm local control surface: dense enough for engineers, legible enough for someone who has never used `launchctl`.
+Read [`DESIGN.md`](DESIGN.md) for typography, glass, responsive behavior, and
+accessibility rules.
