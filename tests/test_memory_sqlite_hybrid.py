@@ -523,6 +523,87 @@ def test_fts_inflection_retrieval_executes_without_like_fallback(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_fts_candidate_scan_filters_overlap_before_result_pool() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql schema " + "background context " * 200,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="schema",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+    assert provider._fts_ok is True
+
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="graphql schema", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id FROM lessons_fts")
+    ]
+    filter_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT id, lexical_text FROM lessons WHERE id IN")
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert len(candidate_queries) == 1
+    assert "LIMIT 50" in candidate_queries[0]
+    assert len(filter_queries) == 1
+
+
+def test_fts_candidate_scan_preserves_bm25_order_and_result_cap() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    weaker = provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql schema " + "background context " * 40,
+    )
+    stronger = provider.reflect(codename="c", repo="r", body="graphql schema")
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql schema " + "background context " * 80,
+    )
+
+    out = provider.recall(query="graphql schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [stronger.id, weaker.id]
+
+
+def test_fts_candidate_scan_has_hard_upper_bound() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=500)
+    provider.reflect(codename="c", repo="r", body="graphql schema")
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    provider.recall(query="graphql schema", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id FROM lessons_fts")
+    ]
+    assert len(candidate_queries) == 1
+    assert "LIMIT 400" in candidate_queries[0]
+
+
 @pytest.mark.parametrize(
     ("query_term", "lesson_term"),
     [

@@ -100,6 +100,10 @@ _EMBED_TIMEOUT_S = 5.0
 # queries. Smaller configured pools keep their existing page size.
 _LEXICAL_FALLBACK_PAGE_SIZE = 50
 _MAX_LEXICAL_FALLBACK_PAGES = 8
+# FTS retrieves a wider BM25-ranked window before exact overlap filtering so
+# short partial matches cannot consume a small result pool. The scan shares
+# the 400-candidate hard cap used by bounded literal recall.
+_MIN_LEXICAL_FTS_CANDIDATES = 50
 _LEXICAL_MIGRATION_BATCH_SIZE = 200
 
 
@@ -744,14 +748,20 @@ class SqliteHybridProvider:
         if self._fts_ok:
             retrieval_tokens = dict.fromkeys(variant for group in token_groups for variant in group)
             match = " OR ".join(f'"{token}"' for token in retrieval_tokens)
+            candidate_limit = min(
+                max(self.pool * 4, _MIN_LEXICAL_FTS_CANDIDATES),
+                MAX_LITERAL_QUERY_CANDIDATES,
+            )
             sql = (
                 "SELECT l.id FROM lessons_fts f JOIN lessons l ON l.id = f.lesson_id "
-                "WHERE f.text MATCH ? " + scope_sql + " ORDER BY bm25(lessons_fts) LIMIT ?"
+                "WHERE f.text MATCH ? "
+                + scope_sql
+                + " ORDER BY bm25(lessons_fts), l.created_at DESC, l.id ASC LIMIT ?"
             )
-            params: list[Any] = [match, *scope_params, self.pool]
+            params: list[Any] = [match, *scope_params, candidate_limit]
             try:
                 rows = conn.execute(sql, params).fetchall()
-                return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)
+                return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)[: self.pool]
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
         # LIKE fallback (SQLite build without FTS5): require enough token
