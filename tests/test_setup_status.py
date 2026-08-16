@@ -19,6 +19,11 @@ from server import setup as setup_mod  # noqa: E402
 
 
 def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Setup-status tests model a clean host unless a case explicitly installs
+    # a fake binary. Binary discovery prepends standard package-manager paths,
+    # so sanitizing PATH alone would still expose tools installed on the host.
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
