@@ -257,6 +257,21 @@ def test_default_chain_requires_mixed_query_unicode_subject(tmp_path: Path) -> N
     assert [item.id for item in out] == [relevant.id]
 
 
+def test_default_chain_requires_single_character_unicode_subject(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="API billing guidance")
+    relevant = writer.reflect(codename="c", repo="r", body="API 税 guidance")
+
+    out = load_provider(env).recall(query="API 税", codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 @pytest.mark.parametrize(
     "query",
     ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
@@ -431,6 +446,17 @@ def test_recall_requires_devanagari_subject_in_mixed_query(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_recall_requires_single_character_unicode_subject(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="API billing guidance")
+    relevant = provider.reflect(codename="c", repo="r", body="API 税 guidance")
+
+    out = provider.recall(query="API 税", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 @pytest.mark.parametrize("force_like_fallback", [False, True])
 def test_recall_matches_unicode_subject_stored_only_in_tag(
     monkeypatch: pytest.MonkeyPatch,
@@ -598,6 +624,17 @@ def test_tokenize_keeps_devanagari_combining_marks_in_subject_concepts() -> None
     assert {"api", "डेटा", "मिटाएँ"}.issubset(tokens)
     assert not mod._has_meaningful_lexical_overlap("API billing guidance", tokens)
     assert mod._has_meaningful_lexical_overlap("API डेटा मिटाएँ प्रक्रिया", tokens)
+
+
+def test_tokenize_keeps_single_character_unicode_only_in_mixed_queries() -> None:
+    mixed_tokens = mod._tokenize("API 税")
+
+    assert mixed_tokens == ["api", "税"]
+    assert not mod._has_meaningful_lexical_overlap("API billing guidance", mixed_tokens)
+    assert mod._has_meaningful_lexical_overlap("API 税 guidance", mixed_tokens)
+    assert mod._tokenize("税") == []
+    assert mod._literal_fallback_query("税") == "税"
+    assert mod._tokenize("A I X Q") == []
 
 
 @pytest.mark.parametrize(

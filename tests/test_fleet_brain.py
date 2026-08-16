@@ -441,6 +441,22 @@ def test_recall_query_requires_devanagari_subject_in_mixed_query(
     assert [lesson.body for lesson in out] == [relevant]
 
 
+def test_recall_query_requires_single_character_unicode_subject(
+    brain: FleetBrain,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="API billing guidance")
+    relevant = "API 税 guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="API 税",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
 def test_recall_query_token_empty_literal_is_escaped_and_never_backfills(
     brain: FleetBrain,
 ) -> None:

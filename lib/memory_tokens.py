@@ -130,6 +130,9 @@ def _unicode_concepts(text: str) -> Iterator[str]:
         if raw.isascii():
             continue
         normalized = unicodedata.normalize("NFKC", raw).casefold()
+        if len(normalized) == 1:
+            yield normalized
+            continue
         segment: list[str] = []
         script: str | None = None
         script_runs: list[tuple[str, str]] = []
