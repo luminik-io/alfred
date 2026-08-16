@@ -36,26 +36,85 @@ const agent = {
 
 const plan = {
   plan_id: "42-plan",
-  title: "Add browser protocol coverage",
+  title: "Make the memory benchmark use the shipped provider chain",
   status: "awaiting approval",
-  parent: "https://github.com/example/workspace/issues/42",
-  affected_repos: "example/workspace",
+  parent: "https://github.com/luminik-io/alfred/issues/42",
+  affected_repos: "luminik-io/alfred",
   updated_at: "2026-07-23T20:00:00Z",
   path: "plans/42-plan.json",
-  preview: "Exercise onboarding, Ask streaming, and approval from the built client.",
-  content: "## Plan\n\nAdd a hermetic browser contract around the desktop protocol.",
+  preview: "Use the provider chain that ships with Alfred and record exact benchmark evidence.",
+  content: "## Plan\n\nRun the memory benchmark through Alfred's shipped provider chain.",
   source: "architect",
   readiness_score: 96,
   readiness_ok: true,
   revision_count: 1,
 };
 
-const emptyBoard = {
+const card = (
+  number: number,
+  title: string,
+  kind: "issue" | "pr",
+  author: string,
+  overrides: Record<string, unknown> = {},
+) => ({
+  repo: "luminik-io/alfred",
+  number,
+  title,
+  url: `https://github.com/luminik-io/alfred/${kind === "pr" ? "pull" : "issues"}/${number}`,
+  author,
+  kind,
+  timestamp: "2026-07-23T20:00:00Z",
+  age_days: 0,
+  is_draft: false,
+  labels: [],
+  ...overrides,
+});
+
+const sampleBoard = {
+  sample: true,
   generated_at: "2026-07-23T20:15:00Z",
   lookback_days: 14,
-  repos: ["example/workspace"],
-  columns: { queued: [], in_progress: [], shipped: [], awaiting_approval: [] },
-  counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 0 },
+  repos: ["luminik-io/alfred"],
+  columns: {
+    queued: [card(621, "Add OpenCode capability probe", "issue", "architect")],
+    in_progress: [
+      card(622, "Replace legacy appearance presets", "pr", "senior-dev", {
+        is_draft: true,
+        labels: ["agent:authored", "harness:codex"],
+        agent_evidence: ["label:agent:authored", "branch:senior-dev/themes"],
+        github_evidence: {
+          head_sha: "4248c8f8e6d83f4ca38e49624d9cb583cc7c5571",
+          review_state: "REVIEW_REQUIRED",
+          checks: [
+            { name: "Desktop client", status: "SUCCESS" },
+            { name: "Public metadata", status: "SUCCESS" },
+            { name: "Independent review", status: "PENDING" },
+          ],
+          changed_files: [
+            "clients/desktop/src/lib/useTheme.ts",
+            "clients/desktop/src/styles/tokens.css",
+            "docs/THEME_SYSTEM.md",
+          ],
+          changed_file_count: 3,
+          changed_file_count_incomplete: false,
+          commit_count: 3,
+          commit_count_incomplete: false,
+          latest_reviews: [{ author: "reviewer", state: "COMMENTED" }],
+        },
+      }),
+      card(623, "Verify isolated worktree cleanup", "issue", "reviewer"),
+    ],
+    shipped: [
+      card(617, "Harden macOS runner selection", "pr", "senior-dev", {
+        agent_evidence: ["label:agent:authored"],
+      }),
+      card(618, "Make code-memory tests deterministic", "pr", "reviewer", {
+        agent_evidence: ["label:agent:authored"],
+      }),
+    ],
+    awaiting_approval: [],
+  },
+  counts: { queued: 1, in_progress: 2, shipped: 2, awaiting_approval: 0 },
 };
 
 const emptyDraft = {
@@ -287,7 +346,7 @@ export class AlfredApiFixture {
       return true;
     }
     if (matches("/api/shipped", "?days=14")) {
-      await this.fulfill(route, emptyBoard);
+      await this.fulfill(route, sampleBoard);
       return true;
     }
     if (matches("/api/usage")) {

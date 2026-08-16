@@ -130,7 +130,7 @@ function renderSettings(
       trustedSlack={null}
       busyTrustedUser={null}
       nativeBusy={null}
-      themeName="mineral"
+      themeName="signal-edge"
       mode="dark"
       onSelectTheme={vi.fn()}
       onSelectMode={vi.fn()}

@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-15T16:05:23Z",
+  "title": "Design System: Alfred",
+  "extensions": {
+    "colorMeta": {
+      "canvas": { "role": "neutral", "displayName": "Cloud Canvas", "canonical": "oklch(0.975 0.006 95)", "tonalRamp": ["oklch(0.15 0.006 95)", "oklch(0.27 0.006 95)", "oklch(0.39 0.006 95)", "oklch(0.51 0.006 95)", "oklch(0.63 0.006 95)", "oklch(0.75 0.006 95)", "oklch(0.87 0.006 95)", "oklch(0.95 0.006 95)"] },
+      "ink": { "role": "neutral", "displayName": "Slate Ink", "canonical": "oklch(0.255 0.015 240)", "tonalRamp": ["oklch(0.15 0.015 240)", "oklch(0.27 0.015 240)", "oklch(0.39 0.015 240)", "oklch(0.51 0.015 240)", "oklch(0.63 0.015 240)", "oklch(0.75 0.015 240)", "oklch(0.87 0.015 240)", "oklch(0.95 0.015 240)"] },
+      "surface": { "role": "neutral", "displayName": "Mist Surface", "canonical": "oklch(0.995 0.004 95 / 0.84)", "tonalRamp": ["oklch(0.15 0.004 95)", "oklch(0.27 0.004 95)", "oklch(0.39 0.004 95)", "oklch(0.51 0.004 95)", "oklch(0.63 0.004 95)", "oklch(0.75 0.004 95)", "oklch(0.87 0.004 95)", "oklch(0.95 0.004 95)"] },
+      "surface-muted": { "role": "neutral", "displayName": "Quiet Surface", "canonical": "oklch(0.955 0.008 95 / 0.82)", "tonalRamp": ["oklch(0.15 0.008 95)", "oklch(0.27 0.008 95)", "oklch(0.39 0.008 95)", "oklch(0.51 0.008 95)", "oklch(0.63 0.008 95)", "oklch(0.75 0.008 95)", "oklch(0.87 0.008 95)", "oklch(0.95 0.008 95)"] },
+      "primary-teal": { "role": "primary", "displayName": "Deep Signal Teal", "canonical": "oklch(0.49 0.075 195)", "tonalRamp": ["oklch(0.15 0.075 195)", "oklch(0.27 0.075 195)", "oklch(0.39 0.075 195)", "oklch(0.51 0.075 195)", "oklch(0.63 0.075 195)", "oklch(0.75 0.075 195)", "oklch(0.87 0.075 195)", "oklch(0.95 0.075 195)"] },
+      "primary-ink": { "role": "neutral", "displayName": "Primary Action Ink", "canonical": "oklch(0.99 0.003 95)", "tonalRamp": ["oklch(0.15 0.003 95)", "oklch(0.27 0.003 95)", "oklch(0.39 0.003 95)", "oklch(0.51 0.003 95)", "oklch(0.63 0.003 95)", "oklch(0.75 0.003 95)", "oklch(0.87 0.003 95)", "oklch(0.95 0.003 95)"] },
+      "muted-ink": { "role": "neutral", "displayName": "Muted Slate", "canonical": "oklch(0.47 0.018 240)", "tonalRamp": ["oklch(0.15 0.018 240)", "oklch(0.27 0.018 240)", "oklch(0.39 0.018 240)", "oklch(0.51 0.018 240)", "oklch(0.63 0.018 240)", "oklch(0.75 0.018 240)", "oklch(0.87 0.018 240)", "oklch(0.95 0.018 240)"] },
+      "hairline": { "role": "neutral", "displayName": "Slate Hairline", "canonical": "oklch(0.30 0.015 240 / 0.12)", "tonalRamp": ["oklch(0.15 0.015 240)", "oklch(0.27 0.015 240)", "oklch(0.39 0.015 240)", "oklch(0.51 0.015 240)", "oklch(0.63 0.015 240)", "oklch(0.75 0.015 240)", "oklch(0.87 0.015 240)", "oklch(0.95 0.015 240)"] },
+      "signal-mint": { "role": "secondary", "displayName": "Diffracted Mint", "canonical": "oklch(0.72 0.105 165)", "tonalRamp": ["oklch(0.15 0.105 165)", "oklch(0.27 0.105 165)", "oklch(0.39 0.105 165)", "oklch(0.51 0.105 165)", "oklch(0.63 0.105 165)", "oklch(0.75 0.105 165)", "oklch(0.87 0.105 165)", "oklch(0.95 0.105 165)"] },
+      "signal-rose": { "role": "secondary", "displayName": "Diffracted Rose", "canonical": "oklch(0.67 0.15 350)", "tonalRamp": ["oklch(0.15 0.15 350)", "oklch(0.27 0.15 350)", "oklch(0.39 0.15 350)", "oklch(0.51 0.15 350)", "oklch(0.63 0.15 350)", "oklch(0.75 0.15 350)", "oklch(0.87 0.15 350)", "oklch(0.95 0.15 350)"] },
+      "signal-violet": { "role": "secondary", "displayName": "Diffracted Violet", "canonical": "oklch(0.61 0.13 295)", "tonalRamp": ["oklch(0.15 0.13 295)", "oklch(0.27 0.13 295)", "oklch(0.39 0.13 295)", "oklch(0.51 0.13 295)", "oklch(0.63 0.13 295)", "oklch(0.75 0.13 295)", "oklch(0.87 0.13 295)", "oklch(0.95 0.13 295)"] },
+      "status-ok": { "role": "tertiary", "displayName": "Verified Green", "canonical": "oklch(0.50 0.12 158)", "tonalRamp": ["oklch(0.15 0.12 158)", "oklch(0.27 0.12 158)", "oklch(0.39 0.12 158)", "oklch(0.51 0.12 158)", "oklch(0.63 0.12 158)", "oklch(0.75 0.12 158)", "oklch(0.87 0.12 158)", "oklch(0.95 0.12 158)"] },
+      "status-warn": { "role": "tertiary", "displayName": "Decision Gold", "canonical": "oklch(0.61 0.13 78)", "tonalRamp": ["oklch(0.15 0.13 78)", "oklch(0.27 0.13 78)", "oklch(0.39 0.13 78)", "oklch(0.51 0.13 78)", "oklch(0.63 0.13 78)", "oklch(0.75 0.13 78)", "oklch(0.87 0.13 78)", "oklch(0.95 0.13 78)"] },
+      "status-error": { "role": "tertiary", "displayName": "Failure Red", "canonical": "oklch(0.55 0.20 25)", "tonalRamp": ["oklch(0.15 0.20 25)", "oklch(0.27 0.20 25)", "oklch(0.39 0.20 25)", "oklch(0.51 0.20 25)", "oklch(0.63 0.20 25)", "oklch(0.75 0.20 25)", "oklch(0.87 0.20 25)", "oklch(0.95 0.20 25)"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Compact page-level and section-level headings." },
+      "title": { "displayName": "Title", "purpose": "Panel, card, and inspector titles." },
+      "body": { "displayName": "Body", "purpose": "Outcomes, explanations, and control copy." },
+      "label": { "displayName": "Label", "purpose": "Metadata, lane headings, and compact controls." },
+      "mono": { "displayName": "Evidence", "purpose": "Repositories, commands, branches, hashes, and machine output." }
+    },
+    "shadows": [
+      { "name": "chrome-lift", "value": "inset 0 1px 0 var(--glass-highlight), 0 2px 8px color-mix(in oklch, var(--glass-shadow), transparent 40%), 0 22px 60px var(--glass-shadow)", "purpose": "Persistent translucent chrome." },
+      { "name": "inspector-lift", "value": "inset 0 1px 0 var(--glass-highlight), 0 18px 48px color-mix(in oklch, var(--glass-shadow), transparent 42%)", "purpose": "Selected-item inspector and overlaid evidence surfaces." },
+      { "name": "primary-glow", "value": "0 0 0 1px color-mix(in oklch, var(--accent), transparent 40%), 0 8px 24px -6px var(--accent-glow-soft), inset 0 1px 0 rgba(255,255,255,0.14)", "purpose": "The single primary action on a surface." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "140ms ease-out", "purpose": "Borders and surface-color state changes." },
+      { "name": "crossfade", "value": "160ms ease-out", "purpose": "Active tab panels and swapped surface content." },
+      { "name": "rise", "value": "180ms ease-out", "purpose": "Small staggered mount motion for card lists." },
+      { "name": "stagger", "value": "40ms", "purpose": "Per-item delay, capped after the sixth item." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "480px" },
+      { "name": "single-lane", "value": "640px" },
+      { "name": "mobile-material", "value": "767px" },
+      { "name": "board-scroll", "value": "899px" },
+      { "name": "compact-assignment", "value": "920px" },
+      { "name": "two-lane", "value": "1024px" },
+      { "name": "docked-inspector", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main operator action on a decision surface.",
+      "html": "<button class=\"ds-btn-primary\">Approve</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:32px; padding:0 10px; border:1px solid color-mix(in oklch,var(--primary),transparent 70%); border-radius:var(--radius-lg); background:linear-gradient(135deg,var(--primary),color-mix(in oklch,var(--primary),black 18%)); color:var(--primary-foreground); font:600 0.72rem/1.35 var(--theme-font-body); box-shadow:0 8px 24px -6px var(--accent-glow-soft); transition:filter 140ms ease-out,box-shadow 160ms ease-out; } .ds-btn-primary:hover { filter:brightness(1.1); box-shadow:0 10px 34px -6px var(--accent-glow); } .ds-btn-primary:focus-visible { outline:2px solid var(--ring); outline-offset:2px; } .ds-btn-primary:active { transform:translateY(1px); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A compact supporting action that remains subordinate to the decision control.",
+      "html": "<button class=\"ds-btn-secondary\">Open PR</button>",
+      "css": ".ds-btn-secondary { display:inline-flex; align-items:center; justify-content:center; height:32px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--secondary); color:var(--secondary-foreground); font:600 0.72rem/1.35 var(--theme-font-body); transition:background 140ms ease-out,border-color 140ms ease-out; } .ds-btn-secondary:hover { background:color-mix(in oklch,var(--secondary),var(--foreground) 5%); border-color:color-mix(in oklch,var(--primary),var(--border) 55%); } .ds-btn-secondary:focus-visible { outline:2px solid var(--ring); outline-offset:2px; } .ds-btn-secondary:active { transform:translateY(1px); }"
+    },
+    {
+      "name": "Assignment Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A compact repository or issue field in the assignment row.",
+      "html": "<input class=\"ds-input\" placeholder=\"owner/repo#123\" aria-label=\"Repository issue\">",
+      "css": ".ds-input { width:260px; height:32px; padding:4px 10px; border:1px solid var(--input); border-radius:var(--radius-lg); background:transparent; color:var(--foreground); font:400 0.84rem/1.4 var(--theme-font-body); transition:border-color 140ms ease-out,box-shadow 140ms ease-out; } .ds-input::placeholder { color:var(--muted-foreground); } .ds-input:hover { border-color:color-mix(in oklch,var(--primary),var(--input) 65%); } .ds-input:focus-visible { outline:none; border-color:var(--ring); box-shadow:0 0 0 3px color-mix(in oklch,var(--ring),transparent 50%); }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "A labeled status marker that never relies on color alone.",
+      "html": "<span class=\"ds-chip\"><span class=\"ds-chip-dot\"></span>Working now</span>",
+      "css": ".ds-chip { --ds-tone:var(--signal-mint); display:inline-flex; align-items:center; gap:5px; height:20px; padding:0 8px; border:1px solid color-mix(in oklch,var(--ds-tone),transparent 64%); border-radius:0; background:color-mix(in oklch,var(--ds-tone),transparent 88%); color:color-mix(in oklch,var(--ds-tone),var(--foreground) 22%); font:600 0.75rem/1 var(--theme-font-body); } .ds-chip-dot { width:7px; height:7px; border-radius:999px; background:var(--ds-tone); } .ds-chip:hover { border-color:color-mix(in oklch,var(--ds-tone),transparent 45%); } .ds-chip:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"
+    },
+    {
+      "name": "Work Card",
+      "kind": "card",
+      "refersTo": "work-card",
+      "description": "The flat, dense unit for one work outcome and its evidence state.",
+      "html": "<article class=\"ds-work-card\"><div><span class=\"ds-repo\">alfred</span></div><strong>Replace legacy appearance presets.</strong><small>In review</small></article>",
+      "css": ".ds-work-card { display:flex; flex-direction:column; gap:7px; width:230px; padding:10px 11px; border:1px solid var(--hairline); border-radius:var(--radius-md); background:var(--surface); color:var(--foreground); font-family:var(--theme-font-body); transition:border-color 140ms ease-out,background 140ms ease-out; } .ds-work-card strong { font-size:0.86rem; line-height:1.35; font-weight:550; } .ds-work-card small { color:var(--muted-foreground); font-size:0.72rem; } .ds-repo { padding:1px 8px; border:1px solid var(--hairline); border-radius:0; font:400 0.72rem/1.4 var(--font-mono); } .ds-work-card:hover { border-color:color-mix(in oklch,var(--primary),var(--hairline) 55%); background:color-mix(in oklch,var(--surface),var(--foreground) 4%); } .ds-work-card:focus-visible { outline:2px solid var(--ring); outline-offset:3px; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "description": "The current route, marked by text, icon, wash, and a spectral edge.",
+      "html": "<button class=\"ds-nav-active\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 3v12m0 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm12-12v6m0 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM6 9h12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\"/></svg><span>Work</span></button>",
+      "css": ".ds-nav-active { display:flex; align-items:center; gap:8px; width:220px; min-height:32px; padding:6px 10px; border:0; border-radius:var(--radius-md); background:linear-gradient(90deg,color-mix(in oklch,var(--signal-mint),transparent 88%),transparent 72%),var(--glass); color:var(--foreground); font:500 0.84rem/1.35 var(--theme-font-body); box-shadow:inset 1px 0 0 var(--signal-mint),inset 2px 0 0 color-mix(in oklch,var(--signal-rose),transparent 35%),inset 3px 0 0 color-mix(in oklch,var(--signal-violet),transparent 55%); } .ds-nav-active svg { width:16px; height:16px; } .ds-nav-active:hover { background:linear-gradient(90deg,color-mix(in oklch,var(--signal-mint),transparent 82%),transparent 72%),var(--glass); } .ds-nav-active:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"
+    },
+    {
+      "name": "Work Inspector",
+      "kind": "custom",
+      "refersTo": "inspector",
+      "description": "A stronger glass rail for evidence, checks, changed files, and operator decisions.",
+      "html": "<aside class=\"ds-inspector\"><h2>Work item</h2><p>Open the record or change the queue state.</p><hr><strong>Agent evidence</strong><code>Branch feature/themes</code></aside>",
+      "css": ".ds-inspector { width:320px; padding:14px; border:1px solid color-mix(in oklch,var(--primary),var(--border) 76%); border-radius:var(--radius-lg); background:linear-gradient(180deg,var(--glass-highlight),transparent 16%),var(--glass-strong); color:var(--foreground); font-family:var(--theme-font-body); box-shadow:inset 0 1px 0 var(--glass-highlight),0 18px 48px color-mix(in oklch,var(--glass-shadow),transparent 42%); backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate)); } .ds-inspector h2 { margin:0; font:650 0.95rem/1.3 var(--theme-font-heading); } .ds-inspector p { color:var(--muted-foreground); font-size:0.72rem; } .ds-inspector hr { border:0; border-top:1px solid var(--hairline); } .ds-inspector code { display:block; margin-top:8px; font:400 0.72rem/1.4 var(--font-mono); } .ds-inspector:hover { border-color:color-mix(in oklch,var(--primary),var(--border) 55%); } .ds-inspector:focus-visible { outline:2px solid var(--ring); outline-offset:2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Signal Edge",
+    "overview": "Alfred is a quiet operations field that reveals change at its edges. Neutral planes and compact typography carry the working state; narrow mint, rose, and violet signals appear only where work is active, selected, uncertain, or awaiting a decision. The result is calm enough for long sessions while keeping intervention points unmistakable.\n\nSignal Edge is the default appearance. Category Standard maps the same semantic contract to denser graphite panels and conventional status color. Linked Fold maps it to warm paper, fine crease geometry, and gold decision accents. Theme changes may alter material, radius, and heading character, but they do not alter information architecture, control meaning, or status semantics.",
+    "keyCharacteristics": [
+      "Compact, fit-to-viewport operational density.",
+      "Translucent chrome around solid, legible data surfaces.",
+      "State conveyed by words, icons, dots, borders, and color together.",
+      "A restrained spectral edge reserved for changing or selected work.",
+      "Light and dark modes derived from one semantic component contract."
+    ],
+    "rules": [
+      { "name": "The Signal-at-the-Edge Rule", "body": "Spectral color belongs on active navigation rails, selected work, changing evidence, and status edges. Keep the data field neutral.", "section": "colors" },
+      { "name": "The Failure Has Weight Rule", "body": "Error red must remain distinct from mint, green, and decorative spectral color, and every error includes text or an icon.", "section": "colors" },
+      { "name": "The Semantic Contract Rule", "body": "All appearances consume the same background, foreground, surface, primary, border, and status roles. A theme changes expression, never meaning.", "section": "colors" },
+      { "name": "The Evidence Voice Rule", "body": "Use monospace only when the content is literal machine evidence. Human-readable outcomes and decisions stay in the body voice.", "section": "typography" },
+      { "name": "The Compact Hierarchy Rule", "body": "Create hierarchy through weight, contrast, and spacing before increasing size. Operational headings remain modest.", "section": "typography" },
+      { "name": "The Decision Rail Rule", "body": "Evidence and approval controls occupy a dedicated inspector on wide screens and become a reachable sheet on narrow screens. They never obscure or reorder the lifecycle.", "section": "layout" },
+      { "name": "The Chrome-Only Glass Rule", "body": "Blur communicates persistent or overlaid chrome. Do not put long-form text directly on weak translucent material.", "section": "elevation" },
+      { "name": "The Flat Data Rule", "body": "Cards that carry work, evidence, or metrics stay flat at rest. Hover changes border and surface tone, not elevation.", "section": "elevation" },
+      { "name": "The Structural Shape Rule", "body": "Radius follows hierarchy: chrome may curve, dense metadata stays square, and circles are reserved for compact identity or status marks.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do use neutral surfaces for sustained reading and reserve spectral color for state edges.",
+      "Do pair every status color with a label, icon, dot, or structural change.",
+      "Do keep data cards flat and use glass only where layering has a navigational purpose.",
+      "Do preserve lifecycle order and evidence access at every breakpoint.",
+      "Do disable entry and crossfade motion when reduced motion is requested."
+    ],
+    "donts": [
+      "Don't use gradients as decoration detached from status, selection, focus, or material depth.",
+      "Don't turn the interface into a metrics dashboard with oversized numbers or presentation-scale headings.",
+      "Don't use color alone to indicate approval, failure, selection, or progress.",
+      "Don't add independent theme-specific component behavior. Map new components through the shared semantic contract.",
+      "Don't place body copy on translucency that depends on backdrop blur for contrast."
+    ]
+  }
+}

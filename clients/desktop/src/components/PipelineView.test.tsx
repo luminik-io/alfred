@@ -1,9 +1,19 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { PipelineView } from "./PipelineView";
 import type { PlanDraft, ShippedBoard, ShippedCard } from "../types";
+
+const viewport = vi.hoisted(() => ({ wide: true, query: "" }));
+
+vi.mock("../hooks/use-mobile", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/use-mobile")>()),
+  useMediaQuery: (query: string) => {
+    viewport.query = query;
+    return viewport.wide;
+  },
+}));
 
 // PipelineView merges the old Work board and Plans page into the single
 // lifecycle board. Render in desktop-capable mode so the queue actions appear.
@@ -13,7 +23,8 @@ vi.mock("../api/client", async (importOriginal) => ({
 }));
 
 vi.mock("../lib/links", async () => {
-  const actual = await vi.importActual<typeof import("../lib/links")>("../lib/links");
+  const actual =
+    await vi.importActual<typeof import("../lib/links")>("../lib/links");
   return { ...actual, openExternal: vi.fn() };
 });
 
@@ -64,7 +75,9 @@ function board(overrides: Partial<ShippedBoard> = {}): ShippedBoard {
   };
 }
 
-function renderPipeline(props: Partial<Parameters<typeof PipelineView>[0]> = {}) {
+function renderPipeline(
+  props: Partial<Parameters<typeof PipelineView>[0]> = {},
+) {
   return render(
     <PipelineView
       board={board()}
@@ -83,7 +96,9 @@ function renderPipeline(props: Partial<Parameters<typeof PipelineView>[0]> = {})
 describe("PipelineView", () => {
   it("teaches the four columns with an empty state when nothing is in flight", () => {
     renderPipeline();
-    expect(screen.getByText(/nothing in the pipeline yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/nothing in the pipeline yet/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the shipped-card attribution under the active roster theme", () => {
@@ -95,7 +110,14 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "senior-dev" })],
+          shipped: [
+            card({
+              kind: "pr",
+              number: 9,
+              title: "feat: add export",
+              author: "senior-dev",
+            }),
+          ],
         },
         counts: { queued: 0, in_progress: 0, shipped: 1 },
       }),
@@ -110,7 +132,14 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "senior-dev" })],
+          shipped: [
+            card({
+              kind: "pr",
+              number: 9,
+              title: "feat: add export",
+              author: "senior-dev",
+            }),
+          ],
         },
         counts: { queued: 0, in_progress: 0, shipped: 1 },
       }),
@@ -125,7 +154,14 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 9, title: "feat: add export", author: "senior-dev" })],
+          shipped: [
+            card({
+              kind: "pr",
+              number: 9,
+              title: "feat: add export",
+              author: "senior-dev",
+            }),
+          ],
         },
         counts: { queued: 0, in_progress: 0, shipped: 1 },
       }),
@@ -151,10 +187,18 @@ describe("PipelineView", () => {
     });
     // Every lifecycle lane carries its own accent tone via data-lane, driving the
     // per-column top border / wash in CSS (needs / queued / working / shipped).
-    expect(container.querySelector('.alfred-pipeline__column[data-lane="needs"]')).toBeInTheDocument();
-    expect(container.querySelector('.alfred-pipeline__column[data-lane="queued"]')).toBeInTheDocument();
-    expect(container.querySelector('.alfred-pipeline__column[data-lane="working"]')).toBeInTheDocument();
-    expect(container.querySelector('.alfred-pipeline__column[data-lane="shipped"]')).toBeInTheDocument();
+    expect(
+      container.querySelector('.alfred-pipeline__column[data-lane="needs"]'),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('.alfred-pipeline__column[data-lane="queued"]'),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('.alfred-pipeline__column[data-lane="working"]'),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('.alfred-pipeline__column[data-lane="shipped"]'),
+    ).toBeInTheDocument();
   });
 
   it("surfaces an in-review indicator for a draft PR in the working lane", () => {
@@ -163,7 +207,13 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [
-            card({ kind: "pr", number: 21, title: "feat: wip export", is_draft: true, author: "senior-dev" }),
+            card({
+              kind: "pr",
+              number: 21,
+              title: "feat: wip export",
+              is_draft: true,
+              author: "senior-dev",
+            }),
           ],
           shipped: [],
         },
@@ -179,7 +229,13 @@ describe("PipelineView", () => {
         columns: {
           queued: [],
           in_progress: [
-            card({ kind: "pr", number: 22, title: "feat: ready export", is_draft: false, author: "senior-dev" }),
+            card({
+              kind: "pr",
+              number: 22,
+              title: "feat: ready export",
+              is_draft: false,
+              author: "senior-dev",
+            }),
           ],
           shipped: [],
         },
@@ -193,23 +249,37 @@ describe("PipelineView", () => {
     renderPipeline({
       board: board({ error: "GitHub data unavailable for 3 watched repos" }),
     });
-    expect(screen.getByText(/the pipeline failed to build/i)).toBeInTheDocument();
-    expect(screen.queryByText(/nothing in the pipeline yet/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/the pipeline failed to build/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/nothing in the pipeline yet/i),
+    ).not.toBeInTheDocument();
   });
 
   it("places plans in the go-ahead column and board cards in their lifecycle columns", () => {
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
+      plans: [
+        plan({
+          title: "Approve the export plan",
+          source: "architect",
+          status: "draft",
+        }),
+      ],
       board: board({
         columns: {
           queued: [card()],
           in_progress: [],
-          shipped: [card({ kind: "pr", number: 7, title: "feat: add CSV export" })],
+          shipped: [
+            card({ kind: "pr", number: 7, title: "feat: add CSV export" }),
+          ],
         },
         counts: { queued: 1, in_progress: 0, shipped: 1 },
       }),
     });
-    expect(screen.getByRole("region", { name: /needs your go-ahead/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /needs your go-ahead/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/approve the export plan/i)).toBeInTheDocument();
     // The conventional-commit prefix is stripped on the shipped card outcome.
     expect(screen.getByText("Add CSV export.")).toBeInTheDocument();
@@ -219,12 +289,30 @@ describe("PipelineView", () => {
     // 3 gated GitHub issues plus 1 local plan: the honest go-ahead count is 4,
     // and the gated issues must not read as Queued.
     const gated = [
-      card({ number: 101, title: "bundle: onboarding redesign", labels: ["agent:plan-pending-approval"] }),
-      card({ number: 102, title: "bundle: credential collection", labels: ["agent:plan-pending-approval"] }),
-      card({ number: 103, title: "bundle: super admin", labels: ["agent:plan-pending-approval"] }),
+      card({
+        number: 101,
+        title: "bundle: onboarding redesign",
+        labels: ["agent:plan-pending-approval"],
+      }),
+      card({
+        number: 102,
+        title: "bundle: credential collection",
+        labels: ["agent:plan-pending-approval"],
+      }),
+      card({
+        number: 103,
+        title: "bundle: super admin",
+        labels: ["agent:plan-pending-approval"],
+      }),
     ];
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
+      plans: [
+        plan({
+          title: "Approve the export plan",
+          source: "architect",
+          status: "draft",
+        }),
+      ],
       board: board({
         columns: {
           queued: [card({ number: 5, title: "A genuinely queued issue" })],
@@ -236,12 +324,18 @@ describe("PipelineView", () => {
       }),
     });
     // The go-ahead lane's accessible name carries the honest count (1 plan + 3 gated = 4).
-    expect(screen.getByRole("region", { name: /needs your go-ahead \(4\)/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /needs your go-ahead \(4\)/i }),
+    ).toBeInTheDocument();
     // The Queued lane counts only the single genuinely-queued issue, not the gated ones.
-    expect(screen.getByRole("region", { name: /^Queued \(1\)$/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /^Queued \(1\)$/ }),
+    ).toBeInTheDocument();
     // Each gated issue renders in the decision lane with the go-ahead chip.
     expect(screen.getByText(/onboarding redesign/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/needs your go-ahead/i).length).toBeGreaterThanOrEqual(3);
+    expect(
+      screen.getAllByText(/needs your go-ahead/i).length,
+    ).toBeGreaterThanOrEqual(3);
   });
 
   it("gives an in-app go-ahead on a gated card via the queue action", async () => {
@@ -255,7 +349,11 @@ describe("PipelineView", () => {
           in_progress: [],
           shipped: [],
           awaiting_approval: [
-            card({ number: 77, title: "gated plan awaiting go-ahead", labels: ["agent:plan-pending-approval"] }),
+            card({
+              number: 77,
+              title: "gated plan awaiting go-ahead",
+              labels: ["agent:plan-pending-approval"],
+            }),
           ],
         },
         counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 1 },
@@ -276,30 +374,51 @@ describe("PipelineView", () => {
           in_progress: [],
           shipped: [],
           awaiting_approval: [
-            card({ number: 78, title: "sample gated plan", demo: true, labels: ["agent:plan-pending-approval"] }),
+            card({
+              number: 78,
+              title: "sample gated plan",
+              demo: true,
+              labels: ["agent:plan-pending-approval"],
+            }),
           ],
         },
         counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 1 },
       }),
     });
-    expect(screen.queryByRole("button", { name: /give go-ahead/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /give go-ahead/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("falls back to zero awaiting-approval when an older server omits the lane", () => {
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
+      plans: [
+        plan({
+          title: "Approve the export plan",
+          source: "architect",
+          status: "draft",
+        }),
+      ],
       board: board({
         columns: { queued: [card()], in_progress: [], shipped: [] },
         counts: { queued: 1, in_progress: 0, shipped: 0 },
       }),
     });
     // No awaiting_approval lane on the payload: count is just the single plan.
-    expect(screen.getByRole("region", { name: /needs your go-ahead \(1\)/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: /needs your go-ahead \(1\)/i }),
+    ).toBeInTheDocument();
   });
 
   it("uses the human chip vocabulary, never raw jargon, on card faces", () => {
     renderPipeline({
-      plans: [plan({ title: "Approve the export plan", source: "architect", status: "draft" })],
+      plans: [
+        plan({
+          title: "Approve the export plan",
+          source: "architect",
+          status: "draft",
+        }),
+      ],
       board: board({
         columns: {
           queued: [card()],
@@ -309,7 +428,9 @@ describe("PipelineView", () => {
         counts: { queued: 1, in_progress: 1, shipped: 1 },
       }),
     });
-    expect(screen.getAllByText(/needs your go-ahead/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/needs your go-ahead/i).length).toBeGreaterThan(
+      0,
+    );
     // "Queued" and "Shipped" appear as both a column header and a card chip.
     expect(screen.getAllByText("Queued").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("Shipped").length).toBeGreaterThanOrEqual(2);
@@ -322,7 +443,14 @@ describe("PipelineView", () => {
     const onFollowupAction = vi.fn();
     const user = userEvent.setup();
     renderPipeline({
-      plans: [plan({ plan_id: "slack-C1-123", title: "Improve planning loop", source: "followup", status: "needs follow-up" })],
+      plans: [
+        plan({
+          plan_id: "slack-C1-123",
+          title: "Improve planning loop",
+          source: "followup",
+          status: "needs follow-up",
+        }),
+      ],
       onFollowupAction,
     });
     await user.click(screen.getByText(/improve planning loop/i));
@@ -342,7 +470,14 @@ describe("PipelineView", () => {
     const onDecision = vi.fn();
     const user = userEvent.setup();
     renderPipeline({
-      plans: [plan({ plan_id: "13-plan", title: "Add CSV export", source: "architect", status: "Draft (awaiting approval)" })],
+      plans: [
+        plan({
+          plan_id: "13-plan",
+          title: "Add CSV export",
+          source: "architect",
+          status: "Draft (awaiting approval)",
+        }),
+      ],
       onDecision,
     });
     await user.click(screen.getByRole("button", { name: /^approve/i }));
@@ -356,7 +491,15 @@ describe("PipelineView", () => {
     const onDecision = vi.fn();
     const user = userEvent.setup();
     renderPipeline({
-      plans: [plan({ plan_id: "13-plan", title: "Add CSV export", source: "architect", status: "Draft (awaiting approval)", readiness_score: 88 })],
+      plans: [
+        plan({
+          plan_id: "13-plan",
+          title: "Add CSV export",
+          source: "architect",
+          status: "Draft (awaiting approval)",
+          readiness_score: 88,
+        }),
+      ],
       onDecision,
     });
     // Select the card body (no separate Inspect verb).
@@ -394,8 +537,12 @@ describe("PipelineView", () => {
       ],
       onFileIssue,
     });
-    await user.click(screen.getByRole("button", { name: /add export planning/i }));
-    await user.click(screen.getByRole("button", { name: /file github issue/i }));
+    await user.click(
+      screen.getByRole("button", { name: /add export planning/i }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /file github issue/i }),
+    );
     expect(onFileIssue).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "compose-export" }),
     );
@@ -418,7 +565,9 @@ describe("PipelineView", () => {
       ],
       onDiscardPlan,
     });
-    await user.click(screen.getByRole("button", { name: /add export planning/i }));
+    await user.click(
+      screen.getByRole("button", { name: /add export planning/i }),
+    );
     await user.click(screen.getByRole("button", { name: /discard draft/i }));
     expect(onDiscardPlan).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "compose-export" }),
@@ -443,7 +592,9 @@ describe("PipelineView", () => {
       ],
       onDiscardPlan,
     });
-    await user.click(screen.getByRole("button", { name: /add export planning/i }));
+    await user.click(
+      screen.getByRole("button", { name: /add export planning/i }),
+    );
     await user.click(screen.getByRole("button", { name: /discard drafts/i }));
     expect(onDiscardPlan).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "compose-export" }),
@@ -490,11 +641,15 @@ describe("PipelineView", () => {
       onDiscardPlan,
     });
     // The inline discard is a card hover action, so no detail sheet is needed.
-    await user.click(screen.getByRole("button", { name: "Discard this draft" }));
+    await user.click(
+      screen.getByRole("button", { name: "Discard this draft" }),
+    );
     expect(onDiscardPlan).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "compose-thin" }),
     );
-    expect(screen.queryByLabelText(/selected plan details/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/selected plan details/i),
+    ).not.toBeInTheDocument();
   });
 
   it("offers the inline Discard on a low-signal draft once its disclosure is expanded", async () => {
@@ -519,7 +674,9 @@ describe("PipelineView", () => {
     await user.click(screen.getByRole("button", { name: /low signal/i }));
     // The inline discard must be present on the low-signal card too (regression:
     // it was previously omitted, leaving junk drafts undiscardable from the face).
-    await user.click(screen.getByRole("button", { name: "Discard this draft" }));
+    await user.click(
+      screen.getByRole("button", { name: "Discard this draft" }),
+    );
     expect(onDiscardPlan).toHaveBeenCalledWith(
       expect.objectContaining({ plan_id: "compose-lowsig" }),
     );
@@ -560,16 +717,208 @@ describe("PipelineView", () => {
     expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 12, "done");
   });
 
+  it("shows review state and agent evidence in the work inspector", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            card({
+              kind: "pr",
+              number: 21,
+              title: "Replace legacy appearance presets",
+              is_draft: true,
+              labels: ["harness:codex"],
+              agent_evidence: [
+                "label:agent:authored",
+                "branch:senior-dev/themes",
+              ],
+              github_evidence: {
+                head_sha: "a".repeat(40),
+                review_state: "REVIEW_REQUIRED",
+                checks: [
+                  { name: "Informational", status: "NEUTRAL" },
+                  { name: "Not applicable", status: "SKIPPED" },
+                  { name: "Desktop client", status: "SUCCESS" },
+                  { name: "policy", status: "PENDING" },
+                  { name: "Static analysis", status: "SUCCESS" },
+                  { name: "Unit tests", status: "SUCCESS" },
+                  { name: "Integration", status: "FAILURE" },
+                  { name: "Legacy policy", status: "ERROR" },
+                ],
+                check_count_incomplete: true,
+                changed_files: ["client.tsx", "client.test.tsx"],
+                changed_file_count: 240,
+                changed_file_count_incomplete: false,
+                commit_count: 100,
+                commit_count_incomplete: true,
+                latest_reviews: [{ author: "reviewer", state: "COMMENTED" }],
+              },
+            }),
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /replace legacy appearance presets/i,
+      }),
+    );
+    const inspector = screen.getByRole("complementary", {
+      name: "Work item inspector",
+    });
+    expect(
+      within(inspector).getByText("In review", { exact: true }),
+    ).toBeInTheDocument();
+    expect(
+      within(inspector).getByRole("region", { name: "Agent evidence" }),
+    ).toHaveTextContent("Label agent:authored");
+    expect(
+      within(inspector).getByRole("region", { name: "Agent evidence" }),
+    ).toHaveTextContent("Branch senior-dev/themes");
+    expect(
+      within(inspector).getByRole("region", { name: "GitHub evidence" }),
+    ).toHaveTextContent("Codex");
+    expect(
+      within(inspector).getByRole("region", { name: "GitHub evidence" }),
+    ).toHaveTextContent("aaaaaaaaaaaa");
+    expect(
+      within(inspector).getByRole("region", { name: "GitHub evidence" }),
+    ).toHaveTextContent("Desktop client");
+    expect(
+      within(inspector).getByRole("region", { name: "GitHub evidence" }),
+    ).toHaveTextContent("100+");
+    expect(
+      within(inspector).getByRole("region", { name: "Changed files" }),
+    ).toHaveTextContent("Changed files 240");
+    expect(
+      within(inspector).getByRole("region", { name: "Changed files" }),
+    ).toHaveTextContent("238 more files on GitHub");
+    expect(
+      within(inspector).getByText("Integration").closest("li"),
+    ).toHaveAttribute("data-state", "failed");
+    expect(
+      within(inspector).getByText("Legacy policy").closest("li"),
+    ).toHaveAttribute("data-state", "failed");
+    expect(
+      within(inspector).getByText("Informational").closest("li"),
+    ).toHaveAttribute("data-state", "passed");
+    expect(
+      within(inspector).getByText("Not applicable").closest("li"),
+    ).toHaveAttribute("data-state", "passed");
+    expect(
+      within(inspector).getByText(/at least 2 more checks on github/i),
+    ).toHaveTextContent("this list is incomplete");
+    expect(screen.getByRole("region", { name: /working now/i })).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("reports unavailable GitHub evidence without showing factual zeroes", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            card({
+              kind: "pr",
+              github_evidence: null,
+              github_evidence_unavailable: true,
+            }),
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /ready issue/i }));
+
+    const inspector = screen.getByRole("complementary", {
+      name: "Work item inspector",
+    });
+    expect(within(inspector).getByText(/github evidence is unavailable/i)).toBeVisible();
+    expect(within(inspector).queryByText("Commits")).not.toBeInTheDocument();
+  });
+
+  it("moves focus into the docked inspector and restores it when closed", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [card()],
+          in_progress: [card({ number: 13, title: "Later work item" })],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    const opener = screen.getByRole("button", { name: /ready issue/i });
+    await user.click(opener);
+
+    const close = within(
+      screen.getByRole("complementary", { name: "Work item inspector" }),
+    ).getByRole("button", { name: "Close inspector" });
+    expect(close).toHaveFocus();
+
+    await user.click(close);
+
+    expect(opener).toHaveFocus();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  });
+
+  it("uses a sheet instead of compressing the board at compact viewport widths", async () => {
+    const user = userEvent.setup();
+    viewport.wide = false;
+    try {
+      renderPipeline({
+        board: board({
+          columns: { queued: [card()], in_progress: [], shipped: [] },
+          counts: { queued: 1, in_progress: 0, shipped: 0 },
+        }),
+      });
+
+      await user.click(screen.getByRole("button", { name: /ready issue/i }));
+
+      expect(screen.getByRole("dialog", { name: "Work item" })).toBeVisible();
+      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    } finally {
+      viewport.wide = true;
+    }
+  });
+
+  it("keeps the inspector in a sheet until four lanes and the dock fit", () => {
+    renderPipeline();
+
+    expect(viewport.query).toBe("(min-width: 1280px)");
+  });
+
   it("routes an existing issue from the Work assignment strip", async () => {
     const onQueueAction = vi.fn().mockResolvedValue(true);
     const user = userEvent.setup();
     renderPipeline({ onQueueAction });
 
-    await user.type(screen.getByPlaceholderText(/owner\/repo#123/i), "your-org/api#42");
-    await user.selectOptions(screen.getByLabelText(/assignment target/i), "architect");
+    await user.type(
+      screen.getByPlaceholderText(/owner\/repo#123/i),
+      "your-org/api#42",
+    );
+    await user.selectOptions(
+      screen.getByLabelText(/assignment target/i),
+      "architect",
+    );
     await user.click(screen.getByRole("button", { name: /route/i }));
 
-    expect(onQueueAction).toHaveBeenCalledWith("your-org/api", 42, "assign", "architect");
+    expect(onQueueAction).toHaveBeenCalledWith(
+      "your-org/api",
+      42,
+      "assign",
+      "architect",
+    );
   });
 
   it("does not offer Hold or Mark done on demo cards", async () => {
@@ -578,7 +927,14 @@ describe("PipelineView", () => {
     renderPipeline({
       board: board({
         columns: {
-          queued: [card({ repo: "alfred/demo", title: "[Demo] Try the board", url: null, demo: true })],
+          queued: [
+            card({
+              repo: "alfred/demo",
+              title: "[Demo] Try the board",
+              url: null,
+              demo: true,
+            }),
+          ],
           in_progress: [],
           shipped: [],
         },
@@ -588,8 +944,12 @@ describe("PipelineView", () => {
     });
     expect(screen.getByText("Sample")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /try the board/i }));
-    expect(screen.queryByRole("button", { name: /^hold$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^hold$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /mark done/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("collapses identical drafts to one card with a revision count (issue 314)", () => {
@@ -611,7 +971,9 @@ describe("PipelineView", () => {
       ],
     });
     // The three identical drafts collapse to a single card carrying a count.
-    expect(screen.getByText(/add csv export \(3 revisions\)/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/add csv export \(3 revisions\)/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the revision count when the server already collapsed duplicates", () => {
@@ -633,14 +995,23 @@ describe("PipelineView", () => {
         }),
       ],
     });
-    expect(screen.getByText(/add csv export \(2 revisions\)/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/add csv export \(2 revisions\)/i),
+    ).toBeInTheDocument();
   });
 
   it("hides low-signal drafts behind a disclosure", async () => {
     const user = userEvent.setup();
     renderPipeline({
       plans: [
-        plan({ plan_id: "junk", title: "Hi", source: "compose", status: "draft", readiness_score: 34, readiness_ok: false }),
+        plan({
+          plan_id: "junk",
+          title: "Hi",
+          source: "compose",
+          status: "draft",
+          readiness_score: 34,
+          readiness_ok: false,
+        }),
       ],
     });
     // The sub-threshold draft is not shown by default.
