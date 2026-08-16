@@ -439,29 +439,29 @@
 
 :root[data-theme="linked-fold"].dark {
   color-scheme: dark;
-  --theme-background: oklch(0.16 0.014 65);
+  --theme-background: oklch(0.155 0.008 55);
   --theme-foreground: oklch(0.92 0.018 82);
-  --theme-surface: oklch(0.215 0.016 65 / 0.84);
-  --theme-surface-2: oklch(0.25 0.018 65 / 0.86);
-  --theme-surface-3: oklch(0.29 0.022 65 / 0.90);
+  --theme-surface: oklch(0.205 0.010 55 / 0.90);
+  --theme-surface-2: oklch(0.235 0.012 55 / 0.92);
+  --theme-surface-3: oklch(0.275 0.014 55 / 0.94);
   --theme-primary: oklch(0.72 0.12 78);
   --theme-primary-foreground: oklch(0.17 0.020 65);
   --theme-muted-foreground: oklch(0.70 0.022 82);
   --theme-border: oklch(0.92 0.018 82 / 0.11);
   --theme-border-strong: oklch(0.92 0.018 82 / 0.22);
-  --theme-glass: oklch(0.20 0.018 65 / 0.62);
-  --theme-glass-strong: oklch(0.23 0.020 65 / 0.80);
+  --theme-glass: oklch(0.19 0.010 55 / 0.62);
+  --theme-glass-strong: oklch(0.215 0.012 55 / 0.80);
   --theme-glass-highlight: rgba(255, 244, 212, 0.12);
   --theme-glass-shadow: rgba(11, 7, 4, 0.48);
   --theme-ok: oklch(0.68 0.12 145);
   --theme-warn: oklch(0.78 0.13 78);
   --theme-error: oklch(0.65 0.19 25);
-  --theme-sidebar: oklch(0.18 0.016 65 / 0.70);
-  --theme-sidebar-accent: oklch(0.29 0.044 76 / 0.76);
+  --theme-sidebar: oklch(0.145 0.009 55 / 0.75);
+  --theme-sidebar-accent: oklch(0.255 0.028 72 / 0.76);
   --signal-mint: oklch(0.68 0.12 145);
   --signal-rose: oklch(0.65 0.19 25);
   --signal-violet: oklch(0.72 0.12 78);
-  --fold-line: oklch(0.88 0.035 82 / 0.11);
+  --fold-line: oklch(0.88 0.025 82 / 0.11);
   --theme-glass-blur: 24px;
   --theme-glass-saturate: 128%;
   --theme-radius: 0.25rem;
