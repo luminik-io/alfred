@@ -85,6 +85,48 @@ _EMBED_TIMEOUT_S = 5.0
 # a pathological MATCH expression.
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _MAX_QUERY_TOKENS = 24
+_LOW_SIGNAL_QUERY_TOKENS = frozenset(
+    {
+        "add",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "change",
+        "create",
+        "ensure",
+        "fix",
+        "for",
+        "from",
+        "has",
+        "have",
+        "implement",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "make",
+        "of",
+        "on",
+        "or",
+        "remove",
+        "so",
+        "that",
+        "the",
+        "their",
+        "then",
+        "this",
+        "to",
+        "update",
+        "use",
+        "using",
+        "with",
+        "without",
+    }
+)
 
 
 def default_hybrid_db_path(env: Mapping[str, str] | None = None) -> Path:
@@ -1191,7 +1233,11 @@ def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
 
 
 def _tokenize(text: str) -> list[str]:
-    tokens = [t.lower() for t in _TOKEN_RE.findall(text) if len(t) > 1]
+    tokens = [
+        token
+        for raw in _TOKEN_RE.findall(text)
+        if len(raw) > 1 and (token := raw.lower()) not in _LOW_SIGNAL_QUERY_TOKENS
+    ]
     # De-dupe preserving order, then cap.
     seen: set[str] = set()
     out: list[str] = []

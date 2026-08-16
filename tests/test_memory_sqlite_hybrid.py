@@ -114,6 +114,28 @@ def test_recall_query_miss_does_not_inject_unrelated_recent_lessons(
     assert out == []
 
 
+def test_recall_ignores_shared_low_signal_query_words(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Use the fixture factory")
+
+    out = provider.recall(
+        query="Fix the GraphQL schema loader so nested unions resolve on cold start",
+        codename="c",
+        repo="r",
+    )
+
+    assert out == []
+
+
+def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
+    assert mod._tokenize("Fix the GraphQL schema with the loader") == [
+        "graphql",
+        "schema",
+        "loader",
+    ]
+
+
 def test_default_chain_query_miss_does_not_fall_back_to_recent_fleet_lesson(
     tmp_path: Path,
 ) -> None:
