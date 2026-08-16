@@ -222,6 +222,7 @@ MORNING_BRIEF_EXCLUDED_ROLES = {
 }
 MEMORY_AUTO_PROMOTE_CONTROL_ENVS = (
     "ALFRED_AUTO_PROMOTE",
+    "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
     "ALFRED_AUTO_PROMOTE_KILL",
     "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
 )
@@ -1439,7 +1440,11 @@ def memory_auto_promote_stop_control_active(key: str, value: str) -> bool:
     token = strip_inline_comment(value).strip().lower()
     if not token:
         return False
-    if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+    if key in {
+        "ALFRED_AUTO_PROMOTE",
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+    }:
         return token not in {"1", "true", "yes", "on", "enabled"}
     if key == "ALFRED_AUTO_PROMOTE_KILL":
         return token not in {"0", "false", "no", "off", "disabled"}

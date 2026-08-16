@@ -142,6 +142,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     (alfred / ".env").write_text(
         "CUSTOM_FROM_ENV=loaded\n"
         "ALFRED_AUTO_PROMOTE=0\n"
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=0\n"
         "ALFRED_AUTO_PROMOTE_KILL=1\n"
         "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n"
         "ALFRED_TELEMETRY_ENABLED=1\n\n"
@@ -173,6 +174,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'senior_profile': os.environ.get('ALFRED_SENIOR_DEV_AWS_PROFILE'),\n"
         "  'spec_repos': os.environ.get('ALFRED_SPEC_PLANNER_REPOS'),\n"
         "  'auto_promote': os.environ.get('ALFRED_AUTO_PROMOTE'),\n"
+        "  'auto_promote_behavior_changes': os.environ.get('ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES'),\n"
         "  'auto_promote_kill': os.environ.get('ALFRED_AUTO_PROMOTE_KILL'),\n"
         "  'auto_promote_judge': os.environ.get('ALFRED_AUTO_PROMOTE_LLM_JUDGE'),\n"
         "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
@@ -202,6 +204,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_SENIOR_DEV_AWS_PROFILE": "stale-profile",
             "ALFRED_SPEC_PLANNER_REPOS": "org/stale",
             "ALFRED_AUTO_PROMOTE": "1",
+            "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES": "1",
             "ALFRED_AUTO_PROMOTE_KILL": "0",
             "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "1",
             "ALFRED_TELEMETRY_ENABLED": "0",
@@ -232,6 +235,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "senior_profile": "managed-profile",
         "spec_repos": None,
         "auto_promote": "0",
+        "auto_promote_behavior_changes": "0",
         "auto_promote_kill": "1",
         "auto_promote_judge": "treu",
         "telemetry_enabled": "0",

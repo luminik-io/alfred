@@ -24,6 +24,10 @@ from datetime import UTC, datetime, timedelta  # noqa: E402
 from fleet_brain import FleetBrain, Lesson, direct_auto_promote_env, new_id  # noqa: E402
 
 ARM = {"ALFRED_AUTO_PROMOTE": "1"}
+ARM_BEHAVIOR_CHANGES = {
+    "ALFRED_AUTO_PROMOTE": "1",
+    "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES": "1",
+}
 ARM_NO_JUDGE = {"ALFRED_AUTO_PROMOTE": "1", "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0"}
 OPT_OUT = {"ALFRED_AUTO_PROMOTE": "0"}
 
@@ -489,14 +493,42 @@ def test_judge_safe_verdict_promotes(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "validated"
 
 
-def test_judge_behavior_change_above_bar_is_auto_saved(brain: FleetBrain) -> None:
-    # A behavior-changing verdict that is otherwise safe and clears the bar is
-    # AUTO-SAVED (the judge decides; every auto-save is reversible), not held.
+def test_judge_behavior_change_above_bar_is_held_for_human(brain: FleetBrain) -> None:
+    # A behavior-changing verdict can rewrite how every later firing acts. The
+    # judge may flag it, but only a human can make it durable.
     c = _candidate(brain, "run the linter before every push", confidence=0.95)
     summary = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.97, changes=True))
-    assert c.id in summary["promoted"]
+    assert summary["behavior_changes_enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["flagged_behavior_change"] == 1
+    row = brain.store.get_memory_candidate(c.id)
+    assert row is not None
+    assert row.status == "candidate"
+    assert row.reviewed_by == "auto"
+    assert row.promoted_lesson_id is None
+    assert row.review_note is not None and row.review_note.startswith("[held-for-review]")
+    assert "behavior-changing" in row.review_note
+    assert brain.ams.reflected == []  # type: ignore[attr-defined]
+
+    again = brain.auto_promote_candidates(env=ARM, judge=lambda _p: _verdict(0.99, changes=False))
+    assert again["promoted"] == []
+    assert again["skipped_flagged"] == 1
+    assert again["judge_calls"] == 0
+
+
+def test_judge_behavior_change_requires_explicit_opt_in_to_auto_save(
+    brain: FleetBrain,
+) -> None:
+    c = _candidate(brain, "run the linter before every push", confidence=0.95)
+
+    summary = brain.auto_promote_candidates(
+        env=ARM_BEHAVIOR_CHANGES,
+        judge=lambda _p: _verdict(0.97, changes=True),
+    )
+
+    assert summary["behavior_changes_enabled"] is True
+    assert summary["promoted"] == [c.id]
     assert summary["auto_saved_behavior_change"] == 1
-    # Back-compat: the old hold counter stays at 0.
     assert summary["flagged_behavior_change"] == 0
     row = brain.store.get_memory_candidate(c.id)
     assert row is not None
@@ -514,7 +546,6 @@ def test_judge_behavior_change_below_bar_is_still_held(brain: FleetBrain) -> Non
         env=ARM, threshold=0.9, judge=lambda _p: _verdict(0.4, changes=True)
     )
     assert summary["promoted"] == []
-    assert summary["auto_saved_behavior_change"] == 0
     assert summary["held_low_confidence"] == 1
     row = brain.store.get_memory_candidate(c.id)
     assert row is not None

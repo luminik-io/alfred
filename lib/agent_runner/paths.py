@@ -400,7 +400,11 @@ def _runtime_stop_control_active(key: str, value: str) -> bool:
     token = _strip_inline_comment(value).strip().lower()
     if not token:
         return False
-    if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+    if key in {
+        "ALFRED_AUTO_PROMOTE",
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+    }:
         return token not in TRUTHY_VALUES
     if key == "ALFRED_AUTO_PROMOTE_KILL":
         return token not in FALSY_VALUES
