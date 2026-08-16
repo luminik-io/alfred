@@ -238,6 +238,56 @@ def test_engine_inventory_fails_closed_when_scheduler_profile_lookup_fails(
     assert by_name["codex"]["ready"] is True
 
 
+def test_engine_inventory_keeps_static_profile_after_deadline_on_unsupported_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {"PATH": "/usr/bin", "CLAUDE_CONFIG_DIR": "/profiles/static"},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_env_file_value",
+        lambda *_args, **_kwargs: "/profiles/static",
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_supported",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("an expired deadline must not start a scheduler command")
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: (
+            captured.update(kwargs)
+            or [
+                {
+                    "name": "claude",
+                    "display_name": "Claude Code",
+                    "installed": True,
+                    "ready": True,
+                    "state": "ready",
+                    "failures": [],
+                }
+            ]
+        ),
+    )
+
+    engines = setup_mod.engine_clis(deadline=time.monotonic() - 1)
+
+    assert engines[0]["ready"] is True
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/static"
+
+
 def test_engine_inventory_keeps_static_claude_profile_without_manager_override(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

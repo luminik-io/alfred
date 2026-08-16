@@ -791,7 +791,7 @@ def engine_clis(
             elif profile_lookup.supported:
                 profile_lookup_failed = True
         else:
-            profile_lookup_failed = True
+            profile_lookup_failed = runtime_facade.scheduler_supported()
     deadline_seconds = 8.0
     if deadline is not None:
         deadline_seconds = max(0.0, deadline - time.monotonic())

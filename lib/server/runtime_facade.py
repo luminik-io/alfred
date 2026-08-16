@@ -139,6 +139,14 @@ def scheduler_environment_lookup(
     )
 
 
+def scheduler_supported() -> bool:
+    """Return whether this host has a supported scheduler integration."""
+
+    import scheduler
+
+    return scheduler.supported()
+
+
 def model_providers() -> frozenset[str]:
     """Return the provider names accepted by the runtime model router."""
 
