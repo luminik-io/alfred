@@ -27,6 +27,7 @@ twin.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -39,15 +40,18 @@ import threading
 import time
 import urllib.parse
 from collections.abc import Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import batteries
 import skill_packs
 from envflags import FALSY_VALUES
+
+from server import runtime_facade
 
 logger = logging.getLogger(__name__)
 
@@ -118,10 +122,6 @@ class RepoCheckoutValidationError(ValueError):
         self.rows = rows
 
 
-# Engine CLIs Alfred rides. Detected by presence on PATH only (no version
-# spawn): the golden path needs at least one of these signed-in subscription
-# CLIs, never an API key paste.
-_ENGINE_BINS = ("claude", "codex")
 _FALSEY = FALSY_VALUES | {""}
 _CODE_MEMORY_BIN_NAME = "codebase-memory-mcp"
 _CODE_MEMORY_LAUNCHER = Path(__file__).resolve().parents[2] / "bin" / "code-memory-mcp"
@@ -129,7 +129,6 @@ _CODE_MEMORY_VERSION_RE = re.compile(
     r'^CODE_MEMORY_VERSION="\$\{ALFRED_CODE_MEMORY_VERSION:-([^}]+)\}"'
 )
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
-_CODE_MEMORY_DISCOVERY_LIMIT = 25
 _REPO_DISCOVERY_SLOT = threading.Lock()
 _CODE_MEMORY_DISCOVERY_IGNORES = {
     ".git",
@@ -253,6 +252,17 @@ def _runtime_config_env() -> dict[str, str]:
         protected.update(key for key in RUNTIME_SETUP_MANAGED_ENV_KEYS if key in os.environ)
     _load_launcher_env_file(runtime_env_path, env, protected_keys=protected)
     return env
+
+
+def _runtime_env_file_value(name: str, runtime_env: dict[str, str]) -> str:
+    """Read one value from Alfred's runtime file without shell inheritance."""
+
+    file_env: dict[str, str] = {}
+    home = runtime_env.get("HOME", "").strip()
+    if home:
+        file_env["HOME"] = home
+    _load_launcher_env_file(_env_path(runtime_env), file_env)
+    return file_env.get(name, "").strip()
 
 
 def _alfred_init_managed_scope_patterns(path: Path) -> frozenset[str]:
@@ -745,32 +755,127 @@ def _parse_gh_account(text: str) -> str | None:
     return None
 
 
-def engine_clis() -> list[dict[str, Any]]:
-    """Detect the engine CLIs Alfred rides (claude / codex) on PATH.
+def engine_clis(
+    *,
+    deadline: float | None = None,
+    environment: Literal["scheduler", "process"] = "scheduler",
+) -> list[dict[str, Any]]:
+    """Check supported engines and detect candidate harness executables."""
 
-    Server-side detection: presence-only via the augmented search path the gh
-    resolver uses, so a launchd-bare-PATH server still finds Homebrew installs.
-    The native client may also probe deeper (``alfred auth status``); this is
-    the in-browser-capable fallback so the runtime checks work without Tauri.
-    Honours ``CLAUDE_BIN`` / ``CODEX_BIN`` overrides via config.
-    """
-    search = _join_search_path(_engine_search_path(os.environ), os.environ.get("PATH", ""))
-    out: list[dict[str, Any]] = []
-    for name in _ENGINE_BINS:
-        configured = _setup_config_value(f"{name.upper()}_BIN")
-        resolved = (
-            configured
-            if configured and (os.path.isabs(configured) or shutil.which(configured, path=search))
-            else shutil.which(name, path=search)
-        )
-        out.append(
-            {
-                "name": name,
-                "installed": bool(resolved),
-                "path": resolved,
-            }
-        )
-    return out
+    runtime_env = _runtime_config_env()
+    search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
+    if environment == "process":
+        probe_env = dict(os.environ)
+    elif environment == "scheduler":
+        probe_env = dict(os.environ)
+        probe_env.update(runtime_env)
+    else:  # pragma: no cover - Literal callers are statically constrained
+        raise ValueError(f"unknown engine environment: {environment}")
+    probe_env["PATH"] = search
+    remaining = None if deadline is None else deadline - time.monotonic()
+    profile_lookup_failed = False
+    if environment == "scheduler":
+        static_profile = _runtime_env_file_value("CLAUDE_CONFIG_DIR", runtime_env)
+        if static_profile:
+            probe_env["CLAUDE_CONFIG_DIR"] = static_profile
+        else:
+            probe_env.pop("CLAUDE_CONFIG_DIR", None)
+        if remaining is None or remaining > 0:
+            profile_lookup = runtime_facade.scheduler_environment_lookup(
+                "CLAUDE_CONFIG_DIR",
+                timeout=2.0 if remaining is None else min(2.0, remaining),
+            )
+            if profile_lookup.available:
+                if profile_lookup.value:
+                    probe_env["CLAUDE_CONFIG_DIR"] = profile_lookup.value
+            elif profile_lookup.supported:
+                profile_lookup_failed = True
+        else:
+            profile_lookup_failed = runtime_facade.scheduler_supported()
+    deadline_seconds = 8.0
+    if deadline is not None:
+        deadline_seconds = max(0.0, deadline - time.monotonic())
+    engines = runtime_facade.engine_inventory(
+        environ=probe_env,
+        search_path=search,
+        deadline_seconds=deadline_seconds,
+    )
+    if profile_lookup_failed:
+        for engine in engines:
+            if engine.get("name") != "claude" or not engine.get("installed"):
+                continue
+            engine.update(
+                {
+                    "ready": False,
+                    "state": "probe_failed",
+                    "detail": (
+                        "Alfred could not read the scheduler-selected Claude profile. Retry setup."
+                    ),
+                    "failures": ["profile_lookup_failed"],
+                }
+            )
+    return engines
+
+
+def engine_cli_path(engine: str) -> str | None:
+    """Resolve one engine through the setup search path without probing it."""
+
+    runtime_env = _runtime_config_env()
+    search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
+    return runtime_facade.engine_binary(
+        engine,
+        environ=runtime_env,
+        search_path=search,
+    )
+
+
+_DEFAULT_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
+_SETUP_ENGINE_MODES = frozenset({"claude", "codex", "hybrid"})
+
+
+def _configured_engine_mode(env: Mapping[str, str]) -> str:
+    """Return the fleet engine mode that setup must evaluate."""
+
+    mode = env.get("ALFRED_ENGINE", "").strip().lower()
+    if not mode:
+        return "hybrid"
+    return mode if mode in _SETUP_ENGINE_MODES else "disabled"
+
+
+def _engine_route_status(
+    engines: list[dict[str, Any]],
+    *,
+    mode: str = "hybrid",
+) -> tuple[bool, str]:
+    """Evaluate setup engines against one normalized fleet route."""
+
+    if mode == "disabled":
+        return False, "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
+    by_name = {str(engine.get("name")): engine for engine in engines}
+    claude = by_name.get("claude")
+    codex = by_name.get("codex")
+    if mode != "hybrid":
+        selected = by_name.get(mode)
+        display_name = "Claude Code" if mode == "claude" else "Codex"
+        if selected and selected.get("ready"):
+            return True, f"Ready via configured {display_name} route."
+        state = str(selected.get("state") if selected else "missing")
+        return False, f"The configured {display_name} route is not ready ({state})."
+    if claude and claude.get("ready"):
+        return True, "Ready via Claude Code."
+    claude_state = str(claude.get("state") if claude else "missing")
+    if claude_state in _DEFAULT_ENGINE_FALLBACK_STATES and codex and codex.get("ready"):
+        return True, "Ready via Codex fallback."
+    if claude and claude_state not in _DEFAULT_ENGINE_FALLBACK_STATES:
+        return False, f"Claude Code blocks the default hybrid route ({claude_state})."
+    detected = [
+        str(engine.get("display_name") or engine.get("name"))
+        for engine in engines
+        if engine.get("installed") and not engine.get("ready")
+    ]
+    if detected:
+        return False, f"Detected but not ready: {', '.join(detected)}."
+    return False, "No compatible coding engine was found."
 
 
 def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -778,27 +883,41 @@ def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
 
     ``bin/code-memory-mcp doctor`` may auto-fetch the pinned upstream binary,
     which is great for an explicit repair action but too surprising for the
-    read-only setup checklist. This probe only inspects config, PATH, the
-    pinned launcher metadata, and the existing index directory.
+    read-only setup checklist. This probe only inspects config, configured
+    repository paths, the pinned launcher metadata, and the existing index
+    directory.
     """
 
     launcher_env = env or _code_memory_launcher_env()
     enabled = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_MCP", default=True)
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
+    graphify_fallback = (
+        _config_flag(launcher_env, "ALFRED_GRAPHIFY_MCP", default=False)
+        and _code_memory_config(launcher_env, "ALFRED_GRAPHIFY_FALLBACK").lower() == "code-memory"
+    )
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
+    if enabled or graphify_fallback:
+        repo_scope, resolved_repo_paths = _code_memory_repo_scope_with_paths(launcher_env)
+    else:
+        repo_scope = _disabled_code_memory_repo_scope(launcher_env)
+        resolved_repo_paths = []
     index_home = _code_memory_home(launcher_env, index_dir)
-    graph_dir = _code_memory_graph_dir(launcher_env, index_home)
-    repo_scope = (
-        _code_memory_repo_scope(launcher_env)
-        if enabled
-        else _disabled_code_memory_repo_scope(launcher_env)
-    )
-    index_present = _code_memory_index_present(graph_dir)
+    graph_dir = _code_memory_graph_dir(launcher_env, index_home, resolved_repo_paths)
+    index_present = bool(resolved_repo_paths) and _code_memory_index_present(graph_dir)
     pin = _code_memory_pin(launcher_env)
 
+    scope_configured = bool(repo_scope["configured"])
+    scope_resolved = bool(repo_scope["selected"])
     if not enabled:
         detail = "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    elif not scope_configured:
+        detail = (
+            "Code-memory repository scope is not configured. Set "
+            "ALFRED_CODE_MEMORY_REPOS or ALFRED_CODE_MAP_REPOS."
+        )
+    elif not scope_resolved:
+        detail = "Configured code-memory repositories do not resolve to git checkouts."
     elif binary["resolved"] and index_present:
         detail = "Code-memory binary and index are present."
     elif binary["resolved"]:
@@ -863,7 +982,8 @@ def capability_status(
         "actionable": sum(
             1
             for item in capabilities
-            if item["state"] in {"installable", "missing", "needs_index", "available"}
+            if item["state"]
+            in {"installable", "missing", "needs_index", "needs_scope", "available"}
         ),
         "disabled": sum(1 for item in capabilities if item["state"] == "disabled"),
     }
@@ -1000,10 +1120,12 @@ def _code_graph_capability(
 ) -> dict[str, Any]:
     code_binary = code_memory.get("binary") or {}
     fallback_enabled = bool(graphify and graphify.get("fallback") == "code-memory")
+    scope_resolved = bool((code_memory.get("repos") or {}).get("selected"))
     code_ready = (
         (bool(code_memory.get("enabled")) or fallback_enabled)
         and bool(code_binary.get("resolved"))
         and bool(code_memory.get("index_present"))
+        and scope_resolved
     )
     if graphify and bool(graphify.get("configured")):
         installed = bool(graphify.get("installed"))
@@ -1059,6 +1181,12 @@ def _code_graph_capability(
     if not enabled:
         state = "disabled"
         install_hint = "Set ALFRED_CODE_MEMORY_MCP=1 to re-enable code graph memory."
+    elif not scope_resolved:
+        state = "needs_scope"
+        install_hint = (
+            "Set ALFRED_CODE_MEMORY_REPOS or ALFRED_CODE_MAP_REPOS, then run "
+            "`alfred code-memory index`."
+        )
     elif installed and indexed:
         state = "ready"
         install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
@@ -1319,31 +1447,51 @@ def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
 def _code_memory_index_dir(env: dict[str, str]) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_INDEX_DIR")
     if raw.strip():
-        path = _safe_expand_path(raw)
-        if path:
-            return path
-        return Path(raw)
+        return _code_memory_state_path(env, raw)
     return _alfred_home(env) / "state" / "code-memory"
 
 
 def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_HOME")
     if raw.strip():
-        path = _safe_expand_path(raw)
-        if path:
-            return path
-        return Path(raw)
+        return _code_memory_state_path(env, raw)
     return index_dir
 
 
-def _code_memory_graph_dir(env: dict[str, str], index_home: Path) -> Path:
+def _code_memory_state_path(env: dict[str, str], raw: str) -> Path:
+    tilde_path = raw == "~" or raw.startswith("~/")
+    if tilde_path and not env.get("HOME", "").strip():
+        suffix = raw.removeprefix("~/") if raw != "~" else ""
+        path = _alfred_home(env) / suffix
+    elif expanded := _safe_expand_path(raw):
+        path = expanded
+    elif raw == "~":
+        path = _alfred_home(env)
+    elif raw.startswith("~/"):
+        path = _alfred_home(env) / raw.removeprefix("~/")
+    else:
+        path = Path(raw)
+    return path if path.is_absolute() else _alfred_home(env) / path
+
+
+def _code_memory_graph_dir(
+    env: dict[str, str], index_home: Path, resolved_repo_paths: list[Path]
+) -> Path:
     upstream_cache = _code_memory_config(env, "CBM_CACHE_DIR")
     if upstream_cache:
-        path = _safe_expand_path(upstream_cache)
-        if path:
-            return path
-        return Path(upstream_cache)
-    return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
+        cache_root = _code_memory_state_path(env, upstream_cache)
+    else:
+        cache_root = index_home / ".cache" / _CODE_MEMORY_BIN_NAME
+    fingerprint = _code_memory_scope_fingerprint(resolved_repo_paths)
+    return cache_root / "scopes" / (fingerprint or "unavailable")
+
+
+def _code_memory_scope_fingerprint(resolved_repo_paths: list[Path]) -> str | None:
+    if not resolved_repo_paths:
+        return None
+    canonical = sorted({str(path) for path in resolved_repo_paths})
+    material = "".join(f"{path}\n" for path in canonical).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
 
 
 def _code_memory_repos(env: dict[str, str]) -> list[str]:
@@ -1378,10 +1526,7 @@ def _code_memory_workspace(env: dict[str, str]) -> Path:
 def _code_memory_workspace_root(env: dict[str, str]) -> Path:
     configured = _code_memory_config(env, "WORKSPACE_ROOT")
     if configured:
-        path = _safe_expand_path(configured)
-        if path:
-            return path
-        return Path(configured)
+        return _code_memory_expand_user_path(env, configured)
     home = env.get("HOME", "").strip()
     if home:
         path = _safe_expand_path(home)
@@ -1392,30 +1537,6 @@ def _code_memory_workspace_root(env: dict[str, str]) -> Path:
         return Path.home() / "code"
     except (OSError, RuntimeError):
         return Path.cwd() / ".alfred-code-memory-workspace-unavailable"
-
-
-def _code_memory_discovery_limit(env: dict[str, str]) -> int:
-    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT")
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return _CODE_MEMORY_DISCOVERY_LIMIT
-    return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
-
-
-def _discover_code_memory_repos(
-    env: dict[str, str],
-    *,
-    deadline: float | None = None,
-) -> list[str]:
-    workspace = _code_memory_workspace(env)
-    limit = _code_memory_discovery_limit(env)
-    found: list[str] = []
-    for repo in _iter_workspace_git_repos(env, deadline=deadline, include_nested=False):
-        found.append(str(repo.relative_to(workspace)))
-        if len(found) >= limit:
-            break
-    return found
 
 
 def _iter_workspace_git_repos(
@@ -1472,15 +1593,6 @@ def _iter_workspace_git_repos(
         except OSError:
             continue
         queue.extend(sorted(children))
-
-
-def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
-    repo_map = _code_memory_repo_map(env)
-    return [
-        name
-        for name in configured
-        if _is_code_memory_git_repo(_code_memory_configured_repo_path(env, name, repo_map))
-    ]
 
 
 def _code_memory_repo_map(env: dict[str, str], *, include_aliases: bool = True) -> dict[str, str]:
@@ -1559,10 +1671,28 @@ def _code_memory_configured_repo_path(
 ) -> Path:
     mapping = repo_map if repo_map is not None else _code_memory_repo_map(env)
     mapped = mapping.get(name, mapping.get(name.casefold(), name))
-    path = Path(mapped)
+    path = _code_memory_expand_user_path(env, mapped)
     if path.is_absolute():
         return path
     return _code_memory_workspace(env) / path
+
+
+def _code_memory_expand_user_path(env: Mapping[str, str], raw: str) -> Path:
+    """Expand ``~`` with the same precedence as the code-memory launcher."""
+
+    path = Path(raw)
+    if raw != "~" and not raw.startswith("~/"):
+        return path
+    home = next(
+        (Path(value) for key in ("HOME", "ALFRED_HOME") if (value := env.get(key, "").strip())),
+        None,
+    )
+    if home is None:
+        home = _safe_home({})
+    if home is None:
+        return path
+    suffix = raw.removeprefix("~/") if raw != "~" else ""
+    return home / suffix
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:
@@ -1573,25 +1703,44 @@ def _is_code_memory_git_repo(path: Path) -> bool:
 
 
 def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
+    scope, _resolved_paths = _code_memory_repo_scope_with_paths(env)
+    return scope
+
+
+def _code_memory_repo_scope_with_paths(
+    env: dict[str, str],
+) -> tuple[dict[str, Any], list[Path]]:
     configured = _code_memory_repos(env)
-    configured_existing = _existing_code_memory_configured_repos(env, configured)
-    discovered: list[str] = [] if configured else _discover_code_memory_repos(env)
-    selected = configured_existing if configured else discovered
+    repo_map = _code_memory_repo_map(env)
+    configured_existing: list[str] = []
+    resolved_paths: set[Path] = set()
+    for name in configured:
+        path = _code_memory_configured_repo_path(env, name, repo_map)
+        if not _is_code_memory_git_repo(path):
+            continue
+        configured_existing.append(name)
+        try:
+            resolved_paths.add(path.resolve())
+        except OSError:
+            resolved_paths.add(path.absolute())
+    selected = configured_existing
     if configured and configured_existing:
         source = "configured"
     elif configured:
         source = "configured-missing"
     else:
-        source = "auto"
-    return {
-        "configured": configured,
-        "configured_existing": configured_existing,
-        "discovered": discovered,
-        "selected": selected,
-        "source": source,
-        "count": len(selected),
-        "limit": _code_memory_discovery_limit(env),
-    }
+        source = "unconfigured"
+    return (
+        {
+            "configured": configured,
+            "configured_existing": configured_existing,
+            "discovered": [],
+            "selected": selected,
+            "source": source,
+            "count": len(selected),
+        },
+        sorted(resolved_paths, key=str),
+    )
 
 
 def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
@@ -1603,15 +1752,13 @@ def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
         "selected": configured,
         "source": "configured" if configured else "disabled",
         "count": len(configured),
-        "limit": _code_memory_discovery_limit(env),
     }
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
-    search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
     if explicit:
-        resolved = _resolve_configured_binary(explicit, search=search)
+        resolved = _resolve_configured_binary(env, explicit)
         if resolved:
             return {
                 "resolved": True,
@@ -1619,10 +1766,12 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
                 "source": "env",
                 "configured": explicit,
             }
-
-    on_path = shutil.which(_CODE_MEMORY_BIN_NAME, path=search)
-    if on_path:
-        return {"resolved": True, "path": on_path, "source": "path", "configured": explicit or None}
+        return {
+            "resolved": False,
+            "path": None,
+            "source": "env",
+            "configured": explicit,
+        }
 
     cache_bin = _alfred_home(env) / "bin" / _CODE_MEMORY_BIN_NAME
     if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
@@ -1636,17 +1785,16 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
     return {
         "resolved": False,
         "path": None,
-        "source": "env" if explicit else "none",
-        "configured": explicit or None,
+        "source": "none",
+        "configured": None,
     }
 
 
-def _resolve_configured_binary(value: str, *, search: str) -> str | None:
-    path = _safe_expand_path(value) or Path(value)
+def _resolve_configured_binary(env: Mapping[str, str], value: str) -> str | None:
+    path = _code_memory_expand_user_path(env, value)
     if path.is_file() and os.access(path, os.X_OK):
         return str(path)
-    found = shutil.which(value, path=search)
-    return found or None
+    return None
 
 
 def _code_memory_pin(env: dict[str, str]) -> dict[str, str]:
@@ -1689,24 +1837,29 @@ def _has_graph_artifact(path: Path) -> bool:
     return False
 
 
-def bootstrap_status() -> dict[str, Any]:
+def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     """One read the client turns into the Set up checklist.
 
     Surfaces what is connected vs missing with a next action per row:
-    GitHub auth, at least one engine CLI, the watched-repo selection, and a
+    GitHub auth, a working default engine route, the watched-repo selection, and a
     demo-present flag. ``ready`` is the golden-path gate: gh authed + at least
     one engine + at least one board-visible repo selected and covered by queue
     scope (no AWS / Slack required).
     """
-    gh = gh_auth_status()
-    engines = engine_clis()
+    deadline = time.monotonic() + max(0.0, deadline_seconds)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        gh_future = pool.submit(gh_auth_status, deadline=deadline)
+        engines_future = pool.submit(engine_clis, deadline=deadline)
+        gh = gh_future.result()
+        engines = engines_future.result()
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
     queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
-    any_engine = any(e["installed"] for e in engines)
-    repo_checkouts = _selected_repo_local_paths(repos, runtime_env)
+    engine_mode = _configured_engine_mode(runtime_env)
+    engine_route_ready, _ = _engine_route_status(engines, mode=engine_mode)
+    repo_checkouts = _selected_repo_local_paths(repos, runtime_env, deadline=deadline)
     code_memory = code_memory_status(runtime_env)
     code_memory_coverage = _code_memory_coverage(
         repos, code_memory, runtime_env, resolved=repo_checkouts
@@ -1728,7 +1881,7 @@ def bootstrap_status() -> dict[str, Any]:
     return {
         "github": gh,
         "engines": engines,
-        "engine_ready": any_engine,
+        "engine_ready": engine_route_ready,
         "code_memory": code_memory,
         "code_memory_coverage": code_memory_coverage,
         "capability_plane": capability_plane,
@@ -1747,7 +1900,9 @@ def bootstrap_status() -> dict[str, Any]:
         "demo": {"present": any(load_demo_cards().values())},
         "install": install,
         "first_run": first_run,
-        "ready": bool(gh["ok"] and any_engine and repos and queue_repos and queue_covers_selected),
+        "ready": bool(
+            gh["ok"] and engine_route_ready and repos and queue_repos and queue_covers_selected
+        ),
     }
 
 
@@ -1772,7 +1927,10 @@ def first_run_readiness_status(
 
     checks = [
         _github_readiness_check(gh),
-        _engine_readiness_check(engines),
+        _engine_readiness_check(
+            engines,
+            mode=_configured_engine_mode(runtime_env),
+        ),
         _repo_scope_readiness_check(repos),
         _queue_readiness_check(repos, queue_repos, queue_missing),
         _repo_local_paths_readiness_check(repos, runtime_env, resolved=repo_checkouts),
@@ -1853,20 +2011,30 @@ def _github_readiness_check(gh: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _engine_readiness_check(engines: list[dict[str, Any]]) -> dict[str, Any]:
-    installed = [str(engine.get("name")) for engine in engines if engine.get("installed")]
+def _engine_readiness_check(
+    engines: list[dict[str, Any]],
+    *,
+    mode: str = "hybrid",
+) -> dict[str, Any]:
+    ready, detail = _engine_route_status(engines, mode=mode)
+    if mode == "disabled":
+        action = "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+    elif mode == "claude":
+        action = "Install and sign in to Claude Code, then recheck setup."
+    elif mode == "codex":
+        action = "Install and sign in to Codex, then recheck setup."
+    elif "blocks the default hybrid route" in detail:
+        action = "Sign in to Claude Code or select Codex, then recheck setup."
+    else:
+        action = "Install and sign in to a supported coding engine, then recheck setup."
     return _readiness_check(
         "engine_clis",
-        "Claude or Codex CLI",
+        "Coding engine",
         category="engines",
         tier="required",
-        ready=bool(installed),
-        detail=(
-            f"Found {', '.join(installed)}."
-            if installed
-            else "No Claude or Codex CLI was found on PATH."
-        ),
-        action="Install and sign in to Claude Code or Codex CLI, then recheck setup.",
+        ready=ready,
+        detail=detail,
+        action=action,
     )
 
 
@@ -2011,7 +2179,6 @@ def _repo_discovery_config(env: Mapping[str, str]) -> dict[str, str]:
         "ALFRED_WORKSPACE_SUBDIR",
         "WORKSPACE_SUBDIR",
         REPO_LOCAL_MAP_ENV,
-        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT",
     )
     return {key: env[key] for key in keys if key in env}
 

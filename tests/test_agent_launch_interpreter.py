@@ -46,6 +46,7 @@ def _run_env(
         "ALFREDRC",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "ALFRED_AUTO_PROMOTE",
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
         "ALFRED_AUTO_PROMOTE_KILL",
         "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
         "ALFRED_TELEMETRY_ENABLED",
@@ -482,13 +483,17 @@ def test_env_file_stop_controls_override_stale_process_env(
     tmp_path: Path, alfred_home: Path
 ) -> None:
     (alfred_home / ".env").write_text(
-        "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\nALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
+        "ALFRED_AUTO_PROMOTE=0\n"
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=0\n"
+        "ALFRED_AUTO_PROMOTE_KILL=1\n"
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
         encoding="utf-8",
     )
     target = tmp_path / "echo-memory-stop.sh"
     target.write_text(
         "#!/usr/bin/env bash\n"
         'echo "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n'
+        'echo "BEHAVIOR=${ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES:-unset}"\n'
         'echo "KILL=${ALFRED_AUTO_PROMOTE_KILL:-unset}"\n'
         'echo "JUDGE=${ALFRED_AUTO_PROMOTE_LLM_JUDGE:-unset}"\n',
         encoding="utf-8",
@@ -500,6 +505,7 @@ def test_env_file_stop_controls_override_stale_process_env(
         alfred_home=alfred_home,
         extra_env={
             "ALFRED_AUTO_PROMOTE": "1",
+            "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES": "1",
             "ALFRED_AUTO_PROMOTE_KILL": "0",
             "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "1",
         },
@@ -507,6 +513,7 @@ def test_env_file_stop_controls_override_stale_process_env(
 
     assert proc.returncode == 0, proc.stderr
     assert "AUTO=0" in proc.stdout
+    assert "BEHAVIOR=0" in proc.stdout
     assert "KILL=1" in proc.stdout
     assert "JUDGE=treu" in proc.stdout
 

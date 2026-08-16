@@ -16,8 +16,7 @@
 #
 # Resolution order for the binary (first hit wins):
 #   1. $ALFRED_CODE_MEMORY_BIN              explicit path
-#   2. codebase-memory-mcp on $PATH         system / package install
-#   3. $ALFRED_HOME/bin/codebase-memory-mcp pinned cache (auto-fetched here)
+#   2. $ALFRED_HOME/bin/codebase-memory-mcp pinned cache (auto-fetched here)
 #
 # On first run, if the binary is not found, this script fetches the pinned
 # release ($ALFRED_CODE_MEMORY_VERSION) tarball from GitHub into the cache. The
@@ -187,11 +186,29 @@ load_env_file() {
 }
 
 expand_user_path() {
-  local value="$1"
+  local value="$1" user_home="${HOME:-}"
+  if [ -z "$user_home" ]; then
+    case "${ALFRED_HOME:-}" in
+      /*) user_home="$ALFRED_HOME" ;;
+    esac
+  fi
   case "$value" in
-    \~) printf '%s' "$HOME" ;;
-    \~/*) printf '%s/%s' "$HOME" "${value#\~/}" ;;
+    \~)
+      [ -n "$user_home" ] && printf '%s' "$user_home" || printf '%s' "$value"
+      ;;
+    \~/*)
+      [ -n "$user_home" ] && printf '%s/%s' "$user_home" "${value#\~/}" || printf '%s' "$value"
+      ;;
     *) printf '%s' "$value" ;;
+  esac
+}
+
+resolve_code_memory_path() {
+  local value
+  value="$(expand_user_path "$1")"
+  case "$value" in
+    /*) printf '%s' "$value" ;;
+    *) printf '%s/%s' "$ALFRED_HOME" "$value" ;;
   esac
 }
 
@@ -209,13 +226,12 @@ CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.8.1}"
 CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"
 CODE_MEMORY_FETCH_TIMEOUT_S="${ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S:-120}"
 CODE_MEMORY_CONNECT_TIMEOUT_S="${ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S:-10}"
-CODE_MEMORY_DISCOVERY_LIMIT="${ALFRED_CODE_MEMORY_DISCOVERY_LIMIT:-25}"
-
 CACHE_BIN="$ALFRED_HOME/bin/$CODE_MEMORY_BIN_NAME"
-INDEX_DIR="${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}"
-CODE_MEMORY_HOME="${ALFRED_CODE_MEMORY_HOME:-$INDEX_DIR}"
-CODE_MEMORY_CACHE_DIR="${CBM_CACHE_DIR:-$CODE_MEMORY_HOME/.cache/$CODE_MEMORY_BIN_NAME}"
-WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
+INDEX_DIR="$(resolve_code_memory_path "${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}")"
+CODE_MEMORY_HOME="$(resolve_code_memory_path "${ALFRED_CODE_MEMORY_HOME:-$INDEX_DIR}")"
+CODE_MEMORY_CACHE_ROOT="$(resolve_code_memory_path "${CBM_CACHE_DIR:-$CODE_MEMORY_HOME/.cache/$CODE_MEMORY_BIN_NAME}")"
+CODE_MEMORY_CACHE_DIR="$CODE_MEMORY_CACHE_ROOT/scopes/unavailable"
+WORKSPACE_ROOT="$(expand_user_path "${WORKSPACE_ROOT:-$HOME/code}")"
 if [ "${ALFRED_WORKSPACE_SUBDIR+x}" = x ]; then
   WORKSPACE_SUBDIR="$ALFRED_WORKSPACE_SUBDIR"
 elif [ "${WORKSPACE_SUBDIR+x}" != x ]; then
@@ -335,21 +351,21 @@ fetch_binary() {
 }
 
 resolve_binary() {
-  if [ -n "${ALFRED_CODE_MEMORY_BIN:-}" ] && [ -x "${ALFRED_CODE_MEMORY_BIN}" ]; then
-    printf '%s' "$ALFRED_CODE_MEMORY_BIN"
-    return 0
+  local explicit
+  if [ -n "${ALFRED_CODE_MEMORY_BIN:-}" ]; then
+    explicit="$(expand_user_path "$(trim_env_value "$ALFRED_CODE_MEMORY_BIN")")"
+    if [ -f "$explicit" ] && [ -x "$explicit" ]; then
+      printf '%s' "$explicit"
+      return 0
+    fi
+    log "explicit binary is not executable: $explicit"
+    return 1
   fi
-  local on_path
-  on_path="$(command -v "$CODE_MEMORY_BIN_NAME" 2>/dev/null || true)"
-  if [ -n "$on_path" ]; then
-    printf '%s' "$on_path"
-    return 0
-  fi
-  if [ -x "$CACHE_BIN" ]; then
+  if [ -f "$CACHE_BIN" ] && [ -x "$CACHE_BIN" ]; then
     printf '%s' "$CACHE_BIN"
     return 0
   fi
-  if autofetch_enabled && fetch_binary && [ -x "$CACHE_BIN" ]; then
+  if autofetch_enabled && fetch_binary && [ -f "$CACHE_BIN" ] && [ -x "$CACHE_BIN" ]; then
     printf '%s' "$CACHE_BIN"
     return 0
   fi
@@ -554,6 +570,7 @@ repo_map_lookup() {
 repo_path_for_configured_name() {
   local name="$1" mapped
   if mapped="$(repo_map_lookup "$name")"; then
+    mapped="$(expand_user_path "$mapped")"
     case "$mapped" in
       /*) printf '%s' "$mapped" ;;
       *) printf '%s/%s' "$WORKSPACE" "$mapped" ;;
@@ -584,58 +601,6 @@ configured_scope_repos() {
   return 0
 }
 
-discovery_limit() {
-  case "$CODE_MEMORY_DISCOVERY_LIMIT" in
-    ''|*[!0-9]*) printf '25' ;;
-    0) printf '25' ;;
-    *) printf '%s' "$CODE_MEMORY_DISCOVERY_LIMIT" ;;
-  esac
-}
-
-discover_scope_repos() {
-  local limit count dir child base real_dir seen_real
-  local -a stack children
-  limit="$(discovery_limit)"
-  count=0
-  [ -d "$WORKSPACE" ] || return 0
-  stack=("$WORKSPACE")
-  seen_real=""
-  while [ "${#stack[@]}" -gt 0 ]; do
-    dir="${stack[0]}"
-    stack=("${stack[@]:1}")
-    real_dir="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"
-    case "
-$seen_real
-" in
-      *"
-$real_dir
-"*) continue ;;
-    esac
-    seen_real="${seen_real}${real_dir}
-"
-    if [ -e "$dir/.git" ]; then
-      printf '%s\n' "$dir"
-      count=$((count + 1))
-      [ "$count" -ge "$limit" ] && break
-      continue
-    fi
-    children=()
-    while IFS= read -r child; do
-      base="${child##*/}"
-      case "$base" in
-        .archive|.cache|.external|.external-submissions|.venv|.worktrees|build|dist|node_modules|target|venv)
-          continue
-          ;;
-      esac
-      children+=("$child")
-    done < <(find -L "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
-    if [ "${#children[@]}" -gt 0 ]; then
-      stack+=("${children[@]}")
-    fi
-  done
-  return 0
-}
-
 scope_repos() {
   local configured
   if scope_raw_has_entries; then
@@ -645,7 +610,62 @@ scope_repos() {
     fi
     return 0
   fi
-  discover_scope_repos
+  return 0
+}
+
+scope_has_resolved_repos() {
+  [ "${#SCOPE_REPOS[@]}" -gt 0 ]
+}
+
+resolve_scope_snapshot() {
+  local repo
+  SCOPE_REPOS=()
+  while IFS= read -r repo; do
+    [ -n "$repo" ] || continue
+    SCOPE_REPOS+=("$repo")
+  done < <(scope_repos)
+  scope_has_resolved_repos
+}
+
+scope_fingerprint() {
+  scope_has_resolved_repos || return 1
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s\n' "${SCOPE_REPOS[@]}" | LC_ALL=C sort -u | sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s\n' "${SCOPE_REPOS[@]}" | LC_ALL=C sort -u | shasum -a 256 | awk '{print $1}'
+  else
+    log "no sha256 tool (need sha256sum or shasum); cannot isolate code-memory scope"
+    return 1
+  fi
+}
+
+activate_scope_cache() {
+  local fingerprint
+  fingerprint="$(scope_fingerprint)" || return 1
+  [ -n "$fingerprint" ] || return 1
+  CODE_MEMORY_CACHE_DIR="$CODE_MEMORY_CACHE_ROOT/scopes/$fingerprint"
+  CBM_CACHE_DIR="$CODE_MEMORY_CACHE_DIR"
+  export CBM_CACHE_DIR
+}
+
+require_scope() {
+  local action="$1"
+  if ! scope_raw_has_entries; then
+    if [ "$action" = "serve" ]; then
+      log "repository scope is not configured; code-memory MCP is a no-op this run"
+    else
+      log "repository scope is not configured; set ALFRED_CODE_MEMORY_REPOS or ALFRED_CODE_MAP_REPOS"
+    fi
+    return 1
+  fi
+  if ! resolve_scope_snapshot; then
+    if [ "$action" = "serve" ]; then
+      log "no configured repositories resolve to git checkouts under $WORKSPACE; code-memory MCP is a no-op this run"
+    else
+      log "no configured repositories resolve to git checkouts under $WORKSPACE"
+    fi
+    return 1
+  fi
   return 0
 }
 
@@ -686,7 +706,7 @@ missing_configured_scope_summary() {
 }
 
 scope_repo_summary() {
-  local configured missing rel repo repos
+  local configured missing
   if scope_raw_has_entries; then
     configured="$(configured_scope_repos)"
     missing="$(missing_configured_scope_summary)"
@@ -699,54 +719,24 @@ scope_repo_summary() {
     fi
     return 0
   fi
-  repos=""
-  while IFS= read -r repo; do
-    if [ "$repo" = "$WORKSPACE" ]; then
-      rel="."
-    else
-      rel="${repo#"$WORKSPACE"/}"
-    fi
-    if [ -n "$repos" ]; then
-      repos="$repos, $rel"
-    else
-      repos="$rel"
-    fi
-  done < <(scope_repos)
-  if scope_raw_has_entries; then
-    if [ -n "$(configured_scope_repos)" ]; then
-      printf '%s' "$repos"
-    else
-      printf 'configured scope not found: %s' "$(configured_scope_summary)"
-    fi
-  elif [ -n "$repos" ]; then
-    printf 'auto-discovered: %s' "$repos"
-  else
-    printf 'auto-discovered: none found'
-  fi
+  printf 'not configured'
 }
 
 run_index() {
-  local bin="$1" mode="$2" repo repos had=0 failed=0
+  local bin="$1" mode="$2" repo failed=0
   mkdir -p "$CODE_MEMORY_HOME"
-  repos="$(scope_repos)"
-  while IFS= read -r repo; do
-    [ -n "$repo" ] || continue
-    had=1
+  for repo in "${SCOPE_REPOS[@]}"; do
     log "${mode}: $repo"
     # Upstream v0.8.x exposes indexing as an MCP CLI tool. It stores the graph
-    # under "$HOME/.cache/codebase-memory-mcp", so pin HOME to Alfred's
-    # configured code-memory home before invoking it. Try every scoped repo,
-    # then fail the action if any index operation failed.
+    # under "$HOME/.cache/codebase-memory-mcp" by default. Pin HOME to Alfred's
+    # configured code-memory home and CBM_CACHE_DIR to the active scope cache.
+    # Try every scoped repo, then fail the action if any index operation failed.
     if ! HOME="$CODE_MEMORY_HOME" "$bin" cli index_repository \
       "{\"repo_path\":$(json_string "$repo")}"; then
       log "${mode} failed for $repo"
       failed=1
     fi
-  done <<< "$repos"
-  if [ "$had" -eq 0 ]; then
-    log "no in-scope repos found under $WORKSPACE (set ALFRED_CODE_MEMORY_REPOS or add git repos)"
-    return 1
-  fi
+  done
   return "$failed"
 }
 
@@ -761,6 +751,7 @@ json_string() {
 # sets AGENT_CODENAME but passes no args (the conf/render path carries the
 # script name only), so default to an incremental refresh rather than serve.
 DEFAULT_CMD="serve"
+SCOPE_REPOS=()
 case "${AGENT_CODENAME:-}" in
   code-memory-refresh|code-memory-index) DEFAULT_CMD="refresh" ;;
 esac
@@ -770,6 +761,11 @@ CMD="${1:-$DEFAULT_CMD}"
 
 case "$CMD" in
   serve)
+    require_scope "serve" || exit 0
+    activate_scope_cache || {
+      log "scope cache unavailable; code-memory MCP is a no-op this run"
+      exit 0
+    }
     BIN="$(resolve_binary)" || {
       log "binary unavailable; code-memory MCP is a no-op this run"
       exit 0
@@ -778,14 +774,21 @@ case "$CMD" in
     HOME="$CODE_MEMORY_HOME" exec "$BIN" "$@"
     ;;
   index)
+    require_scope "index" || exit 1
+    activate_scope_cache || { log "scope cache unavailable; cannot index"; exit 1; }
     BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 1; }
     run_index "$BIN" "auto-index" || exit $?
     ;;
   refresh)
+    require_scope "refresh" || exit 1
+    activate_scope_cache || { log "scope cache unavailable; cannot refresh"; exit 1; }
     BIN="$(resolve_binary)" || { log "binary unavailable; cannot refresh"; exit 1; }
     run_index "$BIN" "refresh" || exit $?
     ;;
   doctor)
+    if scope_raw_has_entries && resolve_scope_snapshot; then
+      activate_scope_cache || true
+    fi
     if BIN="$(resolve_binary)"; then
       log "binary:  $BIN"
       "$BIN" --version 2>/dev/null || log "version: (binary did not report)"
@@ -796,6 +799,7 @@ case "$CMD" in
     log "env-file:    $ALFRED_HOME/.env"
     log "index-dir:   $INDEX_DIR"
     log "index-home:  $CODE_MEMORY_HOME"
+    log "cache-root:  $CODE_MEMORY_CACHE_ROOT"
     log "cache-dir:   $CODE_MEMORY_CACHE_DIR"
     log "workspace:   $WORKSPACE"
     log "repos:       $(scope_repo_summary)"

@@ -145,6 +145,50 @@
   background: color-mix(in oklch, var(--accent-soft), var(--surface) 55%);
 }
 
+:root[data-theme="signal-edge"] .alfred-card--selected::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 1px;
+  content: "";
+  background: linear-gradient(
+    180deg,
+    var(--signal-mint),
+    var(--signal-rose),
+    var(--signal-violet)
+  );
+}
+
+:root[data-theme="category-standard"] .alfred-card,
+:root[data-theme="category-standard"] .alfred-pipeline__column {
+  box-shadow: none;
+}
+
+:root[data-theme="category-standard"] .alfred-chip--attention {
+  --chip-tone: var(--warn);
+}
+
+:root[data-theme="linked-fold"] .alfred-chip--attention {
+  --chip-tone: var(--warn);
+  border-color: color-mix(in oklch, var(--warn), transparent 44%);
+  background: color-mix(in oklch, var(--warn), transparent 82%);
+  color: color-mix(in oklch, var(--warn), var(--foreground) 42%);
+}
+
+:root[data-theme="category-standard"] .approve-button {
+  border-color: color-mix(in oklch, var(--warn), transparent 58%);
+  background: var(--warn);
+  color: color-mix(in oklch, var(--warn), black 76%);
+  box-shadow: 0 7px 18px color-mix(in oklch, var(--warn), transparent 82%);
+}
+
+:root[data-theme="linked-fold"] .alfred-card--selected {
+  clip-path: polygon(0 0, calc(100% - 0.65rem) 0, 100% 0.65rem, 100% 100%, 0 100%);
+  border-color: color-mix(in oklch, var(--warn), var(--hairline) 42%);
+  background:
+    linear-gradient(225deg, transparent 47%, var(--fold-line) 48% 51%, transparent 52%) top right / 1.3rem 1.3rem no-repeat,
+    color-mix(in oklch, var(--warn), var(--surface) 94%);
+}
+
 .alfred-card__select {
   display: block;
   width: 100%;
@@ -187,6 +231,12 @@
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* Approval cards must show the exact decision scope. The other lifecycle lanes
+ * stay at two lines for scan density. */
+.alfred-pipeline__column[data-lane="needs"] .alfred-card__outcome {
+  -webkit-line-clamp: 4;
 }
 
 .alfred-card__foot {
@@ -292,7 +342,7 @@
 
 /* The columns (and the empty state that replaces them) are the flexible child:
    they take the remaining height and never overflow the fixed-height panel. */
-.alfred-pipeline > .alfred-pipeline__columns,
+.alfred-pipeline > .alfred-pipeline__workspace,
 .alfred-pipeline > .empty-state {
   flex: 1 1 auto;
   min-height: 0;
@@ -302,8 +352,106 @@
    and never shrink, so the flexible columns row absorbs the rest. */
 .alfred-pipeline > .alfred-page-hero,
 .alfred-pipeline > .inline-notice,
+.alfred-pipeline > .sample-board-notice,
 .alfred-pipeline > .alfred-pipeline__assign {
   flex: 0 0 auto;
+}
+
+.sample-board-notice {
+  align-self: flex-start;
+  margin: -0.25rem 0 0;
+  border: 1px solid color-mix(in oklch, var(--warn), var(--hairline) 64%);
+  background: color-mix(in oklch, var(--warn), transparent 92%);
+  padding: 0.25rem 0.5rem;
+  color: color-mix(in oklch, var(--warn), var(--foreground) 30%);
+  font-family: var(--font-mono);
+  font-size: 0.63rem;
+  letter-spacing: 0.02em;
+}
+
+.alfred-pipeline__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 0;
+  height: 100%;
+}
+
+.alfred-pipeline__workspace.has-inspector {
+  grid-template-columns: minmax(0, 1fr) clamp(19rem, 22vw, 22rem);
+}
+
+.pipeline-inspector {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid color-mix(in oklch, var(--primary), var(--border) 76%);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 16%),
+    var(--glass-strong);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 18px 48px color-mix(in oklch, var(--glass-shadow), transparent 42%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  padding: 0.85rem;
+  scrollbar-gutter: stable;
+}
+
+.pipeline-inspector__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.pipeline-inspector__header h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.pipeline-inspector__header p {
+  max-width: 25rem;
+  margin: 0.2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+:root[data-theme="category-standard"] .pipeline-inspector {
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+:root[data-theme="linked-fold"] .pipeline-inspector {
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 1.15rem) 0, 100% 1.15rem, 100% 100%, 0 100%);
+}
+
+:root[data-theme="linked-fold"] .pipeline-inspector::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  pointer-events: none;
+  content: "";
+  border-left: 1px solid var(--fold-line);
+  border-bottom: 1px solid var(--fold-line);
+  background: color-mix(in oklch, var(--surface), var(--accent) 12%);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .pipeline-inspector {
+    background: var(--surface);
+  }
 }
 
 .alfred-pipeline__assign {
@@ -413,6 +561,10 @@
 }
 
 @media (max-width: 1024px) {
+  .alfred-pipeline__workspace.has-inspector {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 20rem);
+  }
+
   .alfred-pipeline__columns {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -443,11 +595,12 @@
     overflow: visible;
   }
 
-  .alfred-pipeline > .alfred-pipeline__columns,
+  .alfred-pipeline > .alfred-pipeline__workspace,
   .alfred-pipeline > .empty-state {
     flex: 0 0 auto;
   }
 
+  .alfred-pipeline__workspace,
   .alfred-pipeline__columns {
     height: auto;
   }
@@ -489,6 +642,58 @@
 .alfred-pipeline__column[data-lane="working"] { --col-tone: var(--cyan); }
 .alfred-pipeline__column[data-lane="shipped"] { --col-tone: var(--ok); }
 
+:root[data-theme="signal-edge"] .alfred-pipeline__column {
+  border-color: color-mix(in oklch, var(--col-tone) 18%, var(--hairline));
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--col-tone), transparent 62%), transparent 72%) top / 100% 1px no-repeat,
+    linear-gradient(180deg, var(--glass-highlight), transparent 18%),
+    var(--glass);
+}
+
+:root[data-theme="category-standard"] .alfred-pipeline__column {
+  border-color: var(--hairline);
+  background:
+    linear-gradient(90deg, var(--col-tone), transparent 46%) top / 100% 1px no-repeat,
+    color-mix(in oklch, var(--surface), transparent 8%);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.45)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.45)) saturate(var(--glass-saturate));
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column {
+  border-color: color-mix(in oklch, var(--col-tone) 20%, var(--hairline));
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 0.9rem) 0, 100% 0.9rem, 100% 100%, 0 100%);
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--col-tone), transparent 62%), transparent 68%) top / 100% 1px no-repeat,
+    linear-gradient(180deg, var(--glass-highlight), transparent 20%),
+    var(--glass);
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  width: 0.9rem;
+  height: 0.9rem;
+  pointer-events: none;
+  content: "";
+  border-left: 1px solid color-mix(in oklch, var(--warn), var(--fold-line) 55%);
+  border-bottom: 1px solid color-mix(in oklch, var(--warn), var(--fold-line) 55%);
+  background: color-mix(in oklch, var(--surface), var(--warn) 16%);
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(135deg, transparent 48.8%, var(--fold-line) 49.4%, transparent 50%);
+}
+
 @media (min-width: 900px) {
   .alfred-pipeline__columns {
     align-items: stretch;
@@ -506,6 +711,29 @@
     overflow-y: auto;
     padding-right: 0.15rem;
     scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 767px) {
+  :root[data-theme="signal-edge"] .alfred-pipeline__column {
+    border-left: 2px solid var(--col-tone);
+    box-shadow:
+      inset 1px 0 0 color-mix(in oklch, var(--signal-rose), transparent 55%),
+      inset 2px 0 0 color-mix(in oklch, var(--signal-violet), transparent 72%),
+      0 14px 34px color-mix(in oklch, var(--glass-shadow), transparent 58%);
+  }
+
+  :root[data-theme="signal-edge"] .plan-detail-sheet {
+    border-left: 2px solid var(--signal-mint);
+    box-shadow:
+      inset 1px 0 0 color-mix(in oklch, var(--signal-rose), transparent 45%),
+      inset 2px 0 0 color-mix(in oklch, var(--signal-violet), transparent 65%),
+      0 18px 54px var(--glass-shadow);
+  }
+
+  :root[data-theme="linked-fold"] .plan-detail-sheet {
+    border-radius: 0;
+    clip-path: polygon(0 0, calc(100% - 1.1rem) 0, 100% 1.1rem, 100% 100%, 0 100%);
   }
 }
 
@@ -578,4 +806,3 @@
   border-color: color-mix(in oklch, var(--primary), var(--hairline) 50%);
   color: var(--foreground);
 }
-

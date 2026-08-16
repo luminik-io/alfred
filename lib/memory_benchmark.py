@@ -11,9 +11,10 @@ memory-ON run.
 The design mirrors ``lib/benchmark.py`` and keeps its honesty conventions:
 
 * **A/B pairs only.** The *same* task suite runs twice against the *same*
-  seed repo and the *same* seeded lessons: once with memory ON (the operator's
-  configured provider, seeded with the lessons the fleet "learned") and once
-  with memory OFF (:class:`NullMemoryProvider`). The only variable is memory.
+  seed repo and the *same* seeded lessons: once with memory ON (the shipped
+  ``sqlite,fleet`` provider chain, seeded with the lessons the fleet "learned")
+  and once with memory OFF (:class:`NullMemoryProvider`). The only variable is
+  memory.
 * **Explicit, non-fabricated denominators.** Every rate degrades to ``None``
   (never a guess) when there is nothing to divide by. ``N`` is reported
   alongside the headline, never a solo "memory is X% better".
@@ -283,6 +284,48 @@ def load_fixture(
 # --------------------------------------------------------------------------
 # Seeding the memory-ON provider
 # --------------------------------------------------------------------------
+
+
+def seed_default_provider(
+    lessons: Sequence[SeedLesson],
+    *,
+    codename: str = DEFAULT_BENCH_CODENAME,
+    repo: str = DEFAULT_BENCH_REPO,
+    base_time: datetime | None = None,
+) -> RecallProvider:
+    """Return the shipped ``sqlite,fleet`` chain seeded in memory.
+
+    The promoted lessons go into SQLite, which is the default chain's writable
+    recall store. FleetBrain remains behind it as the operational ledger. Both
+    databases are in memory, so a benchmark cannot read or change operator
+    state.
+    """
+    from memory.config import load_provider
+
+    provider = load_provider(
+        {
+            "ALFRED_MEMORY_SQLITE_DB": ":memory:",
+            "ALFRED_FLEET_BRAIN_DB": ":memory:",
+        }
+    )
+    members = getattr(provider, "providers", None)
+    if not isinstance(members, list) or not members:
+        raise RuntimeError("default memory chain has no writable lesson store")
+    writer = members[0]
+    moment = base_time or datetime(2026, 1, 1, tzinfo=UTC)
+    for offset, lesson in enumerate(lessons):
+        if not lesson.body:
+            continue
+        writer.reflect(
+            codename=codename,
+            repo=repo,
+            body=lesson.body,
+            tags=lesson.tags,
+            severity=lesson.severity,
+            memory_id=lesson.lesson_id,
+            created_at=moment + timedelta(minutes=offset),
+        )
+    return provider
 
 
 def seed_fleet_provider(
@@ -826,6 +869,7 @@ class MemoryABReport:
     memory_off: MemoryArmMetrics
     attempts: list[TaskAttempt]
     solver_kind: str = "stub"
+    memory_provider: str = "unknown"
 
     @property
     def repeated_mistake_rate_delta(self) -> float | None:
@@ -855,6 +899,7 @@ class MemoryABReport:
             "codename": self.codename,
             "repo": self.repo,
             "solver_kind": self.solver_kind,
+            "memory_provider": self.memory_provider,
             "suite": [t.to_dict() for t in self.suite],
             "memory_on": self.memory_on.to_dict(),
             "memory_off": self.memory_off.to_dict(),
@@ -875,6 +920,7 @@ def build_report(
     codename: str = DEFAULT_BENCH_CODENAME,
     repo: str = DEFAULT_BENCH_REPO,
     solver_kind: str = "stub",
+    memory_provider: str = "unknown",
     now: datetime | None = None,
 ) -> MemoryABReport:
     """Fold the two arms' attempts into a full A/B report."""
@@ -888,7 +934,15 @@ def build_report(
         memory_off=build_arm_metrics(ARM_OFF, off_attempts, suite),
         attempts=[*on_attempts, *off_attempts],
         solver_kind=solver_kind,
+        memory_provider=memory_provider,
     )
+
+
+def _provider_label(provider: RecallProvider) -> str:
+    members = getattr(provider, "providers", None)
+    if isinstance(members, (list, tuple)):
+        return ",".join(str(member.name) for member in members)
+    return str(provider.name)
 
 
 def run_memory_ab(
@@ -912,7 +966,7 @@ def run_memory_ab(
     same suite, seed repo, recall query and limit, so the delta is attributable
     to memory alone.
     """
-    on = on_provider or seed_fleet_provider(
+    on = on_provider or seed_default_provider(
         fixture.lessons, codename=fixture.codename, repo=fixture.repo
     )
     off = off_provider or null_provider()
@@ -946,6 +1000,7 @@ def run_memory_ab(
         codename=fixture.codename,
         repo=fixture.repo,
         solver_kind=solver_kind,
+        memory_provider=_provider_label(on),
         now=now,
     )
 

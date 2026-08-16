@@ -17,27 +17,45 @@ const QUIET = process.argv.includes("--quiet");
 
 function parseWidths(value) {
   const widths = value.split(",").map((entry) => Number(entry.trim()));
-  if (widths.length === 0 || widths.some((width) => !Number.isInteger(width) || width <= 0)) {
-    throw new Error(`SWEEP_WIDTHS must be a comma-separated list of positive integers: ${value}`);
+  if (
+    widths.length === 0 ||
+    widths.some((width) => !Number.isInteger(width) || width <= 0)
+  ) {
+    throw new Error(
+      `SWEEP_WIDTHS must be a comma-separated list of positive integers: ${value}`,
+    );
   }
   return [...new Set(widths)];
 }
 
 function parsePalettes(value) {
-  const supported = new Set(["mineral", "carbon"]);
+  const supported = new Set([
+    "signal-edge",
+    "category-standard",
+    "linked-fold",
+  ]);
   const palettes = value.split(",").map((entry) => entry.trim());
   const invalid = palettes.filter((palette) => !supported.has(palette));
   if (palettes.length === 0 || invalid.length > 0) {
-    throw new Error(`SWEEP_PALETTES must contain only mineral or carbon: ${value}`);
+    throw new Error(
+      `SWEEP_PALETTES must contain only signal-edge, category-standard, or linked-fold: ${value}`,
+    );
   }
   return [...new Set(palettes)];
 }
 
-const WIDTHS = parseWidths(process.env.SWEEP_WIDTHS || "375,768,1024,1280,1680");
-const PALETTES = parsePalettes(process.env.SWEEP_PALETTES || "mineral,carbon");
+const WIDTHS = parseWidths(
+  process.env.SWEEP_WIDTHS || "375,768,1024,1280,1680",
+);
+const PALETTES = parsePalettes(
+  process.env.SWEEP_PALETTES || "signal-edge,category-standard,linked-fold",
+);
 const MODES = ["dark", "light"];
 const HEIGHT = 900;
-const ROUTE_TIMEOUT_MS = parsePositiveInt(process.env.SWEEP_ROUTE_TIMEOUT_MS, 20000);
+const ROUTE_TIMEOUT_MS = parsePositiveInt(
+  process.env.SWEEP_ROUTE_TIMEOUT_MS,
+  20000,
+);
 const NAVIGATION_ATTEMPTS = 2;
 const SCREENSHOT_TIMEOUT_MS = 8000;
 // The outer watchdog covers two possible navigations, the independent surface
@@ -53,18 +71,36 @@ const ROUTES = [
   { id: "ask", q: "tab=ask", ready: ".ask" },
   { id: "pipeline", q: "tab=work", ready: ".board-page" },
   { id: "fleet-roster", q: "tab=agents", ready: "[aria-label='Agents']" },
-  { id: "fleet-activity", q: "tab=agents&subtab=activity", ready: "[aria-label='Agents']" },
-  { id: "lessons", q: "tab=agents&subtab=lessons", ready: "[aria-label='Lessons']" },
-  { id: "settings", q: "tab=settings", ready: '.settings-view[data-ready="true"]' },
+  {
+    id: "fleet-activity",
+    q: "tab=agents&subtab=activity",
+    ready: "[aria-label='Agents']",
+  },
+  {
+    id: "lessons",
+    q: "tab=agents&subtab=lessons",
+    ready: "[aria-label='Lessons']",
+  },
+  {
+    id: "settings",
+    q: "tab=settings",
+    ready: '.settings-view[data-ready="true"]',
+  },
 ];
 
 const PROBE = () => {
   const out = [];
-  const srOnly = (el) => el.closest(".sr-only, .visually-hidden, [data-sr-only]") !== null;
+  const srOnly = (el) =>
+    el.closest(".sr-only, .visually-hidden, [data-sr-only]") !== null;
   const vis = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
-    return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
+    return (
+      r.width > 0 &&
+      r.height > 0 &&
+      s.visibility !== "hidden" &&
+      s.display !== "none"
+    );
   };
   const label = (el) => {
     const cls =
@@ -75,7 +111,8 @@ const PROBE = () => {
     return `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}${cls ? "." + cls : ""}${aria ? `[aria-label="${aria}"]` : ""}`;
   };
 
-  const docOverflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+  const docOverflow =
+    document.documentElement.scrollWidth - document.documentElement.clientWidth;
   if (docOverflow > 1) {
     out.push({
       kind: "doc-hscroll",
@@ -119,7 +156,8 @@ const PROBE = () => {
     }
   }
 
-  const textSel = "h1,h2,h3,h4,strong,span,p,small,a,button,dd,dt,li,label,td,th";
+  const textSel =
+    "h1,h2,h3,h4,strong,span,p,small,a,button,dd,dt,li,label,td,th";
   for (const el of document.querySelectorAll(textSel)) {
     if (!vis(el) || srOnly(el)) continue;
     const txt = (el.textContent || "").trim();
@@ -175,7 +213,9 @@ const PROBE = () => {
       }
       const min = Math.min(w, h);
       if (min > 0 && min < 36) {
-        const text = (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 24);
+        const text = (el.getAttribute("aria-label") || el.textContent || "")
+          .trim()
+          .slice(0, 24);
         out.push({
           kind: "small-tap",
           detail: `${label(el)} ${r.width.toFixed(0)}x${r.height.toFixed(0)} eff ${w.toFixed(0)}x${h.toFixed(0)} (min ${min.toFixed(0)} < 36) text="${text}"`,
@@ -191,7 +231,9 @@ function parsePositiveInt(value, fallback) {
   if (value === undefined || value === "") return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`SWEEP_ROUTE_TIMEOUT_MS must be a positive integer, got ${JSON.stringify(value)}`);
+    throw new Error(
+      `SWEEP_ROUTE_TIMEOUT_MS must be a positive integer, got ${JSON.stringify(value)}`,
+    );
   }
   return parsed;
 }
@@ -222,7 +264,10 @@ async function withTimeout(task, ms, label) {
   const guardedTask = Promise.resolve(task);
   guardedTask.catch(() => {});
   const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    timeoutId = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
   });
   try {
     return await Promise.race([guardedTask, timeout]);
@@ -274,7 +319,10 @@ async function renderRoute(browser, { palette, mode, width, route }) {
     let navOk = false;
     for (let attempt = 0; attempt < NAVIGATION_ATTEMPTS && !navOk; attempt++) {
       try {
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: ROUTE_TIMEOUT_MS });
+        await page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: ROUTE_TIMEOUT_MS,
+        });
         navOk = true;
       } catch (err) {
         if (attempt === NAVIGATION_ATTEMPTS - 1) throw err;
@@ -330,22 +378,31 @@ async function run() {
     await browser.close().catch(() => {});
   }
 
-  await writeFile(join(OUT_DIR, "report.json"), JSON.stringify(results, null, 2));
+  await writeFile(
+    join(OUT_DIR, "report.json"),
+    JSON.stringify(results, null, 2),
+  );
 
   const byKind = {};
   for (const r of results) {
     for (const v of r.violations) {
       const key = v.kind;
       byKind[key] = byKind[key] || [];
-      byKind[key].push(`[${r.route} ${r.width} ${r.palette} ${r.mode}] ${v.detail}`);
+      byKind[key].push(
+        `[${r.route} ${r.width} ${r.palette} ${r.mode}] ${v.detail}`,
+      );
     }
   }
   if (!QUIET) {
-    console.log(`\n=== PIXEL SWEEP: ${results.length} surface renders, ${total} violations ===\n`);
+    console.log(
+      `\n=== PIXEL SWEEP: ${results.length} surface renders, ${total} violations ===\n`,
+    );
   }
   const kinds = Object.keys(byKind).sort();
   if (kinds.length === 0) {
-    console.log("CLEAN: no violations across all routes / widths / palettes / modes.");
+    console.log(
+      "CLEAN: no violations across all routes / widths / palettes / modes.",
+    );
   } else {
     for (const k of kinds) {
       console.log(`\n## ${k} (${byKind[k].length})`);

@@ -84,6 +84,69 @@ body {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* Each appearance keeps the same navigation semantics while expressing its
+ * approved edge language. These rules affect active state only. */
+:root[data-theme="signal-edge"] .nav-item-active {
+  background:
+    linear-gradient(90deg, color-mix(in oklch, var(--signal-mint), transparent 88%), transparent 72%),
+    var(--glass);
+  box-shadow:
+    inset 1px 0 0 var(--signal-mint),
+    inset 2px 0 0 color-mix(in oklch, var(--signal-rose), transparent 35%),
+    inset 3px 0 0 color-mix(in oklch, var(--signal-violet), transparent 55%);
+}
+
+:root[data-theme="category-standard"] .alfred-app-atmosphere {
+  background: var(--background);
+}
+
+:root[data-theme="category-standard"] .nav-item-active {
+  background: color-mix(in oklch, var(--primary), transparent 86%);
+  box-shadow: inset 1px 0 0 var(--primary);
+}
+
+:root[data-theme="linked-fold"] .alfred-app-atmosphere {
+  background: var(--background);
+}
+
+:root[data-theme="linked-fold"] .nav-item-active {
+  background: color-mix(in oklch, var(--warn), transparent 86%);
+  box-shadow: inset 1px 0 0 var(--warn);
+}
+
+/* The three appearances use distinct display voices. Body copy stays compact
+ * and readable while headings carry the personality. */
+:root[data-theme="signal-edge"] body,
+:root[data-theme="category-standard"] body,
+:root[data-theme="linked-fold"] body {
+  font-family: var(--theme-font-body);
+}
+
+:root[data-theme="signal-edge"] :is(.font-heading, h1, h2, h3) {
+  font-family: var(--theme-font-heading);
+  font-variation-settings: "wdth" 92;
+  font-weight: 520;
+  letter-spacing: -0.018em;
+}
+
+:root[data-theme="category-standard"] :is(.font-heading, h1, h2, h3) {
+  font-family: var(--theme-font-heading);
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
+:root[data-theme="category-standard"] :is(.alfred-pipeline__column-head, .detail-panel__head > span) {
+  font-size: 0.68rem;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="linked-fold"] :is(.font-heading, h1, h2, h3) {
+  font-family: var(--theme-font-heading);
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
 /* Running/live status dot: a soft accent bloom. */
 .status-live-glow {
   box-shadow: 0 0 0 4px var(--accent-glow-soft);
@@ -142,4 +205,12 @@ body {
     0 22px 60px var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .alfred-glass,
+  .alfred-glass-shell,
+  .alfred-glass-shell [data-sidebar="sidebar"] {
+    background: var(--surface);
+  }
 }

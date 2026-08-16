@@ -24,6 +24,11 @@ _OK = (
     '{"type":"result","subtype":"success","is_error":false,'
     '"stop_reason":"end_turn","num_turns":1,"total_cost_usd":0,"result":""}'
 )
+_PINNED_TOOLS = json.loads(
+    (Path(__file__).parent / "fixtures" / "code_memory_v0_8_1_tools.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def _capture(monkeypatch) -> list[str]:
@@ -106,6 +111,13 @@ def test_code_memory_tool_names_use_server_prefix() -> None:
     names = _proc._code_memory_tool_names()
     assert "mcp__code_memory__search_code" in names
     assert all(n.startswith("mcp__code_memory__") for n in names)
+
+
+def test_code_memory_allowlist_matches_pinned_read_only_schema() -> None:
+    names = {name.removeprefix("mcp__code_memory__") for name in _proc._code_memory_tool_names()}
+
+    assert names == set(_PINNED_TOOLS["read_only"])
+    assert names.isdisjoint(_PINNED_TOOLS["mutating"])
 
 
 def test_memory_mcp_tool_names_include_code_graph_tools() -> None:

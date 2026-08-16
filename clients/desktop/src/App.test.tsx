@@ -62,7 +62,7 @@ vi.mock("./components/CustomThemeEditor", () => ({ CustomThemeEditor: () => null
 vi.mock("./lib/useTheme", () => ({
   useTheme: () => ({
     toggle: vi.fn(),
-    themeName: "mineral",
+    themeName: "signal-edge",
     setThemeName: vi.fn(),
     mode: "dark",
     setMode: vi.fn(),
@@ -100,7 +100,22 @@ function makeSnapshot(): Snapshot {
 function makeSetupStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   return {
     github: { ok: true, account: "octocat", detail: "Signed in." },
-    engines: [{ name: "claude", installed: true, path: "/opt/homebrew/bin/claude" }],
+    engines: [
+      {
+        name: "claude",
+        display_name: "Claude Code",
+        installed: true,
+        protocol_compatible: true,
+        ready: true,
+        dispatchable: true,
+        state: "ready",
+        detail: "Claude Code is compatible and signed in.",
+        path: "/opt/homebrew/bin/claude",
+        version: "Claude Code 2.1.41",
+        capabilities: ["text", "worktree-write"],
+        failures: [],
+      },
+    ],
     engine_ready: true,
     repos: { selected: ["acme-org/api"], count: 1, keys: [], repo_checkouts: [] },
     demo: { present: false },

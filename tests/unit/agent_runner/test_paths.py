@@ -438,18 +438,23 @@ def test_launcher_env_file_memory_stop_controls_override_process_enable(
     runtime = tmp_path / "runtime"
     runtime.mkdir()
     (runtime / ".env").write_text(
-        "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\nALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
+        "ALFRED_AUTO_PROMOTE=0\n"
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=0\n"
+        "ALFRED_AUTO_PROMOTE_KILL=1\n"
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.setenv("ALFRED_AUTO_PROMOTE", "1")
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES", "1")
     monkeypatch.setenv("ALFRED_AUTO_PROMOTE_KILL", "0")
     monkeypatch.setenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", "1")
 
     env = paths_mod.launcher_env()
 
     assert env["ALFRED_AUTO_PROMOTE"] == "0"
+    assert env["ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES"] == "0"
     assert env["ALFRED_AUTO_PROMOTE_KILL"] == "1"
     assert env["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
 
@@ -463,18 +468,18 @@ def test_launcher_env_loads_code_memory_settings_when_process_absent(
     memory_home = tmp_path / "memory"
     runtime.mkdir()
     (runtime / ".env").write_text(
-        f"ALFRED_CODE_MEMORY_HOME={memory_home}\nALFRED_CODE_MEMORY_DISCOVERY_LIMIT=9\n",
+        f"ALFRED_CODE_MEMORY_HOME={memory_home}\nALFRED_CODE_MEMORY_REPOS=api,web\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("ALFRED_CODE_MEMORY_HOME", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MEMORY_DISCOVERY_LIMIT", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
 
     env = paths_mod.launcher_env()
 
     assert env["ALFRED_CODE_MEMORY_HOME"] == str(memory_home)
-    assert env["ALFRED_CODE_MEMORY_DISCOVERY_LIMIT"] == "9"
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "api,web"
 
 
 def test_config_value_preserves_empty_runtime_value(fresh_agent_runner, monkeypatch, tmp_path):

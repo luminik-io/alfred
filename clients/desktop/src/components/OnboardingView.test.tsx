@@ -48,8 +48,34 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   return {
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
     engines: [
-      { name: "claude", installed: true, path: "/opt/homebrew/bin/claude" },
-      { name: "codex", installed: false, path: null },
+      {
+        name: "claude",
+        display_name: "Claude Code",
+        installed: true,
+        protocol_compatible: true,
+        ready: true,
+        dispatchable: true,
+        state: "ready",
+        detail: "Claude Code is compatible and signed in.",
+        path: "/opt/homebrew/bin/claude",
+        version: "Claude Code 2.1.41",
+        capabilities: ["text", "worktree-write"],
+        failures: [],
+      },
+      {
+        name: "codex",
+        display_name: "Codex",
+        installed: false,
+        protocol_compatible: false,
+        ready: false,
+        dispatchable: true,
+        state: "missing",
+        detail: "Codex is not installed.",
+        path: null,
+        version: null,
+        capabilities: ["text", "worktree-write"],
+        failures: ["missing_binary"],
+      },
     ],
     engine_ready: true,
     code_memory: {
@@ -65,7 +91,14 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
       repo: "DeusData/codebase-memory-mcp",
       index_dir: "/tmp/.alfred/state/code-memory",
       index_present: false,
-      repos: { configured: [], count: 0 },
+      repos: {
+        configured: [],
+        configured_existing: [],
+        discovered: [],
+        selected: [],
+        source: "unconfigured",
+        count: 0,
+      },
       detail:
         "Code-memory binary is not installed yet; Alfred can fetch the pinned release on first explicit use.",
     },
@@ -98,7 +131,9 @@ function makeIndexedStatus(): SetupStatus {
       repos: {
         configured: ["web"],
         configured_existing: ["web"],
+        discovered: [],
         selected: ["web"],
+        source: "configured",
         count: 1,
       },
       detail: "Code graph is ready.",
@@ -791,7 +826,14 @@ describe("OnboardingView eight-step takeover", () => {
           repo: "DeusData/codebase-memory-mcp",
           index_dir: "/opt/alfred/state/code-memory",
           index_present: true,
-          repos: { configured: ["api", "web"], count: 2 },
+          repos: {
+            configured: ["api", "web"],
+            configured_existing: ["api", "web"],
+            discovered: [],
+            selected: ["api", "web"],
+            source: "configured",
+            count: 2,
+          },
           detail: "Code-memory binary and index are present.",
         },
         capability_plane: {
@@ -903,17 +945,19 @@ describe("OnboardingView eight-step takeover", () => {
     expect(screen.getByText(/0 of 1 ready/i)).toBeInTheDocument();
     expect(screen.getByText(/^optional$/i)).toBeInTheDocument();
     expect(screen.getByText(/set ALFRED_CONTEXT_GOVERNOR=1/i)).toBeInTheDocument();
-    expect(screen.queryByText(/^ready$/i)).not.toBeInTheDocument();
+    const capabilityCard = screen.getByText(/local capabilities/i).closest('[data-slot="card"]');
+    expect(capabilityCard).not.toBeNull();
+    expect(within(capabilityCard as HTMLElement).queryByText(/^ready$/i)).not.toBeInTheDocument();
   });
 
-  it("handles older code-memory payloads without repo metadata", async () => {
-    const incompleteCodeMemory = { ...makeStatus().code_memory! };
-    delete incompleteCodeMemory.repos;
+  it("shows that code-memory scope is required when no repos are configured", async () => {
+    const status = makeStatus();
+    if (!status.code_memory) throw new Error("test setup requires code-memory status");
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
         code_memory: {
-          ...incompleteCodeMemory,
+          ...status.code_memory,
           binary: {
             resolved: true,
             path: "/opt/alfred/bin/codebase-memory-mcp",
@@ -921,7 +965,15 @@ describe("OnboardingView eight-step takeover", () => {
             configured: null,
           },
           index_present: true,
-          detail: "Code-memory binary and index are present.",
+          repos: {
+            configured: [],
+            configured_existing: [],
+            discovered: [],
+            selected: [],
+            source: "unconfigured",
+            count: 0,
+          },
+          detail: "Code-memory repository scope is not configured.",
         },
       }),
     );
@@ -929,24 +981,94 @@ describe("OnboardingView eight-step takeover", () => {
     const user = userEvent.setup();
     await gotoStep(user, /^tools$/i);
 
-    expect(await screen.findByText(/code-memory binary and index are present/i)).toBeInTheDocument();
-    await user.click(screen.getByText(/advanced: code-memory probe/i));
-    expect(screen.getByText(/auto-discovered repos/i)).toBeInTheDocument();
-    expect(screen.getByText(/none found yet/i)).toBeInTheDocument();
+    const codeMemoryCard = (await screen.findByText(/^code memory$/i)).closest<HTMLElement>(
+      '[data-slot="card"]',
+    );
+    expect(codeMemoryCard).not.toBeNull();
+    const codeMemory = within(codeMemoryCard!);
+    expect(codeMemory.getByText(/^scope required$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/^ready$/i)).not.toBeInTheDocument();
+    await user.click(codeMemory.getByText(/advanced: code-memory probe/i));
+    expect(codeMemory.getByText(/^repository scope$/i)).toBeInTheDocument();
+    expect(codeMemory.getByText(/^not configured$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/auto-discovered repos/i)).not.toBeInTheDocument();
+  });
+
+  it("shows stale configured code-memory repos as unavailable", async () => {
+    const status = makeStatus();
+    if (!status.code_memory) throw new Error("test setup requires code-memory status");
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+        code_memory: {
+          ...status.code_memory,
+          binary: {
+            resolved: true,
+            path: "/opt/alfred/bin/codebase-memory-mcp",
+            source: "cache",
+            configured: null,
+          },
+          index_present: true,
+          repos: {
+            configured: ["removed-repo"],
+            configured_existing: [],
+            discovered: [],
+            selected: [],
+            source: "configured-missing",
+            count: 0,
+          },
+          detail: "Configured code-memory repositories do not resolve to git checkouts.",
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+
+    const codeMemoryCard = (await screen.findByText(/^code memory$/i)).closest<HTMLElement>(
+      '[data-slot="card"]',
+    );
+    expect(codeMemoryCard).not.toBeNull();
+    const codeMemory = within(codeMemoryCard!);
+    expect(codeMemory.getByText(/^scope unavailable$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/^ready$/i)).not.toBeInTheDocument();
+    await user.click(codeMemory.getByText(/advanced: code-memory probe/i));
+    expect(codeMemory.getByText(/^configured repos not found$/i)).toBeInTheDocument();
+    expect(codeMemory.getByText(/^removed-repo$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/auto-discovered repos/i)).not.toBeInTheDocument();
   });
 
   it("shows an honest empty state when no engine is found", async () => {
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: false,
+        engines: [],
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
       }),
     );
     renderOnboarding();
     const user = userEvent.setup();
     await gotoStep(user, /^tools$/i);
-    expect(await screen.findByText(/no engine found yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no coding engine is installed/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /install claude code/i })).toBeInTheDocument();
+  });
+
+  it("fails an incomplete engine result visibly instead of crashing onboarding", async () => {
+    const incompleteEngine = {
+      name: "claude",
+      installed: true,
+      path: "/opt/homebrew/bin/claude",
+    } as SetupStatus["engines"][number];
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({ engine_ready: false, engines: [incompleteEngine] }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+    await user.click(await screen.findByText(/advanced: engine probe/i));
+
+    expect(screen.getByText(/incomplete readiness result/i)).toBeInTheDocument();
+    expect(screen.getByText(/^unknown$/i)).toBeInTheDocument();
   });
 
   it("shows 'Signed in' on the GitHub step and never asks for a token paste", async () => {
@@ -2311,16 +2433,28 @@ describe("OnboardingView conversational setup actions", () => {
     expect(note?.content).toContain("set_schedule completed");
   });
 
-  it("reports engine-present from fresh status on check_engine (Codex P2)", async () => {
+  it("reports a ready engine from fresh status on check_engine", async () => {
     // check_engine must read the FRESH status the refresh fetched, not the stale
-    // closure. Seed a fresh status that has an installed engine and assert the
+    // closure. Seed a fresh status that has a ready engine and assert the
     // outcome threaded to the model reports it found the engine.
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         engine_ready: true,
         engines: [
-          { name: "claude", installed: true, path: "/opt/homebrew/bin/claude" },
-          { name: "codex", installed: false, path: null },
+          {
+            name: "claude",
+            display_name: "Claude Code",
+            installed: true,
+            protocol_compatible: true,
+            ready: true,
+            dispatchable: true,
+            state: "ready",
+            detail: "Claude Code is compatible and signed in.",
+            path: "/opt/homebrew/bin/claude",
+            version: "Claude Code 2.1.41",
+            capabilities: ["text", "worktree-write"],
+            failures: [],
+          },
         ],
       }),
     );
@@ -2345,6 +2479,6 @@ describe("OnboardingView conversational setup actions", () => {
     await waitFor(() => expect(converse).toHaveBeenCalledTimes(2));
     const note = secondTurnMessages.find((m) => m.content.includes("[setup] check_engine"));
     expect(note?.content).toContain("check_engine completed");
-    expect(note?.content).toContain("claude");
+    expect(note?.content).toContain("Claude Code");
   });
 });

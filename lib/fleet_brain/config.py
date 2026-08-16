@@ -25,6 +25,7 @@ _FALSY_ENV_TOKENS = FALSY_VALUES
 _RECOGNIZED_ENV_TOKENS = RECOGNIZED_VALUES
 _AUTO_PROMOTE_STOP_KEYS = {
     "ALFRED_AUTO_PROMOTE",
+    "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
     "ALFRED_AUTO_PROMOTE_KILL",
     "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
 }
@@ -154,6 +155,15 @@ def _auto_promote_switches_allow_learning(env: Mapping[str, str] | None = None) 
     return _env_flag_default_on("ALFRED_AUTO_PROMOTE", env)
 
 
+def auto_promote_behavior_changes_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """Whether behavior-changing memories may be promoted without human review.
+
+    This higher-risk path is off by default and arms only for a recognized
+    truthy token. Missing, blank, falsy, and malformed values all stay off.
+    """
+    return _env_opt_in_armed("ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES", env)
+
+
 def _strip_shell_inline_comment(value: str) -> str:
     """Strip shell-style inline comments while preserving quoted hashes."""
     quote: str | None = None
@@ -189,7 +199,11 @@ def _auto_promote_stop_control_active(name: str, raw: object) -> bool:
     value = _env_token(raw)
     if not value:
         return False
-    if name in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+    if name in {
+        "ALFRED_AUTO_PROMOTE",
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+    }:
         return value not in _TRUTHY_ENV_TOKENS
     if name == "ALFRED_AUTO_PROMOTE_KILL":
         return value not in _FALSY_ENV_TOKENS
