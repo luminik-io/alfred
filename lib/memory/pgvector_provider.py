@@ -71,8 +71,7 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
-from memory_tokens import MAX_LITERAL_QUERY_CANDIDATES
-from memory_tokens import dense_candidate_limit as _dense_candidate_limit
+from memory_tokens import MAX_DENSE_QUERY_CANDIDATES, MAX_LITERAL_QUERY_CANDIDATES
 from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
@@ -1221,9 +1220,7 @@ class PgvectorProvider:
         if not vec or len(vec) != int(self.dimensions):
             return []
         has_required_identities = any(_is_identity_token(token) for token in query_tokens)
-        candidate_limit = (
-            _dense_candidate_limit(self.pool) if has_required_identities else self.pool
-        )
+        candidate_limit = MAX_DENSE_QUERY_CANDIDATES if has_required_identities else self.pool
         sql, params = _dense_query(
             _vector_literal(vec),
             table=self._lessons,

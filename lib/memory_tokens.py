@@ -69,7 +69,7 @@ _LANGUAGE_IDENTITY_VARIANTS = {
 }
 _MAX_INFLECTION_TOKEN_LENGTH = 64
 MAX_LITERAL_QUERY_CANDIDATES = 400
-_MIN_DENSE_QUERY_CANDIDATES = 50
+MAX_DENSE_QUERY_CANDIDATES = 400
 _IRREGULAR_ENGLISH_INFLECTIONS = {
     "analyses": "analysis",
     "appendices": "appendix",
@@ -175,15 +175,6 @@ def _version_identity_base(token: str) -> str | None:
         return "python" if token.startswith("python ") else "node"
     match = _LANGUAGE_STANDARD_IDENTITY_RE.fullmatch(token)
     return match.group(0).rstrip("0123456789") if match is not None else None
-
-
-def dense_candidate_limit(pool: int) -> int:
-    """Return the shared bounded dense candidate window for identity filtering."""
-
-    return min(
-        max(max(1, int(pool)) * 4, _MIN_DENSE_QUERY_CANDIDATES),
-        MAX_LITERAL_QUERY_CANDIDATES,
-    )
 
 
 def _compound_matches(text: str) -> list[re.Match[str]]:

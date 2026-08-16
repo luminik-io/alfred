@@ -2127,6 +2127,7 @@ class _FakePgConn:
         self.lexical_texts: dict[str, str] = {}
         self.dense_ids: list[str] = []
         self.dense_limits: list[int] = []
+        self.dense_filter_queries = 0
         self.anchors: list[dict[str, Any]] = []
         self.reuse: dict[str, int] = {}
 
@@ -2154,6 +2155,7 @@ class _FakePgConn:
             self.dense_limits.append(limit)
             return _FakeCursor([(lesson_id,) for lesson_id in self.dense_ids[:limit]])
         if s.startswith("SELECT id, lexical_text FROM lessons WHERE id = ANY"):
+            self.dense_filter_queries += 1
             return _FakeCursor([(lesson_id, self.lexical_texts[lesson_id]) for lesson_id in p[0]])
         if s.startswith("SELECT provenance, codename, repo FROM lessons WHERE id ="):
             row = self.lessons.get(p[0])
@@ -2301,7 +2303,7 @@ def test_dense_identity_filter_runs_before_pgvector_result_pool_cap(
     provider.pool = 2
     provider.dimensions = 2
     provider.embedder = lambda _text: [0.1, 0.2]
-    wrong_ids = [f"wrong-{index}" for index in range(49)]
+    wrong_ids = [f"wrong-{index}" for index in range(50)]
     fake.dense_ids = [*wrong_ids, "matching"]
     fake.lexical_texts = {
         **dict.fromkeys(wrong_ids, f"{wrong_standard} compiler warnings"),
@@ -2314,7 +2316,33 @@ def test_dense_identity_filter_runs_before_pgvector_result_pool_cap(
     out = provider.recall(query=query, codename="c", repo="r")
 
     assert out == ["matching"]
-    assert fake.dense_limits == [50]
+    assert fake.dense_limits == [400]
+    assert fake.dense_filter_queries == 1
+
+
+def test_pgvector_dense_candidate_budget_stops_at_rank_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    provider.dimensions = 2
+    provider.embedder = lambda _text: [0.1, 0.2]
+    wrong_ids = [f"wrong-{index}" for index in range(400)]
+    fake.dense_ids = [*wrong_ids, "matching"]
+    fake.lexical_texts = {
+        **dict.fromkeys(wrong_ids, "c#17 compiler warnings"),
+        "matching": "c++17 compiler warnings",
+    }
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query="Fix C++ compiler warnings", codename="c", repo="r")
+
+    assert out == []
+    assert fake.dense_limits == [400]
 
 
 def test_pgvector_dense_identity_free_query_keeps_pool_cap(

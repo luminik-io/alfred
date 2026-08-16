@@ -66,8 +66,7 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
-from memory_tokens import MAX_LITERAL_QUERY_CANDIDATES
-from memory_tokens import dense_candidate_limit as _dense_candidate_limit
+from memory_tokens import MAX_DENSE_QUERY_CANDIDATES, MAX_LITERAL_QUERY_CANDIDATES
 from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
@@ -669,13 +668,14 @@ class SqliteHybridProvider:
             )
             dense: list[str] = []
             if has_query and query_tokens and self._dense_active(conn):
-                dense = self._dense_ids(
+                dense = self._dense_ids(conn, text)
+                dense = self._filter_dense_ids(
                     conn,
-                    text,
+                    dense,
+                    query_tokens,
                     codename=codename,
                     repo=repo,
-                )
-                dense = self._filter_dense_identity_ids(conn, dense, query_tokens)[: self.pool]
+                )[: self.pool]
             if not lexical and not dense:
                 # An intentionally unfiltered view gets a recency baseline. A
                 # real query miss stays empty so unrelated recent lessons do
@@ -866,9 +866,6 @@ class SqliteHybridProvider:
         self,
         conn: sqlite3.Connection,
         text: str,
-        *,
-        codename: str | None,
-        repo: str | None,
     ) -> list[str]:
         if self.embedder is None or not text:
             return []
@@ -876,40 +873,41 @@ class SqliteHybridProvider:
         if not vec or len(vec) != int(self.dimensions):
             return []
         serialized = _serialize_vector(vec)
-        want = self.pool
         # The vec0 KNN limit is GLOBAL and cannot filter on scope or validity, so
-        # taking the top `want` nearest vectors first and filtering afterwards
+        # taking only the result pool before filtering
         # would drop in-scope, valid, identity-matching vectors whenever enough
         # other vectors rank closer. Inspect one result-pool-independent bounded
         # window, then apply every authoritative filter before the pool cap.
         # This runs even unscoped so an invalidated (superseded/expired) lesson
         # is never recalled through the dense arm.
-        (total,) = conn.execute("SELECT COUNT(*) FROM lessons").fetchone()
-        total = max(1, int(total))
-        candidate_limit = min(total, _dense_candidate_limit(want))
-        candidate_ids = self._knn(conn, serialized, limit=candidate_limit)
-        if not candidate_ids:
-            return []
-        return self._filter_scope(conn, candidate_ids, codename=codename, repo=repo)
+        return self._knn(conn, serialized, limit=MAX_DENSE_QUERY_CANDIDATES)
 
-    def _filter_dense_identity_ids(
+    def _filter_dense_ids(
         self,
         conn: sqlite3.Connection,
         ids: list[str],
         query_tokens: list[str],
+        *,
+        codename: str | None,
+        repo: str | None,
     ) -> list[str]:
-        if not ids or not any(_is_identity_token(token) for token in query_tokens):
-            return ids
+        """Apply scope, validity, and mandatory identities in one bounded read."""
+
+        if not ids:
+            return []
         placeholders = ",".join("?" for _ in ids)
+        scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
         rows = conn.execute(
-            f"SELECT id, lexical_text FROM lessons WHERE id IN ({placeholders})",
-            ids,
+            f"SELECT l.id, l.lexical_text FROM lessons l "
+            f"WHERE l.id IN ({placeholders}) {scope_sql}",
+            [*ids, *scope_params],
         ).fetchall()
         text_by_id = {str(row[0]): str(row[1]) for row in rows}
         return [
             lesson_id
             for lesson_id in ids
-            if _required_identities_match(text_by_id.get(lesson_id, ""), query_tokens)
+            if lesson_id in text_by_id
+            and _required_identities_match(text_by_id[lesson_id], query_tokens)
         ]
 
     def _knn(self, conn: sqlite3.Connection, serialized: Any, *, limit: int) -> list[str]:
@@ -923,27 +921,6 @@ class SqliteHybridProvider:
             _LOG.debug("memory.sqlite: dense KNN failed: %s", exc)
             return []
         return [r[0] for r in rows]
-
-    def _filter_scope(
-        self,
-        conn: sqlite3.Connection,
-        candidate_ids: list[str],
-        *,
-        codename: str | None,
-        repo: str | None,
-    ) -> list[str]:
-        # vec0 KNN cannot filter on scope columns, so narrow in Python while
-        # preserving the KNN (distance) order.
-        scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
-        placeholders = ",".join("?" for _ in candidate_ids)
-        allowed = {
-            r[0]
-            for r in conn.execute(
-                f"SELECT l.id FROM lessons l WHERE l.id IN ({placeholders}) {scope_sql}",
-                [*candidate_ids, *scope_params],
-            ).fetchall()
-        }
-        return [cid for cid in candidate_ids if cid in allowed]
 
     def _recency_ids(
         self,

@@ -2107,12 +2107,8 @@ def test_version_identity_companion_does_not_double_count_overlap(
     )
 
 
-@pytest.mark.parametrize(
-    ("pool", "expected"),
-    [(1, 50), (12, 50), (13, 52), (100, 400), (1_000, 400)],
-)
-def test_dense_candidate_window_is_bounded(pool: int, expected: int) -> None:
-    assert token_mod.dense_candidate_limit(pool) == expected
+def test_dense_candidate_window_has_one_fixed_hard_cap() -> None:
+    assert token_mod.MAX_DENSE_QUERY_CANDIDATES == 400
 
 
 def test_ipv4_is_a_bounded_mandatory_identity() -> None:
@@ -2753,7 +2749,7 @@ def test_dense_identity_filter_runs_before_sqlite_result_pool_cap(
             repo="r",
             body=f"{wrong_standard} compiler warnings {index}",
         )
-        for index in range(49)
+        for index in range(50)
     ]
     matching = provider.reflect(
         codename="c",
@@ -2771,11 +2767,103 @@ def test_dense_identity_filter_runs_before_sqlite_result_pool_cap(
     monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
     monkeypatch.setattr(provider, "_knn", ranked_knn)
     monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+    statements: list[str] = []
+    with provider._connect() as conn:
+        conn.set_trace_callback(statements.append)
 
-    out = provider.recall(query=query, codename="c", repo="r")
+    try:
+        out = provider.recall(query=query, codename="c", repo="r")
+    finally:
+        with provider._connect() as conn:
+            conn.set_trace_callback(None)
 
     assert [lesson.id for lesson in out] == [matching.id]
-    assert knn_limits == [50]
+    assert knn_limits == [400]
+    assert (
+        sum("SELECT l.id, l.lexical_text FROM lessons l WHERE l.id IN" in s for s in statements)
+        == 1
+    )
+    assert not any("SELECT COUNT(*) FROM lessons" in statement for statement in statements)
+
+
+def test_sqlite_dense_scope_and_validity_filter_before_result_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    out_of_scope = [
+        provider.reflect(codename="other", repo="r", body=f"semantic filler {index}")
+        for index in range(25)
+    ]
+    invalid = [
+        provider.reflect(codename="c", repo="r", body=f"expired filler {index}")
+        for index in range(25)
+    ]
+    matching = provider.reflect(codename="c", repo="r", body="semantic target")
+    with provider._connect() as conn:
+        conn.executemany(
+            "UPDATE lessons SET valid_until = ? WHERE id = ?",
+            [("2000-01-01T00:00:00+00:00", lesson.id) for lesson in invalid],
+        )
+        conn.commit()
+    ranked_ids = [
+        *[lesson.id for lesson in out_of_scope],
+        *[lesson.id for lesson in invalid],
+        matching.id,
+    ]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [matching.id]
+    assert knn_limits == [400]
+
+
+def test_sqlite_dense_candidate_budget_stops_at_rank_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    wrong = [
+        provider.reflect(codename="c", repo="r", body=f"C#17 compiler warnings {index}")
+        for index in range(400)
+    ]
+    matching = provider.reflect(codename="c", repo="r", body="C++17 compiler warnings")
+    ranked_ids = [*[lesson.id for lesson in wrong], matching.id]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query="Fix C++ compiler warnings", codename="c", repo="r")
+
+    assert out == []
+    assert knn_limits == [400]
 
 
 def test_sqlite_dense_identity_free_query_keeps_pool_cap(
@@ -2807,7 +2895,7 @@ def test_sqlite_dense_identity_free_query_keeps_pool_cap(
     out = provider.recall(query="gateway fairness", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [semantic[0].id, semantic[1].id]
-    assert knn_limits == [10]
+    assert knn_limits == [400]
 
 
 # ---------------------------------------------------------------------------
