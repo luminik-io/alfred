@@ -14,6 +14,7 @@ Covers:
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -565,6 +566,61 @@ def test_literal_only_query_uses_nfkc_surface_before_sqlite_prefilter(
     out = provider.recall(query="ｴﾗｰ", codename="c", repo="r")
 
     assert [item.id for item in out] == [lesson.id]
+
+
+def test_schema_migration_backfills_canonical_lexical_surface_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "pre-lexical.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE lessons (
+                id TEXT PRIMARY KEY, codename TEXT NOT NULL, repo TEXT NOT NULL,
+                body TEXT NOT NULL, tags_json TEXT NOT NULL DEFAULT '[]',
+                severity TEXT NOT NULL DEFAULT 'info', firing_id TEXT,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'note', valid_until TEXT,
+                superseded_by TEXT, provenance TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO lessons VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "legacy",
+                "c",
+                "r",
+                "Use Ａ／Ｂ testing",  # noqa: RUF001
+                '["Ｆ＃"]',  # noqa: RUF001
+                "info",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                "note",
+                None,
+                None,
+                None,
+            ),
+        )
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+
+    provider = SqliteHybridProvider(db_path=db_path, pool=2)
+
+    assert [item.id for item in provider.recall(query="A/B", codename="c", repo="r")] == ["legacy"]
+    assert [item.id for item in provider.recall(query="F#", codename="c", repo="r")] == ["legacy"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT lexical_text FROM lessons").fetchone() == (
+            "use a/b testing f#",
+        )
+        conn.execute("UPDATE lessons SET lexical_text = 'already-populated'")
+        conn.commit()
+
+    SqliteHybridProvider(db_path=db_path).health()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT lexical_text FROM lessons").fetchone() == ("already-populated",)
 
 
 @pytest.mark.parametrize(

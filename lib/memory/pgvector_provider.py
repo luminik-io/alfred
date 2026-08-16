@@ -94,6 +94,7 @@ from .sqlite_hybrid import (
     _DEFAULT_EMBEDDING_DIM,
     _DEFAULT_POOL,
     _DEFAULT_RRF_K,
+    _LEXICAL_MIGRATION_BATCH_SIZE,
     _MAX_LEXICAL_FALLBACK_PAGES,
     Embedder,
     _clean_tags,
@@ -316,6 +317,48 @@ def _scope_clause(
         clauses.append(f"{alias}.repo = %s")
         params.append(repo)
     return "AND " + " AND ".join(clauses), params
+
+
+def _stored_lexical_text(body: str, tags_json: str) -> str:
+    """Build the canonical body+tags surface for a stored lesson row."""
+
+    try:
+        decoded = json.loads(tags_json) if tags_json else []
+    except (json.JSONDecodeError, TypeError):
+        decoded = []
+    tags = [str(tag) for tag in decoded] if isinstance(decoded, list) else []
+    return _lexical_surface(" ".join([body, *tags]).strip())
+
+
+def _column_exists(conn: Any, table: str, column: str) -> bool:
+    row = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = %s AND column_name = %s)",
+        [table, column],
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _backfill_lexical_text(conn: Any, table: str) -> None:
+    """Populate a newly introduced lexical column in bounded keyset batches."""
+
+    after_id = ""
+    while True:
+        rows = conn.execute(
+            f"SELECT id, body, tags_json FROM {table} "
+            "WHERE lexical_text = '' AND id > %s ORDER BY id LIMIT %s",
+            [after_id, _LEXICAL_MIGRATION_BATCH_SIZE],
+        ).fetchall()
+        if not rows:
+            return
+        conn.cursor().executemany(
+            f"UPDATE {table} SET lexical_text = %s WHERE id = %s AND lexical_text = ''",
+            [
+                (_stored_lexical_text(str(body), str(tags_json)), str(lesson_id))
+                for lesson_id, body, tags_json in rows
+            ],
+        )
+        after_id = str(rows[-1][0])
 
 
 def _lexical_query(
@@ -728,6 +771,7 @@ class PgvectorProvider:
                 )
                 """
             )
+            lexical_text_exists = _column_exists(conn, lessons, "lexical_text")
             # Additive migrations for a pre-existing table (idempotent).
             for column, ddl in (
                 ("kind", f"TEXT NOT NULL DEFAULT '{DEFAULT_LESSON_KIND}'"),
@@ -738,6 +782,8 @@ class PgvectorProvider:
                 ("lexical_text", "TEXT NOT NULL DEFAULT ''"),
             ):
                 conn.execute(f"ALTER TABLE {lessons} ADD COLUMN IF NOT EXISTS {column} {ddl}")
+            if not lexical_text_exists:
+                _backfill_lexical_text(conn, lessons)
             conn.execute(
                 f"""
                 CREATE TABLE IF NOT EXISTS {anchors} (

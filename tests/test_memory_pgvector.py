@@ -1011,6 +1011,52 @@ class _RecordingConn:
         return _FakeCursor()
 
 
+class _LexicalMigrationConn(_RecordingConn):
+    def __init__(self) -> None:
+        super().__init__()
+        self.has_lexical_column = False
+        self.rows = [
+            ("legacy-a", "Use Ａ／Ｂ testing", '["Ｆ＃"]'),  # noqa: RUF001
+            ("legacy-b", "Straße caching", "[]"),
+        ]
+        self.updates: list[tuple[str, str]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
+        normalized = " ".join(sql.split())
+        self.sql.append(normalized)
+        if "FROM information_schema.columns" in normalized:
+            return _FakeCursor([(self.has_lexical_column,)])
+        if "ADD COLUMN IF NOT EXISTS lexical_text" in normalized:
+            self.has_lexical_column = True
+            return _FakeCursor()
+        if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
+            after = str(params[0])
+            rows = [row for row in self.rows if row[0] > after]
+            return _FakeCursor(rows)
+        if normalized.startswith("UPDATE lessons SET lexical_text"):
+            surface, lesson_id = str(params[0]), str(params[1])
+            self.updates.append((surface, lesson_id))
+            return _FakeCursor(rowcount=1)
+        return _FakeCursor()
+
+
+def test_schema_migration_backfills_canonical_lexical_surface_once() -> None:
+    conn = _LexicalMigrationConn()
+
+    PgvectorProvider(dsn="postgresql://u:p@h/db")._ensure_schema(conn)
+
+    assert conn.updates == [
+        ("use a/b testing f#", "legacy-a"),
+        ("strasse caching", "legacy-b"),
+    ]
+    assert any("lexical_text = ''" in sql for sql in conn.sql)
+
+    conn.updates.clear()
+    PgvectorProvider(dsn="postgresql://u:p@h/db")._ensure_schema(conn)
+
+    assert conn.updates == []
+
+
 def _generated_identifiers(sql_log: list[str]) -> set[str]:
     """Extract the table/index identifiers a schema run created."""
     ids: set[str] = set()

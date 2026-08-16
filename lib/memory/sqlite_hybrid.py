@@ -99,6 +99,7 @@ _EMBED_TIMEOUT_S = 5.0
 # queries. Smaller configured pools keep their existing page size.
 _LEXICAL_FALLBACK_PAGE_SIZE = 50
 _MAX_LEXICAL_FALLBACK_PAGES = 8
+_LEXICAL_MIGRATION_BATCH_SIZE = 200
 
 
 def default_hybrid_db_path(env: Mapping[str, str] | None = None) -> Path:
@@ -382,7 +383,11 @@ class SqliteHybridProvider:
             _add_column_if_missing(conn, "lessons", "valid_until", "TEXT")
             _add_column_if_missing(conn, "lessons", "superseded_by", "TEXT")
             _add_column_if_missing(conn, "lessons", "provenance", "TEXT")
-            _add_column_if_missing(conn, "lessons", "lexical_text", "TEXT NOT NULL DEFAULT ''")
+            lexical_text_added = _add_column_if_missing(
+                conn, "lessons", "lexical_text", "TEXT NOT NULL DEFAULT ''"
+            )
+            if lexical_text_added:
+                _backfill_lexical_text(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS lesson_anchors (
@@ -1363,7 +1368,40 @@ def _row_to_lesson(row: tuple[Any, ...]) -> Lesson:
     )
 
 
-def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+def _stored_lexical_text(body: str, tags_json: str) -> str:
+    """Build the canonical body+tags surface for a stored lesson row."""
+
+    try:
+        decoded = json.loads(tags_json) if tags_json else []
+    except (json.JSONDecodeError, TypeError):
+        decoded = []
+    tags = [str(tag) for tag in decoded] if isinstance(decoded, list) else []
+    return _lexical_surface(" ".join([body, *tags]).strip())
+
+
+def _backfill_lexical_text(conn: sqlite3.Connection) -> None:
+    """Populate a newly introduced lexical column in bounded keyset batches."""
+
+    after_id = ""
+    while True:
+        rows = conn.execute(
+            "SELECT id, body, tags_json FROM lessons "
+            "WHERE lexical_text = '' AND id > ? ORDER BY id LIMIT ?",
+            (after_id, _LEXICAL_MIGRATION_BATCH_SIZE),
+        ).fetchall()
+        if not rows:
+            return
+        conn.executemany(
+            "UPDATE lessons SET lexical_text = ? WHERE id = ? AND lexical_text = ''",
+            [
+                (_stored_lexical_text(str(body), str(tags_json)), str(lesson_id))
+                for lesson_id, body, tags_json in rows
+            ],
+        )
+        after_id = str(rows[-1][0])
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> bool:
     """Additively migrate an existing table: ``ALTER TABLE ... ADD COLUMN``.
 
     Idempotent: inspects ``PRAGMA table_info`` and only alters when the column
@@ -1373,10 +1411,11 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, dd
     """
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column in cols:
-        return
+        return False
     try:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
     except sqlite3.OperationalError as exc:
         if "duplicate column name" in str(exc).lower():
-            return
+            return False
         raise
+    return True
