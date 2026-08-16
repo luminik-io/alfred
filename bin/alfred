@@ -1865,6 +1865,9 @@ def _engine_mode_readiness(
             if engine == "claude":
                 probe_env = dict(os.environ)
                 selected_profile = _current_claude_dir()
+                if selected_profile is None:
+                    probes[engine] = None
+                    return None
                 if selected_profile:
                     probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
                 else:
@@ -1878,9 +1881,21 @@ def _engine_mode_readiness(
 
     if mode != "hybrid":
         readiness = probe(mode)
+        if readiness is None:
+            return (
+                False,
+                "profile_lookup_failed",
+                "Could not read the scheduler-selected Claude profile. Retry the command.",
+            )
         return readiness.ready, readiness.state, _engine_probe_detail(readiness)
 
     claude = probe("claude")
+    if claude is None:
+        return (
+            False,
+            "profile_lookup_failed",
+            "Could not read the scheduler-selected Claude profile. Retry the command.",
+        )
     if claude.ready:
         return True, "ready", "Claude Code is compatible and signed in."
     if claude.state not in _ENGINE_FALLBACK_STATES:
@@ -3660,17 +3675,26 @@ def _scheduler_command(cmd: list[str], *, timeout: float) -> subprocess.Complete
         return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=f"{stderr}{detail}\n")
 
 
-def _current_claude_dir() -> str:
-    return scheduler.manager_environment_value("CLAUDE_CONFIG_DIR")
+def _current_claude_dir() -> str | None:
+    lookup = scheduler.manager_environment_lookup("CLAUDE_CONFIG_DIR")
+    if lookup.available and lookup.value:
+        return lookup.value
+    if lookup.available or not lookup.supported:
+        return _read_env_values(_runtime_env_path()).get("CLAUDE_CONFIG_DIR", "").strip()
+    return None
 
 
-def _current_claude_label() -> str:
-    value = _current_claude_dir()
+def _claude_dir_label(value: str) -> str:
     if not value or value == str(PRIMARY_CLAUDE_DIR):
         return "primary (~/.claude)"
     if value == str(SECONDARY_CLAUDE_DIR):
         return "secondary (~/.claude-secondary)"
     return f"custom ({value})"
+
+
+def _current_claude_label() -> str:
+    value = _current_claude_dir()
+    return "unavailable (scheduler query failed)" if value is None else _claude_dir_label(value)
 
 
 def _claude_auth_mtime(path: Path) -> str:
@@ -3693,7 +3717,14 @@ def _count_scheduled_agents() -> int | None:
 
 
 def _claude_status() -> int:
-    print(f"Current routing for scheduled agents: {_current_claude_label()}")
+    current = _current_claude_dir()
+    if current is None:
+        print(
+            "alfred claude: could not read the scheduler-selected profile; retry the command.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Current routing for scheduled agents: {_claude_dir_label(current)}")
     print("")
     print("Auth dir state:")
     for label, directory in (
@@ -3751,16 +3782,29 @@ def _set_claude_dir(path: Path, label: str) -> int:
 
 
 def _swap_claude_dir() -> int:
-    if _current_claude_dir() == str(SECONDARY_CLAUDE_DIR):
+    current = _current_claude_dir()
+    if current is None:
+        print(
+            "alfred claude: could not read the scheduler-selected profile; swap was not applied.",
+            file=sys.stderr,
+        )
+        return 1
+    if current == str(SECONDARY_CLAUDE_DIR):
         return _set_claude_dir(PRIMARY_CLAUDE_DIR, "primary")
     return _set_claude_dir(SECONDARY_CLAUDE_DIR, "secondary")
 
 
 def _probe_claude_auth() -> int:
-    print(f"Probing Claude Code API auth for {_current_claude_label()}")
+    current = _current_claude_dir()
+    if current is None:
+        print(
+            "alfred claude: could not read the scheduler-selected profile; auth was not probed.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Probing Claude Code API auth for {_claude_dir_label(current)}")
     print("This sends one tiny non-interactive Claude request when auth is healthy.")
     env = os.environ.copy()
-    current = _current_claude_dir()
     if current:
         env["CLAUDE_CONFIG_DIR"] = current
     cmd = [

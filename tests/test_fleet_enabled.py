@@ -626,6 +626,53 @@ def test_claude_routing_decodes_systemd_escaped_environment(monkeypatch, tmp_pat
     assert cli._current_claude_dir() == str(target)
 
 
+def test_claude_routing_keeps_static_profile_without_manager_override(monkeypatch, tmp_path):
+    cli = _load_cli_module()
+    scheduler_module = cli.scheduler._load()
+    captured: dict[str, object] = {}
+
+    def manager_lookup(name, **kwargs):
+        captured["name"] = name
+        captured.update(kwargs)
+        return scheduler_module.ManagerEnvironmentLookup(available=True)
+
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/profiles/shell-only")
+    monkeypatch.setattr(scheduler_module, "manager_environment_lookup", manager_lookup)
+    monkeypatch.setattr(
+        cli,
+        "_read_env_values",
+        lambda _path: {"CLAUDE_CONFIG_DIR": "/profiles/static"},
+    )
+
+    assert cli._current_claude_dir() == "/profiles/static"
+    assert captured["name"] == "CLAUDE_CONFIG_DIR"
+
+
+def test_claude_swap_fails_closed_when_manager_lookup_fails(monkeypatch, capsys):
+    cli = _load_cli_module()
+    scheduler_module = cli.scheduler._load()
+    applied: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "manager_environment_lookup",
+        lambda _name: scheduler_module.ManagerEnvironmentLookup(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_read_env_values",
+        lambda _path: {"CLAUDE_CONFIG_DIR": str(cli.SECONDARY_CLAUDE_DIR)},
+    )
+    monkeypatch.setattr(
+        cli,
+        "_set_claude_dir",
+        lambda path, label: applied.append((path, label)) or 0,
+    )
+
+    assert cli._swap_claude_dir() == 1
+    assert applied == []
+    assert "swap was not applied" in capsys.readouterr().err
+
+
 def test_claude_primary_sets_systemd_environment(monkeypatch, tmp_path):
     cli = _load_cli_module()
     monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")

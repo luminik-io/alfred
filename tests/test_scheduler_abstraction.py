@@ -78,6 +78,40 @@ def test_manager_environment_value_decodes_systemd_selection(monkeypatch):
     assert value == "/profiles/secondary account"
 
 
+def test_manager_environment_lookup_keeps_absence_distinct_from_failure(monkeypatch):
+    monkeypatch.setattr(scheduler, "SCHEDULER", "systemd")
+
+    absent = scheduler.manager_environment_lookup(
+        "CLAUDE_CONFIG_DIR",
+        run=lambda command, **_kwargs: subprocess.CompletedProcess(command, 0, "OTHER=value\n", ""),
+    )
+    failed = scheduler.manager_environment_lookup(
+        "CLAUDE_CONFIG_DIR",
+        run=lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, "", "unavailable"),
+    )
+
+    assert absent.available is True
+    assert absent.value == ""
+    assert failed.available is False
+    assert failed.supported is True
+
+
+def test_manager_environment_lookup_reports_timeout(monkeypatch):
+    monkeypatch.setattr(scheduler, "SCHEDULER", "systemd")
+
+    def time_out(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    lookup = scheduler.manager_environment_lookup(
+        "CLAUDE_CONFIG_DIR",
+        timeout=0.1,
+        run=time_out,
+    )
+
+    assert lookup.available is False
+    assert lookup.supported is True
+
+
 def test_unit_file_extension_matches_scheduler():
     if scheduler.SCHEDULER == "launchd":
         assert scheduler.UNIT_EXT == "plist"

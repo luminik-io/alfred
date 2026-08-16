@@ -886,6 +886,87 @@ def test_engine_doctor_probes_selected_scheduler_claude_profile(
     assert received_environments[0]["CLAUDE_CONFIG_DIR"] == str(selected_profile)
 
 
+def test_engine_doctor_probes_static_claude_profile_without_manager_override(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    static_profile = tmp_path / ".claude-static"
+    received_environments: list[dict[str, str]] = []
+    ready = _engine_readiness(
+        cli_module,
+        "claude",
+        ready=True,
+        state="ready",
+        detail="Claude Code is compatible and signed in.",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / ".claude-shell"))
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"claude": ("reviewer",)},
+    )
+    monkeypatch.setattr(
+        cli_module.scheduler._load(),
+        "manager_environment_lookup",
+        lambda _name: cli_module.scheduler._load().ManagerEnvironmentLookup(available=True),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_read_env_values",
+        lambda _path: {"CLAUDE_CONFIG_DIR": str(static_profile)},
+    )
+
+    def probe(_descriptor, **kwargs):
+        received_environments.append(dict(kwargs["environ"]))
+        return ready
+
+    monkeypatch.setattr(cli_module.agent_runner, "probe_engine", probe)
+
+    assert cli_module.main(["engine", "doctor"]) == 0
+    assert capsys.readouterr().out
+    assert received_environments[0]["CLAUDE_CONFIG_DIR"] == str(static_profile)
+
+
+def test_engine_doctor_fails_closed_when_profile_lookup_fails(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler_module = cli_module.scheduler._load()
+    lookups = 0
+
+    def unavailable_profile(_name):
+        nonlocal lookups
+        lookups += 1
+        return scheduler_module.ManagerEnvironmentLookup()
+
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"claude": ("reviewer",), "hybrid": ("senior-dev",)},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "manager_environment_lookup",
+        unavailable_profile,
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "probe_engine",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("engine must not be probed with an unknown profile")
+        ),
+    )
+
+    assert cli_module.main(["engine", "doctor"]) == 1
+    output = capsys.readouterr().out
+    assert output.count("profile_lookup_failed") == 2
+    assert output.count("Could not read the scheduler-selected Claude profile") == 2
+    assert lookups == 1
+
+
 def test_engine_doctor_renders_unsupported_version_remediation(
     cli_module,
     capsys: pytest.CaptureFixture,
