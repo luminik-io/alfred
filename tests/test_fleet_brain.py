@@ -368,6 +368,8 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
         ("focuses", "focus"),
         ("canvas", "canvases"),
         ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),

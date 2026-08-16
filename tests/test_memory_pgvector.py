@@ -1534,6 +1534,8 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("focuses", "focus"),
         ("canvas", "canvases"),
         ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),
