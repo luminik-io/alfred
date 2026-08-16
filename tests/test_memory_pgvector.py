@@ -125,6 +125,28 @@ def test_lexical_like_fallback_matches_body_and_tags() -> None:
     assert params[-1] == 3
 
 
+def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
+    sql, params = _lexical_like_query(
+        ["graphql", "schema"], table="lessons", codename="c", repo="r", pool=2, now=_NOW
+    )
+
+    where, _, order = sql.partition("ORDER BY")
+    assert where.count("CAST((l.body ILIKE %s OR l.tags_json ILIKE %s) AS INTEGER)") == 2
+    assert ") >= %s" in where
+    assert "LIMIT %s" in order
+    assert params == [
+        "%graphql%",
+        "%graphql%",
+        "%schema%",
+        "%schema%",
+        2,
+        _NOW,
+        "c",
+        "r",
+        2,
+    ]
+
+
 def test_recency_query_is_scoped_and_ordered() -> None:
     sql, params = _recency_query(table="lessons", codename="c", repo="r", limit=4, now=_NOW)
     assert "ORDER BY l.created_at DESC" in sql

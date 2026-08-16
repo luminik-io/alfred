@@ -1256,15 +1256,11 @@ def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
 
 
 def _tokenize(text: str) -> list[str]:
-    tokens = [
-        token
-        for raw in _TOKEN_RE.findall(text)
-        if len(raw) > 1 and (token := raw.lower()) not in _LOW_SIGNAL_QUERY_TOKENS
-    ]
-    # De-dupe preserving order, then cap.
+    """Return bounded, de-duplicated terms for a lexical query."""
+
     seen: set[str] = set()
     out: list[str] = []
-    for tok in tokens:
+    for tok in _meaningful_tokens(text):
         if tok in seen:
             continue
         seen.add(tok)
@@ -1274,10 +1270,29 @@ def _tokenize(text: str) -> list[str]:
     return out
 
 
+def _meaningful_tokens(text: str) -> Iterator[str]:
+    """Yield every meaningful term without applying the query-size cap."""
+
+    for match in _TOKEN_RE.finditer(text):
+        raw = match.group(0)
+        token = raw.lower()
+        if len(raw) > 1 and token not in _LOW_SIGNAL_QUERY_TOKENS:
+            yield token
+
+
 def _has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
     """Require one term for a single-term query and two for a longer query."""
-    lesson_tokens = set(_tokenize(text))
-    return len(lesson_tokens.intersection(query_tokens)) >= _required_lexical_overlap(query_tokens)
+
+    required = _required_lexical_overlap(query_tokens)
+    query_token_set = set(query_tokens)
+    matched: set[str] = set()
+    for token in _meaningful_tokens(text):
+        if token not in query_token_set:
+            continue
+        matched.add(token)
+        if len(matched) >= required:
+            return True
+    return False
 
 
 def _required_lexical_overlap(query_tokens: list[str]) -> int:

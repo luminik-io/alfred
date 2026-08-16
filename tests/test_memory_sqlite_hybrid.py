@@ -195,6 +195,15 @@ def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
     ]
 
 
+def test_lexical_overlap_scans_lesson_terms_beyond_query_token_cap() -> None:
+    prefix = " ".join(f"noise{i}" for i in range(25))
+    lesson = f"{prefix} GraphQL schema"
+    query = " ".join([*(f"term{i}" for i in range(30)), "ignored-tail"])
+
+    assert len(mod._tokenize(query)) == 24
+    assert mod._has_meaningful_lexical_overlap(lesson, ["graphql", "schema"])
+
+
 def test_default_chain_query_miss_does_not_fall_back_to_recent_fleet_lesson(
     tmp_path: Path,
 ) -> None:

@@ -89,6 +89,7 @@ from .sqlite_hybrid import (
     _has_meaningful_lexical_overlap,
     _OllamaEmbedder,
     _reciprocal_rank_fusion,
+    _required_lexical_overlap,
     _tokenize,
     _union_provenance,
 )
@@ -343,11 +344,13 @@ def _lexical_like_query(
     pool: int,
     now: datetime,
 ) -> tuple[str, list[Any]]:
-    """ILIKE fallback lexical arm (any-token substring, most-recent first).
+    """ILIKE fallback lexical arm (required overlap, most-recent first).
 
     The counterpart to the SQLite ``LIKE`` fallback: used only if the tsvector
     column could not be provisioned. Matches the SAME body+tags surface the
-    full-text arm indexes, so a tag-only hit is still recalled.
+    full-text arm indexes, so a tag-only hit is still recalled. The overlap
+    requirement runs before ``LIMIT`` so weak recent rows cannot crowd out a
+    true match.
     """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
     like_params: list[Any] = []
@@ -355,12 +358,12 @@ def _lexical_like_query(
     for tok in tokens:
         clauses.append("(l.body ILIKE %s OR l.tags_json ILIKE %s)")
         like_params.extend([f"%{tok}%", f"%{tok}%"])
-    like_sql = " OR ".join(clauses)
+    like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
     sql = (
-        f"SELECT l.id FROM {table} l WHERE ({like_sql}) {scope_sql} "
+        f"SELECT l.id FROM {table} l WHERE ({like_score_sql}) >= %s {scope_sql} "
         "ORDER BY l.created_at DESC LIMIT %s"
     )
-    params = [*like_params, *scope_params, pool]
+    params = [*like_params, _required_lexical_overlap(tokens), *scope_params, pool]
     return sql, params
 
 
