@@ -913,6 +913,12 @@ def test_lexical_like_fallback_requires_atomic_language_standard_identity(
             "node.js 20 runtime guidance",
             "node.js 22 runtime guidance",
         ),
+        (
+            "Fix NodeJS 22 runtime",
+            "nodejs 22",
+            "nodejs 20 runtime guidance",
+            "nodejs 22 runtime guidance",
+        ),
     ],
 )
 def test_lexical_like_fallback_requires_contextual_major_version_identity(
@@ -942,6 +948,61 @@ def test_lexical_like_fallback_requires_contextual_major_version_identity(
     ids = provider._lexical_ids(
         Connection(),
         query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    ("query_alias", "lesson_alias"),
+    [
+        ("Node", "Node.js"),
+        ("Node", "NodeJS"),
+        ("Node.js", "Node"),
+        ("Node.js", "NodeJS"),
+        ("NodeJS", "Node"),
+        ("NodeJS", "Node.js"),
+    ],
+)
+def test_lexical_like_fallback_retrieves_cross_alias_node_major(
+    query_alias: str,
+    lesson_alias: str,
+) -> None:
+    matching_text = f"{lesson_alias.casefold()} 22 runtime guidance"
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            patterns = [
+                value.strip("%")
+                for value in params
+                if isinstance(value, str) and value.startswith("%")
+            ]
+            rows = (
+                [("matching", matching_text, _NOW)]
+                if any(pattern in matching_text for pattern in patterns)
+                else []
+            )
+            return Cursor(rows)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        f"Fix {query_alias} 22 runtime",
         codename="c",
         repo="r",
         now=_NOW,

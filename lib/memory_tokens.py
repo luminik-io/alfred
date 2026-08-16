@@ -37,12 +37,13 @@ _DOTTED_VERSION_RE = re.compile(
 _MIN_MAJOR_VERSION_DIGITS = 1
 _MAX_MAJOR_VERSION_DIGITS = 2
 _CONTEXTUAL_MAJOR_VERSION_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:python|node(?:\.js)?)[ \t]+"
+    r"(?<![A-Za-z0-9])(?:python|node(?:\.?js)?)[ \t]+"
     rf"[1-9][0-9]{{{_MIN_MAJOR_VERSION_DIGITS - 1},{_MAX_MAJOR_VERSION_DIGITS - 1}}}"
     r"(?![A-Za-z0-9]|\.[A-Za-z0-9])",
     re.IGNORECASE,
 )
-_NODE_JS_MAJOR_PREFIX = "node.js "
+_NODE_MAJOR_ALIAS_PREFIXES = ("node.js ", "nodejs ")
+_CANONICAL_NODE_MAJOR_RE = re.compile(r"node ([1-9][0-9]?)")
 _LANGUAGE_IDENTITY_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:(?:c|r)[ \t]+(?:compiler|language)|r[ \t]+(?:package|script))"
     r"(?![A-Za-z0-9])",
@@ -160,8 +161,10 @@ def _english_inflection_form(token: str) -> str:
     Unicode concepts, and protected words unchanged.
     """
 
-    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) and token.startswith(_NODE_JS_MAJOR_PREFIX):
-        return f"node {token.removeprefix(_NODE_JS_MAJOR_PREFIX)}"
+    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) and token.startswith(
+        _NODE_MAJOR_ALIAS_PREFIXES
+    ):
+        return f"node {token.rpartition(' ')[2]}"
     if _LANGUAGE_IDENTITY_RE.fullmatch(token):
         return f"{token[0]} language"
     if (
@@ -216,6 +219,10 @@ def _english_plural_form(token: str) -> str:
 def _retrieval_variants(raw: str, canonical: str) -> tuple[str, ...]:
     """Return bounded spellings that retrieve one canonical concept."""
 
+    node_major = _CANONICAL_NODE_MAJOR_RE.fullmatch(canonical)
+    if node_major is not None:
+        major = node_major.group(1)
+        return (canonical, f"node.js {major}", f"nodejs {major}")
     language_variants = _LANGUAGE_IDENTITY_VARIANTS.get(canonical)
     if language_variants is not None:
         return language_variants

@@ -582,6 +582,21 @@ def test_recall_query_requires_atomic_language_standard_identity(
             "Node.js 20 runtime guidance",
             "Node.js 22 runtime guidance",
         ),
+        (
+            "Fix NodeJS 22 runtime",
+            "NodeJS 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
     ],
 )
 def test_recall_query_requires_contextual_major_version_identity(
