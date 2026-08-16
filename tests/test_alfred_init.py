@@ -1102,6 +1102,7 @@ def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tm
             [
                 init_mod.ALFRED_ENV_BANNER,
                 "ALFRED_AUTO_PROMOTE=0",
+                "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=0",
                 "ALFRED_AUTO_PROMOTE_KILL=1",
                 "",
             ]
@@ -1111,6 +1112,7 @@ def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tm
     out = init_mod.env_assignments_for(state)
 
     assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES"] == "0"
     assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
 
 

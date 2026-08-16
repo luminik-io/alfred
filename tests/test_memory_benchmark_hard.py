@@ -145,8 +145,8 @@ def test_stub_ab_shows_full_delta_on_hard_fixture():
     assert report.memory_on.repeated_mistake_rate == pytest.approx(0.0)
     assert report.repeated_mistake_rate_delta == pytest.approx(1.0)
 
-    # Retrieval: the literal query returns the one relevant lesson for each
-    # task. Unrelated recent lessons do not backfill the result.
+    # Retrieval: the shipped SQLite-first chain returns only the one relevant
+    # lesson for each task. Unrelated recent lessons do not backfill the result.
     assert report.memory_on.retrieval.recall == pytest.approx(1.0)
     assert report.memory_on.retrieval.recalled_relevant == EXPECTED_N
     assert report.memory_on.retrieval.precision == pytest.approx(1.0)

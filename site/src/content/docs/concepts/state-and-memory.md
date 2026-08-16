@@ -99,7 +99,7 @@ their target repo recall a small set of relevant lessons before invoking the
 engine. If the engine returns a machine-readable memory reflection block,
 Alfred strips it from the user-facing result and queues those entries as
 candidates in FleetBrain by default. The LLM judge saves safe candidates
-autonomously by default instead of waiting on a human queue. Set
+autonomously and holds candidates that it classifies as behavior-changing. Set
 `ALFRED_AUTO_PROMOTE=0` to opt out, or `ALFRED_AUTO_PROMOTE_KILL=1` to halt the
 auto-save loop immediately. Set
 `ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are

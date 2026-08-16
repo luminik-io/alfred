@@ -453,10 +453,11 @@ budget. All four still share the one circuit breaker.
 | `ALFRED_AUTO_PROMOTE_MAX_PER_RUN` | `5` | Cap on successful auto-promotions per run. |
 | `ALFRED_AUTO_PROMOTE_MAX_JUDGE_CALLS` | `25` | Per-run judge-call budget (never below `MAX_PER_RUN`); bounds cost since rejected or duplicate candidates still cost a judge call. |
 | `ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT` | `120` | Per-call LLM judge timeout, in seconds. |
+| `ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES` | `0` | Allow judge-classified behavior-changing lessons to enter recall without operator approval. The default holds them in the review queue. |
 
 The `ALFRED_AUTO_PROMOTE`, `ALFRED_AUTO_PROMOTE_KILL`, and
-`ALFRED_AUTO_PROMOTE_LLM_JUDGE` on/off switches are covered in
-`docs/FLEET_BRAIN.md`.
+`ALFRED_AUTO_PROMOTE_LLM_JUDGE` switches and the behavior-change opt-in are
+covered in `docs/FLEET_BRAIN.md`.
 
 `ALFRED_MEMORY_REFLECTION_MODE` controls how model-generated reflections are
 stored:
@@ -516,9 +517,11 @@ firing "senior-dev" starts, asks memory.recall(codename="senior-dev", repo="acme
 
 firing finishes, queues a memory candidate (default candidate mode):
   -> FleetBrain stores the proposed lesson as a candidate
-  -> alfred brain auto-promote lets an LLM judge save safe and
-     behavior-changing candidates autonomously unless ALFRED_AUTO_PROMOTE=0
-     opts out (see docs/FLEET_BRAIN.md); promotion routes the lesson toward Redis
+  -> alfred brain auto-promote lets an LLM judge save evidenced factual lessons
+     unless ALFRED_AUTO_PROMOTE=0 opts out
+  -> judge-classified behavior changes stay in the review queue unless
+     ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=1 explicitly allows them
+  -> promotion routes the lesson toward Redis
   -> alfred brain redis-sync back-fills older promoted lessons into Redis
 
 if ALFRED_MEMORY_REFLECTION_MODE=direct:
