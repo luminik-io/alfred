@@ -437,6 +437,8 @@ class SqliteHybridProvider:
             )
             if self._fts_ok is None:
                 self._fts_ok = self._try_create_fts(conn)
+            if lexical_text_added and self._fts_ok:
+                _rebuild_fts_lexical_text(conn)
             if self._dense_active(conn):
                 self._try_create_vec(conn)
         self._schema_ready = True
@@ -1411,6 +1413,26 @@ def _backfill_lexical_text(conn: sqlite3.Connection) -> None:
                 (_stored_lexical_text(str(body), str(tags_json)), str(lesson_id))
                 for lesson_id, body, tags_json in rows
             ],
+        )
+        after_id = str(rows[-1][0])
+
+
+def _rebuild_fts_lexical_text(conn: sqlite3.Connection) -> None:
+    """Replace legacy FTS rows with canonical text in bounded batches."""
+
+    after_id = ""
+    while True:
+        rows = conn.execute(
+            "SELECT id, lexical_text FROM lessons WHERE id > ? ORDER BY id LIMIT ?",
+            (after_id, _LEXICAL_MIGRATION_BATCH_SIZE),
+        ).fetchall()
+        if not rows:
+            return
+        ids = [(str(lesson_id),) for lesson_id, _lexical_text in rows]
+        conn.executemany("DELETE FROM lessons_fts WHERE lesson_id = ?", ids)
+        conn.executemany(
+            "INSERT INTO lessons_fts (text, lesson_id) VALUES (?, ?)",
+            [(str(lexical_text), str(lesson_id)) for lesson_id, lexical_text in rows],
         )
         after_id = str(rows[-1][0])
 

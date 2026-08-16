@@ -352,12 +352,15 @@ def _backfill_lexical_text(conn: Any, table: str) -> None:
         ).fetchall()
         if not rows:
             return
+        updates: list[tuple[str, str, str]] = []
+        for lesson_id, body, tags_json in rows:
+            surface = _stored_lexical_text(str(body), str(tags_json))
+            updates.append((surface, surface, str(lesson_id)))
         conn.cursor().executemany(
-            f"UPDATE {table} SET lexical_text = %s WHERE id = %s AND lexical_text = ''",
-            [
-                (_stored_lexical_text(str(body), str(tags_json)), str(lesson_id))
-                for lesson_id, body, tags_json in rows
-            ],
+            f"UPDATE {table} SET lexical_text = %s, "
+            "body_tsv = to_tsvector('english', %s) "
+            "WHERE id = %s AND lexical_text = ''",
+            updates,
         )
         after_id = str(rows[-1][0])
 

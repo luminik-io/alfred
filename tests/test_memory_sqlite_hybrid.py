@@ -257,6 +257,34 @@ def test_default_chain_requires_contextual_major_version_identity(
     assert [item.id for item in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(("query_term", "lesson_term"), [("bus", "buses"), ("buses", "bus")])
+def test_default_chain_preserves_bus_inflection_variants(
+    tmp_path: Path,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body=f"GraphQL {lesson_term} must be reviewed",
+    )
+
+    out = load_provider(env).recall(
+        query=f"Fix GraphQL {query_term}",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred-home"),
@@ -602,6 +630,8 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("boxes", "box"),
         ("class", "classes"),
         ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
     ],
 )
 def test_fts_recall_preserves_inflection_retrieval_variants(
@@ -740,6 +770,8 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("boxes", "box"),
         ("class", "classes"),
         ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
     ],
 )
 def test_like_recall_preserves_inflection_retrieval_variants(
@@ -1253,6 +1285,7 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("watches", "watch"),
         ("boxes", "box"),
         ("classes", "class"),
+        ("buses", "bus"),
         ("statuses", "status"),
         ("analyses", "analysis"),
     ],
@@ -1622,6 +1655,77 @@ def test_schema_migration_backfills_canonical_lexical_surface_once(
 
     with sqlite3.connect(db_path) as conn:
         assert conn.execute("SELECT lexical_text FROM lessons").fetchone() == ("already-populated",)
+
+
+def test_schema_migration_rebuilds_legacy_fts_rows_once_in_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "pre-lexical-fts.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE lessons (
+                id TEXT PRIMARY KEY, codename TEXT NOT NULL, repo TEXT NOT NULL,
+                body TEXT NOT NULL, tags_json TEXT NOT NULL DEFAULT '[]',
+                severity TEXT NOT NULL DEFAULT 'info', firing_id TEXT,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'note', valid_until TEXT,
+                superseded_by TEXT, provenance TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE VIRTUAL TABLE lessons_fts "
+            "USING fts5(text, lesson_id UNINDEXED, tokenize = 'unicode61')"
+        )
+        for lesson_id, body in (("legacy-a", "Straße guidance"), ("legacy-b", "Other lesson")):
+            conn.execute(
+                "INSERT INTO lessons VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    lesson_id,
+                    "c",
+                    "r",
+                    body,
+                    "[]",
+                    "info",
+                    None,
+                    "2026-01-01T00:00:00+00:00",
+                    "2026-01-01T00:00:00+00:00",
+                    "note",
+                    None,
+                    None,
+                    None,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO lessons_fts (text, lesson_id) VALUES (?, ?)",
+                (body, lesson_id),
+            )
+    monkeypatch.setattr(mod, "_LEXICAL_MIGRATION_BATCH_SIZE", 1)
+
+    provider = SqliteHybridProvider(db_path=db_path, pool=2)
+
+    assert [item.id for item in provider.recall(query="Straße", codename="c", repo="r")] == [
+        "legacy-a"
+    ]
+    assert provider._fts_ok is True
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT text, COUNT(*) FROM lessons_fts WHERE lesson_id = 'legacy-a'"
+        ).fetchone() == ("strasse guidance", 1)
+        assert conn.execute("SELECT COUNT(*) FROM lessons_fts").fetchone() == (2,)
+        conn.execute("DELETE FROM lessons_fts WHERE lesson_id = 'legacy-a'")
+        conn.execute(
+            "INSERT INTO lessons_fts (text, lesson_id) VALUES ('migration-sentinel', 'legacy-a')"
+        )
+
+    SqliteHybridProvider(db_path=db_path).health()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT text, COUNT(*) FROM lessons_fts WHERE lesson_id = 'legacy-a'"
+        ).fetchone() == ("migration-sentinel", 1)
 
 
 @pytest.mark.parametrize(

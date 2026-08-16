@@ -358,6 +358,8 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
         ("boxes", "box"),
         ("class", "classes"),
         ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
     ],
 )
 def test_recall_query_preserves_inflection_retrieval_variants(

@@ -54,6 +54,7 @@ _IRREGULAR_ENGLISH_INFLECTIONS = {
 }
 _REGULAR_SIBILANT_ENGLISH_INFLECTIONS = {
     "boxes": "box",
+    "buses": "bus",
     "classes": "class",
     "processes": "process",
     "watches": "watch",
@@ -179,6 +180,8 @@ def _english_inflection_form(token: str) -> str:
 def _english_plural_form(token: str) -> str:
     """Return one bounded retrieval-only plural spelling for a concept."""
 
+    if token == "bus":
+        return "buses"
     if (
         len(token) < 4
         or len(token) > _MAX_INFLECTION_TOKEN_LENGTH

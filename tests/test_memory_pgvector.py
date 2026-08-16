@@ -943,6 +943,8 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("boxes", "box"),
         ("class", "classes"),
         ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
     ],
 )
 def test_lexical_like_fallback_preserves_inflection_retrieval_variants(
@@ -1497,6 +1499,7 @@ class _LexicalMigrationConn(_RecordingConn):
             ("legacy-b", "Straße caching", "[]"),
         ]
         self.updates: list[tuple[str, str]] = []
+        self.tsv_updates: list[tuple[str, str]] = []
 
     def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
         normalized = " ".join(sql.split())
@@ -1511,8 +1514,10 @@ class _LexicalMigrationConn(_RecordingConn):
             rows = [row for row in self.rows if row[0] > after]
             return _FakeCursor(rows)
         if normalized.startswith("UPDATE lessons SET lexical_text"):
-            surface, lesson_id = str(params[0]), str(params[1])
+            surface, lesson_id = str(params[0]), str(params[-1])
             self.updates.append((surface, lesson_id))
+            if "body_tsv = to_tsvector('english', %s)" in normalized:
+                self.tsv_updates.append((str(params[1]), lesson_id))
             return _FakeCursor(rowcount=1)
         return _FakeCursor()
 
@@ -1526,12 +1531,18 @@ def test_schema_migration_backfills_canonical_lexical_surface_once() -> None:
         ("use a/b testing f#", "legacy-a"),
         ("strasse caching", "legacy-b"),
     ]
+    assert conn.tsv_updates == [
+        ("use a/b testing f#", "legacy-a"),
+        ("strasse caching", "legacy-b"),
+    ]
     assert any("lexical_text = ''" in sql for sql in conn.sql)
 
     conn.updates.clear()
+    conn.tsv_updates.clear()
     PgvectorProvider(dsn="postgresql://u:p@h/db")._ensure_schema(conn)
 
     assert conn.updates == []
+    assert conn.tsv_updates == []
 
 
 def _generated_identifiers(sql_log: list[str]) -> set[str]:
