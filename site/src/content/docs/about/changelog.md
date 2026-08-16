@@ -18,6 +18,21 @@ The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
 currently has no pending changes.
 
+## 0.7.3 (2026-08-17)
+
+Version 0.7.3 fixes Settings at phone widths and adds a GitHub Actions workflow
+that builds and checks Linux packages from signed release tags.
+
+- Settings shows every section label in a two-column phone layout. Each tab is
+  38 pixels high.
+- The Linux workflow checks the tag, source version, AppImage, Debian
+  package, and SHA-256 digests before it uploads files to a draft release.
+- The Desktop screen matrix passes for all three themes in light and dark modes
+  at desktop and phone widths.
+
+Read the complete
+[`0.7.3` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#073---2026-08-17).
+
 ## 0.7.2 (2026-08-17)
 
 Version 0.7.2 adds the public launch gallery, keeps the selected agent visible

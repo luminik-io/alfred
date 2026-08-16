@@ -8,6 +8,30 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes are pending.
 
+## [0.7.3] - 2026-08-17
+
+### Highlights
+
+- Fixed Settings at phone widths. Every section label remains visible, and
+  each tab is 38 pixels high.
+- Added a GitHub Actions workflow that builds and checks Linux AppImage and
+  Debian packages from a signed release tag.
+- Checked every primary Desktop screen on this Mac across all three themes,
+  light and dark modes, and desktop and phone widths.
+
+### Added
+
+- A release workflow that starts from `main`. It checks the signed tag, commit,
+  version, file formats, package metadata, AppImage extraction, and SHA-256
+  digests before it adds Linux packages to the matching draft release.
+
+### Fixed
+
+- Settings tabs use a two-column phone layout with complete labels and
+  consistent heights.
+- The upload job checks that the matching GitHub release is still a draft
+  before it adds Linux packages.
+
 ## [0.7.2] - 2026-08-17
 
 ### Highlights
