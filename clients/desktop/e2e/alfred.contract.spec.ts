@@ -73,6 +73,40 @@ test("compact Work windows open the inspector as a sheet", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "Work item inspector" })).toHaveCount(0);
 });
 
+test("narrow Settings keeps every section label readable", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/?tab=settings");
+  const tablist = page.getByRole("tablist", { name: "Settings sections" });
+  await expect(tablist).toBeVisible();
+  const tabs = tablist.getByRole("tab");
+  await expect(tabs).toHaveCount(4);
+
+  const metrics = await tabs.evaluateAll((items) =>
+    items.map((item) => {
+      const label = item.querySelector("span");
+      return {
+        label: label?.textContent?.trim(),
+        labelWidth: label?.clientWidth ?? 0,
+        labelScrollWidth: label?.scrollWidth ?? 0,
+        tabHeight: item.getBoundingClientRect().height,
+      };
+    }),
+  );
+
+  expect(metrics.map(({ label }) => label)).toEqual([
+    "Runtime",
+    "Appearance",
+    "Collaborators",
+    "Diagnostics",
+  ]);
+  expect(metrics.every(({ labelWidth, labelScrollWidth }) => labelWidth >= labelScrollWidth)).toBe(
+    true,
+  );
+  expect(metrics.every(({ tabHeight }) => tabHeight >= 36)).toBe(true);
+});
+
 test("primary navigation loads code, models, settings, and returns to Inbox", async ({ page }) => {
   const api = await installAlfredApi(page);
 
