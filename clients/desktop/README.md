@@ -135,9 +135,10 @@ version. Outputs land under `src-tauri/target/release/bundle/`:
 | macOS 11+ on Apple silicon | `.dmg`, `.app` | `bundle/dmg/`, `bundle/macos/` |
 | Linux | `.AppImage`, `.deb` | `bundle/appimage/`, `bundle/deb/` |
 
-You can only build a platform's installers on that platform: build the macOS
-artifacts on macOS and the Linux artifacts on Linux. The
-[release workflow](#releases) does both on the matching CI runners.
+Build each platform's installers on that platform: macOS artifacts on macOS and
+Linux artifacts on Linux. Repository CI compiles the desktop client without
+bundling installers. Release packages come from the trusted packaging
+environment described below.
 
 Linux builds need the WebKitGTK and native dialog system libraries
 (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
