@@ -8,7 +8,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes are pending.
 
-## [0.7.0] - 2026-08-16
+## [0.7.1] - 2026-08-16
 
 ### Highlights
 
