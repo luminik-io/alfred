@@ -187,6 +187,30 @@ def test_like_fallback_applies_overlap_before_candidate_limit(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_like_fallback_pages_past_substring_only_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The API rapid response policy is documented",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    for day in (2, 3):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"Rapid rollout note {day}",
+            created_at=datetime(2026, 1, day, tzinfo=UTC),
+        )
+
+    out = provider.recall(query="api rapid", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
     assert mod._tokenize("Fix the GraphQL schema with the loader") == [
         "graphql",

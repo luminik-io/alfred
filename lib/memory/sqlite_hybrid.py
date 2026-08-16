@@ -758,11 +758,11 @@ class SqliteHybridProvider:
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
         # LIKE fallback (SQLite build without FTS5): require enough token
-        # substrings before applying the candidate LIMIT, then enforce exact
-        # token overlap in _filter_lexical_ids(). Match the SAME body+tags
-        # surface the FTS arm indexes via _fts_text(), so a tag-only hit is still
-        # recalled here. Tags are stored as a JSON array in tags_json, so a token
-        # like "graphql" matches the serialized '["graphql", ...]'.
+        # substrings before each bounded candidate page, then paginate while
+        # enforcing exact token overlap in _filter_lexical_ids(). Match the SAME
+        # body+tags surface the FTS arm indexes via _fts_text(), so a tag-only hit
+        # is still recalled here. Tags are stored as a JSON array in tags_json, so
+        # a token like "graphql" matches the serialized '["graphql", ...]'.
         like_params: list[Any] = []
         clauses: list[str] = []
         for tok in tokens:
@@ -771,11 +771,29 @@ class SqliteHybridProvider:
         like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
         sql = (
             f"SELECT l.id FROM lessons l WHERE ({like_score_sql}) >= ? {scope_sql} "
-            "ORDER BY l.created_at DESC LIMIT ?"
+            "ORDER BY l.created_at DESC, l.id LIMIT ? OFFSET ?"
         )
-        params = [*like_params, _required_lexical_overlap(tokens), *scope_params, self.pool]
-        rows = conn.execute(sql, params).fetchall()
-        return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)
+        base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
+        out: list[str] = []
+        seen: set[str] = set()
+        offset = 0
+        while len(out) < self.pool:
+            rows = conn.execute(sql, [*base_params, self.pool, offset]).fetchall()
+            candidate_ids = [r[0] for r in rows]
+            if not candidate_ids:
+                break
+            fresh_ids = [lesson_id for lesson_id in candidate_ids if lesson_id not in seen]
+            if not fresh_ids:
+                break
+            seen.update(fresh_ids)
+            for lesson_id in self._filter_lexical_ids(conn, fresh_ids, tokens):
+                out.append(lesson_id)
+                if len(out) >= self.pool:
+                    break
+            offset += len(candidate_ids)
+            if len(candidate_ids) < self.pool:
+                break
+        return out
 
     def _filter_lexical_ids(
         self,

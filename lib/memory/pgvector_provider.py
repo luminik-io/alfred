@@ -361,14 +361,15 @@ def _lexical_like_query(
     repo: str | None,
     pool: int,
     now: datetime,
+    offset: int = 0,
 ) -> tuple[str, list[Any]]:
     """ILIKE fallback lexical arm (required overlap, most-recent first).
 
     The counterpart to the SQLite ``LIKE`` fallback: used only if the tsvector
     column could not be provisioned. Matches the SAME body+tags surface the
     full-text arm indexes, so a tag-only hit is still recalled. The overlap
-    requirement runs before ``LIMIT`` so weak recent rows cannot crowd out a
-    true match.
+    requirement narrows each bounded page. The caller paginates and enforces
+    exact token overlap so substring-only rows cannot crowd out a true match.
     """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
     like_params: list[Any] = []
@@ -379,9 +380,9 @@ def _lexical_like_query(
     like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
     sql = (
         f"SELECT l.id FROM {table} l WHERE ({like_score_sql}) >= %s {scope_sql} "
-        "ORDER BY l.created_at DESC LIMIT %s"
+        "ORDER BY l.created_at DESC, l.id LIMIT %s OFFSET %s"
     )
-    params = [*like_params, _required_lexical_overlap(tokens), *scope_params, pool]
+    params = [*like_params, _required_lexical_overlap(tokens), *scope_params, pool, offset]
     return sql, params
 
 
@@ -1004,16 +1005,34 @@ class PgvectorProvider:
                 return ids
             except Exception as exc:
                 _LOG.debug("memory.pgvector: full-text query failed, using ILIKE: %s", exc)
-        sql, params = _lexical_like_query(
-            tokens,
-            table=self._lessons,
-            codename=codename,
-            repo=repo,
-            pool=self.pool,
-            now=now,
-        )
-        ids = [r[0] for r in conn.execute(sql, params).fetchall()]
-        return self._filter_lexical_ids(conn, ids, tokens)
+        out: list[str] = []
+        seen: set[str] = set()
+        offset = 0
+        while len(out) < self.pool:
+            sql, params = _lexical_like_query(
+                tokens,
+                table=self._lessons,
+                codename=codename,
+                repo=repo,
+                pool=self.pool,
+                now=now,
+                offset=offset,
+            )
+            candidate_ids = [r[0] for r in conn.execute(sql, params).fetchall()]
+            if not candidate_ids:
+                break
+            fresh_ids = [lesson_id for lesson_id in candidate_ids if lesson_id not in seen]
+            if not fresh_ids:
+                break
+            seen.update(fresh_ids)
+            for lesson_id in self._filter_lexical_ids(conn, fresh_ids, tokens):
+                out.append(lesson_id)
+                if len(out) >= self.pool:
+                    break
+            offset += len(candidate_ids)
+            if len(candidate_ids) < self.pool:
+                break
+        return out
 
     def _filter_lexical_ids(
         self,

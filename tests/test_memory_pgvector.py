@@ -190,7 +190,7 @@ def test_lexical_like_fallback_matches_body_and_tags() -> None:
     )
     assert "l.body ILIKE %s OR l.tags_json ILIKE %s" in sql
     assert "%graphql%" in params
-    assert params[-1] == 3
+    assert params[-2:] == [3, 0]
 
 
 def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
@@ -201,7 +201,7 @@ def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
     where, _, order = sql.partition("ORDER BY")
     assert where.count("CAST((l.body ILIKE %s OR l.tags_json ILIKE %s) AS INTEGER)") == 2
     assert ") >= %s" in where
-    assert "LIMIT %s" in order
+    assert "LIMIT %s OFFSET %s" in order
     assert params == [
         "%graphql%",
         "%graphql%",
@@ -212,7 +212,56 @@ def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
         "c",
         "r",
         2,
+        0,
     ]
+
+
+def test_lexical_like_fallback_pages_past_substring_only_matches() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.page_offsets: list[int] = []
+
+        def execute(self, sql: str, params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "SELECT l.id FROM lessons l" in normalized:
+                offset = int(params[-1]) if "OFFSET %s" in normalized else 0
+                self.page_offsets.append(offset)
+                pages = {
+                    0: [("weak-newest",), ("weak-newer",)],
+                    2: [("valid-older",)],
+                }
+                return Cursor(pages.get(offset, []))
+            if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
+                ids = set(params[0])
+                text = {
+                    "weak-newest": ("weak-newest", "rapid rollout newest", "[]"),
+                    "weak-newer": ("weak-newer", "rapid rollout newer", "[]"),
+                    "valid-older": ("valid-older", "api rapid response policy", "[]"),
+                }
+                return Cursor([text[lesson_id] for lesson_id in text if lesson_id in ids])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        "api rapid",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["valid-older"]
+    assert conn.page_offsets == [0, 2]
 
 
 def test_recency_query_is_scoped_and_ordered() -> None:
