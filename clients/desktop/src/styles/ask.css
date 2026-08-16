@@ -639,7 +639,7 @@
    error. Status color is never borrowed here. */
 .ask-draft__consequence {
   margin: 0;
-  border-left: 2px solid color-mix(in oklch, var(--primary), var(--border) 30%);
+  border-left: 1px solid color-mix(in oklch, var(--primary), var(--border) 30%);
   border-radius: 0;
   background: var(--accent-soft);
   padding: 0.5rem 0.7rem;
@@ -1098,7 +1098,7 @@
 
 /* Unread items. NotificationsView sets `feed-item--new` but there was no rule
    for it, so the only unread cue was a 0.45rem pip. For an inbox whose whole
-   job is "what needs attention now", give unread rows a left status bar plus a
+   job is "what needs attention now", give unread rows a fine edge plus a
    faint accent tint: structural, non-color cues (WCAG 1.4.1) that read at a
    glance. (No font-weight bump: Tailwind Preflight already resolves `strong`
    to bolder/700, so an override there would be a no-op.) */
@@ -1106,7 +1106,7 @@
   border-color: color-mix(in oklch, var(--accent), var(--border) 45%);
   background: color-mix(in oklch, var(--accent), var(--card) 92%);
   box-shadow:
-    inset 3px 0 0 var(--accent),
+    inset 1px 0 0 var(--accent),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 

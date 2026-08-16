@@ -14,8 +14,9 @@
 **An autonomous engineering team that ships while you're away.**
 
 Alfred turns Claude Code and Codex into a spec-driven engineering team. Named
-agents plan the work, write the code, review each other, and open pull requests.
-Every run stays behind an approval gate.
+agents plan the work, write code, test it, review each other, and open pull
+requests. Alfred keeps working without you at the keyboard. You approve risky
+actions and decide what merges.
 
 Interactive coding agents finish one prompt while you sit at the keyboard, then
 forget what the last session learned. Alfred is for work that should keep moving
@@ -253,7 +254,7 @@ flowchart LR
 The host scheduler starts a fresh process for each firing. The shared runner
 performs preflight checks, creates or recovers a worktree when the role needs
 one, invokes the chosen CLI, records events, and updates GitHub. Alfred does not
-run a model gateway or a central orchestration daemon. See
+run a model gateway or a long-running coordinator. See
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Documentation

@@ -1,0 +1,547 @@
+/* Final appearance layer. The three shipped themes share structure and state
+ * semantics, but each keeps the material, type, and edge language approved in
+ * its reference comp. */
+
+.alfred-fleet-status {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.25rem 0.35rem;
+}
+
+.alfred-fleet-status__label {
+  color: var(--sidebar-foreground);
+  font-size: 0.76rem;
+  font-weight: 620;
+}
+
+.alfred-page-hero {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.15rem 0 0.35rem;
+}
+
+.ask__head-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+/* Signal Edge ------------------------------------------------------------ */
+
+:root[data-theme="signal-edge"] .alfred-app-atmosphere {
+  background:
+    linear-gradient(
+      115deg,
+      color-mix(in oklch, var(--signal-mint), transparent 97%),
+      transparent 34%
+    ),
+    linear-gradient(
+      300deg,
+      color-mix(in oklch, var(--signal-violet), transparent 98%),
+      transparent 42%
+    ),
+    var(--background);
+}
+
+:root[data-theme="signal-edge"] .alfred-glass-shell [data-sidebar="sidebar"] {
+  background: color-mix(in oklch, var(--glass-strong), transparent 5%);
+  box-shadow:
+    inset -1px 0 0 var(--sidebar-border),
+    12px 0 36px color-mix(in oklch, var(--glass-shadow), transparent 68%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+}
+
+:root[data-theme="signal-edge"]
+  :is(
+    .command-center__top,
+    .command-center__pane,
+    .command-center__route,
+    .command-center__pulse,
+    .command-center__capacity,
+    .custom-agents-panel,
+    .workflow-graph
+  ) {
+  border-color: var(--hairline);
+  background: color-mix(in oklch, var(--surface), var(--background) 12%);
+  box-shadow: none;
+}
+
+:root[data-theme="signal-edge"] .command-center__top {
+  min-height: auto;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.35rem 0 0.9rem;
+}
+
+:root[data-theme="signal-edge"] .alfred-pipeline__assign {
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 48%),
+    var(--glass);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.65));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.65));
+}
+
+:root[data-theme="signal-edge"] .alfred-pipeline__column {
+  border-color: color-mix(in oklch, var(--col-tone) 18%, var(--hairline));
+  background:
+    linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--col-tone), transparent 55%),
+        transparent 58%
+      )
+      top / 100% 1px no-repeat,
+    linear-gradient(180deg, var(--glass-highlight), transparent 22%),
+    var(--glass);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 16px 44px color-mix(in oklch, var(--glass-shadow), transparent 68%);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.62))
+    saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.62))
+    saturate(var(--glass-saturate));
+  padding: 0.55rem;
+}
+
+:root[data-theme="signal-edge"] .alfred-card {
+  border-color: var(--hairline);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="signal-edge"] .alfred-card--selected {
+  border-color: color-mix(in oklch, var(--signal-violet), var(--hairline) 36%);
+  box-shadow:
+    inset 1px 0 0 var(--signal-mint),
+    inset -1px 0 0 var(--signal-violet),
+    0 0 0 1px color-mix(in oklch, var(--signal-rose), transparent 76%);
+}
+
+:root[data-theme="signal-edge"] .alfred-card:hover {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 56%);
+  background: color-mix(in oklch, var(--surface), var(--primary) 2%);
+}
+
+:root[data-theme="signal-edge"] .pipeline-inspector {
+  border-color: color-mix(in oklch, var(--signal-violet), var(--hairline) 72%);
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 18%),
+    var(--glass-strong);
+  box-shadow:
+    inset 1px 0 0 color-mix(in oklch, var(--signal-mint), transparent 34%),
+    0 18px 48px color-mix(in oklch, var(--glass-shadow), transparent 42%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
+  padding: 1rem;
+}
+
+:root[data-theme="signal-edge"] .workflow-graph {
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 18%),
+    color-mix(in oklch, var(--glass), var(--background) 12%);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.7));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.7));
+}
+
+:root[data-theme="signal-edge"] .wf-legend {
+  border-color: var(--hairline);
+  background: var(--glass-strong);
+  box-shadow: 0 10px 32px
+    color-mix(in oklch, var(--glass-shadow), transparent 58%);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+:root[data-theme="signal-edge"] :is(.agent-card, .agents-deck__row) {
+  border-color: var(--hairline);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="signal-edge"] :is(.settings-view.panel, .agents-page .panel) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+:root[data-theme="signal-edge"] .settings-view {
+  max-width: 70rem;
+}
+
+:root[data-theme="signal-edge"] [aria-label="Code intelligence"] > form {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="signal-edge"] .plan-detail-sheet {
+  background: var(--glass-strong);
+  box-shadow: -12px 0 36px
+    color-mix(in oklch, var(--glass-shadow), transparent 42%);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+:root[data-theme="signal-edge"] .plan-detail-sheet > .detail-panel {
+  overflow-y: auto;
+  padding: 0 1rem 1rem;
+}
+
+:root[data-theme="signal-edge"].dark {
+  --theme-background: oklch(0.145 0.004 245);
+  --theme-surface: oklch(0.205 0.006 245 / 0.94);
+  --theme-surface-2: oklch(0.235 0.007 245 / 0.94);
+  --theme-surface-3: oklch(0.275 0.008 245 / 0.97);
+  --theme-primary: oklch(0.73 0.07 194);
+  --theme-border: oklch(0.94 0.006 230 / 0.1);
+  --theme-border-strong: oklch(0.94 0.006 230 / 0.19);
+  --theme-glass: oklch(0.19 0.006 245 / 0.76);
+  --theme-glass-strong: oklch(0.215 0.006 245 / 0.91);
+  --theme-sidebar: oklch(0.165 0.005 245 / 0.88);
+  --theme-sidebar-accent: oklch(0.245 0.012 195 / 0.72);
+  --theme-glass-shadow: rgba(0, 0, 0, 0.38);
+  --signal-mint: oklch(0.76 0.08 165);
+  --signal-rose: oklch(0.71 0.11 350);
+  --signal-violet: oklch(0.7 0.095 295);
+}
+
+/* Category Standard ------------------------------------------------------ */
+
+:root[data-theme="category-standard"] body {
+  --theme-font-heading: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+  --theme-font-body: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+}
+
+:root[data-theme="category-standard"] :is(.font-heading, h1, h2, h3) {
+  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+  font-stretch: condensed;
+  font-weight: 660;
+  letter-spacing: -0.025em;
+}
+
+:root[data-theme="category-standard"]
+  :is(
+    .panel,
+    .command-center__pane,
+    .command-center__route,
+    .command-center__pulse,
+    .command-center__capacity,
+    .custom-agents-panel,
+    .workflow-graph,
+    [aria-label="Code intelligence"] > form
+  ) {
+  border-radius: 0;
+  border-color: var(--border-strong);
+  background: var(--surface);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="category-standard"]
+  .alfred-glass-shell
+  [data-sidebar="sidebar"] {
+  background: var(--sidebar);
+  box-shadow: inset -1px 0 0 var(--border-strong);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="category-standard"]
+  :is(button, input, select, textarea, .alfred-card) {
+  border-radius: 0;
+}
+
+:root[data-theme="category-standard"] .alfred-pipeline__assign {
+  border-color: var(--border-strong);
+  border-radius: 0;
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+:root[data-theme="category-standard"] .alfred-pipeline__column {
+  border-color: var(--border-strong);
+  border-radius: 0;
+  background:
+    linear-gradient(90deg, var(--col-tone), transparent 48%) top / 100% 1px
+      no-repeat,
+    var(--surface-2);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="category-standard"] .alfred-pipeline__column-head {
+  border-bottom-color: var(--border-strong);
+  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+  font-size: 0.73rem;
+  font-weight: 690;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="category-standard"] .alfred-card {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="category-standard"] .alfred-card--selected {
+  border-color: var(--blue);
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+
+:root[data-theme="category-standard"] .pipeline-inspector {
+  border-color: var(--border-strong);
+  border-radius: 0;
+  background: var(--surface-2);
+  box-shadow: inset 1px 0 0 var(--border-strong);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="category-standard"] .nav-item-active {
+  background: var(--sidebar-accent);
+  box-shadow: inset 2px 0 0 var(--blue);
+}
+
+/* Linked Fold ------------------------------------------------------------ */
+
+:root[data-theme="linked-fold"] body {
+  --theme-font-heading: "Source Serif 4 Variable", Georgia, serif;
+  --theme-font-body: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
+}
+
+:root[data-theme="linked-fold"] :is(.font-heading, h1, h2, h3) {
+  font-family: "Source Serif 4 Variable", Georgia, serif;
+  font-weight: 610;
+  letter-spacing: -0.018em;
+}
+
+:root[data-theme="linked-fold"] .alfred-app-atmosphere {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 11.95rem,
+      color-mix(in oklch, var(--fold-line), transparent 28%) 11.95rem 12rem
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 3rem,
+      color-mix(in oklch, var(--fold-line), transparent 68%) 3rem
+        calc(3rem + 1px)
+    ),
+    radial-gradient(
+      circle at 18% 12%,
+      color-mix(in oklch, var(--glass-highlight), transparent 12%),
+      transparent 34%
+    ),
+    var(--background);
+}
+
+:root[data-theme="linked-fold"] .alfred-app-atmosphere::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: url("/textures/linked-fold-paper.jpg") center / 768px auto repeat;
+  mix-blend-mode: multiply;
+  opacity: 0.24;
+}
+
+:root[data-theme="linked-fold"].dark .alfred-app-atmosphere::before {
+  mix-blend-mode: soft-light;
+  opacity: 0.1;
+}
+
+:root[data-theme="linked-fold"] .alfred-glass-shell [data-sidebar="sidebar"] {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--glass-highlight), transparent 42%),
+      transparent 44%
+    ),
+    var(--sidebar);
+  box-shadow: inset -1px 0 0 var(--fold-line);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="linked-fold"]
+  :is(
+    .panel,
+    .command-center__pane,
+    .command-center__route,
+    .command-center__pulse,
+    .command-center__capacity,
+    .custom-agents-panel,
+    .workflow-graph,
+    [aria-label="Code intelligence"] > form
+  ) {
+  border-radius: 0;
+  border-color: var(--fold-line);
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--glass-highlight), transparent 62%),
+      transparent 42%
+    ),
+    var(--surface);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__assign {
+  border-color: var(--fold-line);
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(25% - 1px),
+      var(--fold-line) calc(25% - 1px) 25%
+    ),
+    var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__columns {
+  gap: 0;
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column {
+  overflow: visible;
+  border-color: var(--fold-line);
+  border-right-width: 0;
+  border-radius: 0;
+  clip-path: none;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--col-tone), transparent 92%),
+      transparent 20%
+    ),
+    color-mix(in oklch, var(--surface), var(--background) 18%);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column:last-child {
+  border-right-width: 1px;
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column::before {
+  top: -1px;
+  right: -0.55rem;
+  z-index: 3;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 0;
+  background: var(--background);
+  box-shadow:
+    -1px 1px 0 var(--fold-line),
+    1px -1px 0 var(--fold-line);
+  transform: rotate(45deg);
+}
+
+:root[data-theme="linked-fold"] .alfred-pipeline__column:last-child::before {
+  content: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-card {
+  border-color: color-mix(in oklch, var(--col-tone) 24%, var(--fold-line));
+  border-radius: 0;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--glass-highlight), transparent 64%),
+      transparent 48%
+    ),
+    var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-card--selected {
+  border-color: var(--blue);
+  background:
+    linear-gradient(
+        225deg,
+        transparent 47%,
+        var(--fold-line) 48% 51%,
+        transparent 52%
+      )
+      top right / 1.35rem 1.35rem no-repeat,
+    var(--surface);
+}
+
+:root[data-theme="linked-fold"] .pipeline-inspector {
+  border-color: var(--fold-line);
+  border-radius: 0;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--glass-highlight), transparent 58%),
+      transparent 42%
+    ),
+    var(--surface);
+  box-shadow: inset 1px 0 0 var(--fold-line);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="linked-fold"] .nav-item-active {
+  background: color-mix(in oklch, var(--warn), transparent 86%);
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+@media (min-width: 1280px) {
+  .alfred-pipeline__workspace.has-inspector {
+    grid-template-columns: minmax(0, 1fr) clamp(20rem, 23vw, 24rem);
+  }
+}
+
+@media (max-width: 767px) {
+  :root[data-theme="signal-edge"] .alfred-pipeline__column {
+    border-left: 1px solid var(--hairline);
+    box-shadow: inset 2px 0 0 var(--col-tone);
+  }
+
+  :root[data-theme="signal-edge"] .wf-legend {
+    padding: 0.55rem 0.65rem;
+  }
+
+  :root[data-theme="signal-edge"] .wf-legend__flow {
+    margin-bottom: 0.4rem;
+    font-size: 0.78rem;
+  }
+
+  :root[data-theme="signal-edge"] .wf-legend__items {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  :root[data-theme="signal-edge"] .wf-legend__item {
+    font-size: 0.62rem;
+    white-space: normal;
+  }
+
+  :root[data-theme="linked-fold"] .alfred-pipeline__columns {
+    gap: 0.65rem;
+  }
+
+  :root[data-theme="linked-fold"] .alfred-pipeline__column {
+    border-right-width: 1px;
+  }
+
+  :root[data-theme="linked-fold"] .alfred-pipeline__column::before {
+    content: none;
+  }
+}

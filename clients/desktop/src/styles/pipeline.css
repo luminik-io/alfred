@@ -182,10 +182,22 @@
 }
 
 :root[data-theme="linked-fold"] .alfred-card--selected {
-  clip-path: polygon(0 0, calc(100% - 0.65rem) 0, 100% 0.65rem, 100% 100%, 0 100%);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 0.65rem) 0,
+    100% 0.65rem,
+    100% 100%,
+    0 100%
+  );
   border-color: color-mix(in oklch, var(--warn), var(--hairline) 42%);
   background:
-    linear-gradient(225deg, transparent 47%, var(--fold-line) 48% 51%, transparent 52%) top right / 1.3rem 1.3rem no-repeat,
+    linear-gradient(
+        225deg,
+        transparent 47%,
+        var(--fold-line) 48% 51%,
+        transparent 52%
+      )
+      top right / 1.3rem 1.3rem no-repeat,
     color-mix(in oklch, var(--warn), var(--surface) 94%);
 }
 
@@ -283,9 +295,18 @@
   width: 1.35rem;
   height: 1.35rem;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklch, var(--agent-accent, var(--primary)), var(--border) 55%);
-  background: color-mix(in oklch, var(--agent-accent, var(--primary)), transparent 82%);
-  color: color-mix(in oklch, var(--agent-accent, var(--primary)), var(--foreground) 34%);
+  border: 1px solid
+    color-mix(in oklch, var(--agent-accent, var(--primary)), var(--border) 55%);
+  background: color-mix(
+    in oklch,
+    var(--agent-accent, var(--primary)),
+    transparent 82%
+  );
+  color: color-mix(
+    in oklch,
+    var(--agent-accent, var(--primary)),
+    var(--foreground) 34%
+  );
   font-family: var(--font-heading);
   font-size: 0.68rem;
   font-weight: 700;
@@ -395,7 +416,8 @@
     inset 0 1px 0 var(--glass-highlight),
     0 18px 48px color-mix(in oklch, var(--glass-shadow), transparent 42%);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
   padding: 0.85rem;
   scrollbar-gutter: stable;
 }
@@ -432,7 +454,13 @@
 
 :root[data-theme="linked-fold"] .pipeline-inspector {
   border-radius: 0;
-  clip-path: polygon(0 0, calc(100% - 1.15rem) 0, 100% 1.15rem, 100% 100%, 0 100%);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 1.15rem) 0,
+    100% 1.15rem,
+    100% 100%,
+    0 100%
+  );
 }
 
 :root[data-theme="linked-fold"] .pipeline-inspector::after {
@@ -448,7 +476,9 @@
   background: color-mix(in oklch, var(--surface), var(--accent) 12%);
 }
 
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+@supports not (
+  (-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))
+) {
   .pipeline-inspector {
     background: var(--surface);
   }
@@ -456,41 +486,44 @@
 
 .alfred-pipeline__assign {
   display: grid;
-  grid-template-columns: minmax(14rem, 0.9fr) minmax(14rem, 1fr) minmax(8rem, 0.45fr) auto;
+  grid-template-columns: auto minmax(16rem, 1fr) minmax(9rem, 0.35fr) auto;
   gap: 0.55rem;
-  align-items: center;
+  align-items: end;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface), var(--background) 45%);
   padding: 0.65rem;
 }
 
-.alfred-pipeline__assign-label {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 0.45rem;
-  row-gap: 0.12rem;
+.alfred-pipeline__assign-title {
+  display: flex;
+  gap: 0.45rem;
   align-items: center;
-  min-width: 0;
+  min-height: 2.25rem;
+  padding: 0 0.2rem;
 }
 
-.alfred-pipeline__assign-label svg {
+.alfred-pipeline__assign-title svg {
   color: var(--primary);
 }
 
-.alfred-pipeline__assign-label span {
-  min-width: 0;
+.alfred-pipeline__assign-title span {
   color: var(--foreground);
   font-size: 0.84rem;
   font-weight: 680;
+  white-space: nowrap;
 }
 
-.alfred-pipeline__assign-label small {
-  grid-column: 2;
+.alfred-pipeline__assign-field {
+  display: grid;
+  gap: 0.25rem;
   min-width: 0;
+}
+
+.alfred-pipeline__assign-field > span {
   color: var(--muted-foreground);
-  font-size: 0.72rem;
-  line-height: 1.35;
+  font-size: 0.68rem;
+  line-height: 1;
 }
 
 .alfred-pipeline__assign input,
@@ -537,7 +570,7 @@
     grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.4fr) auto;
   }
 
-  .alfred-pipeline__assign-label {
+  .alfred-pipeline__assign-title {
     grid-column: 1 / -1;
   }
 }
@@ -618,11 +651,14 @@
   /* A tone-tinted glass column: a 2px status edge on top, a faint tone wash, and
      the translucent surface fill so the board reads as layered glass lanes. */
   background:
-    linear-gradient(90deg,
-      color-mix(in oklch, var(--col-tone), transparent 55%),
-      color-mix(in oklch, var(--col-tone), transparent 82%)
-    ) top / 100% 2px no-repeat,
-    linear-gradient(180deg,
+    linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--col-tone), transparent 55%),
+        color-mix(in oklch, var(--col-tone), transparent 82%)
+      )
+      top / 100% 2px no-repeat,
+    linear-gradient(
+      180deg,
       color-mix(in oklch, var(--col-tone), transparent 92%),
       transparent 22%
     ),
@@ -630,22 +666,37 @@
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
     0 14px 40px color-mix(in oklch, var(--glass-shadow), transparent 55%);
-  backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6))
+    saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6))
+    saturate(var(--glass-saturate));
   padding: 0.6rem 0.55rem;
 }
 
 /* Column status tones: go-ahead = ember (needs you), queued = blue, working =
    cyan, shipped = ok green. Set on the section via data attribute (below). */
-.alfred-pipeline__column[data-lane="needs"] { --col-tone: var(--accent); }
-.alfred-pipeline__column[data-lane="queued"] { --col-tone: var(--blue); }
-.alfred-pipeline__column[data-lane="working"] { --col-tone: var(--cyan); }
-.alfred-pipeline__column[data-lane="shipped"] { --col-tone: var(--ok); }
+.alfred-pipeline__column[data-lane="needs"] {
+  --col-tone: var(--accent);
+}
+.alfred-pipeline__column[data-lane="queued"] {
+  --col-tone: var(--blue);
+}
+.alfred-pipeline__column[data-lane="working"] {
+  --col-tone: var(--cyan);
+}
+.alfred-pipeline__column[data-lane="shipped"] {
+  --col-tone: var(--ok);
+}
 
 :root[data-theme="signal-edge"] .alfred-pipeline__column {
   border-color: color-mix(in oklch, var(--col-tone) 18%, var(--hairline));
   background:
-    linear-gradient(90deg, color-mix(in oklch, var(--col-tone), transparent 62%), transparent 72%) top / 100% 1px no-repeat,
+    linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--col-tone), transparent 62%),
+        transparent 72%
+      )
+      top / 100% 1px no-repeat,
     linear-gradient(180deg, var(--glass-highlight), transparent 18%),
     var(--glass);
 }
@@ -653,18 +704,32 @@
 :root[data-theme="category-standard"] .alfred-pipeline__column {
   border-color: var(--hairline);
   background:
-    linear-gradient(90deg, var(--col-tone), transparent 46%) top / 100% 1px no-repeat,
+    linear-gradient(90deg, var(--col-tone), transparent 46%) top / 100% 1px
+      no-repeat,
     color-mix(in oklch, var(--surface), transparent 8%);
-  backdrop-filter: blur(calc(var(--glass-blur) * 0.45)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.45)) saturate(var(--glass-saturate));
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.45))
+    saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.45))
+    saturate(var(--glass-saturate));
 }
 
 :root[data-theme="linked-fold"] .alfred-pipeline__column {
   border-color: color-mix(in oklch, var(--col-tone) 20%, var(--hairline));
   border-radius: 0;
-  clip-path: polygon(0 0, calc(100% - 0.9rem) 0, 100% 0.9rem, 100% 100%, 0 100%);
+  clip-path: polygon(
+    0 0,
+    calc(100% - 0.9rem) 0,
+    100% 0.9rem,
+    100% 100%,
+    0 100%
+  );
   background:
-    linear-gradient(90deg, color-mix(in oklch, var(--col-tone), transparent 62%), transparent 68%) top / 100% 1px no-repeat,
+    linear-gradient(
+        90deg,
+        color-mix(in oklch, var(--col-tone), transparent 62%),
+        transparent 68%
+      )
+      top / 100% 1px no-repeat,
     linear-gradient(180deg, var(--glass-highlight), transparent 20%),
     var(--glass);
 }
@@ -679,7 +744,8 @@
   pointer-events: none;
   content: "";
   border-left: 1px solid color-mix(in oklch, var(--warn), var(--fold-line) 55%);
-  border-bottom: 1px solid color-mix(in oklch, var(--warn), var(--fold-line) 55%);
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--warn), var(--fold-line) 55%);
   background: color-mix(in oklch, var(--surface), var(--warn) 16%);
 }
 
@@ -691,7 +757,12 @@
   height: 2.25rem;
   pointer-events: none;
   content: "";
-  background: linear-gradient(135deg, transparent 48.8%, var(--fold-line) 49.4%, transparent 50%);
+  background: linear-gradient(
+    135deg,
+    transparent 48.8%,
+    var(--fold-line) 49.4%,
+    transparent 50%
+  );
 }
 
 @media (min-width: 900px) {
@@ -733,7 +804,13 @@
 
   :root[data-theme="linked-fold"] .plan-detail-sheet {
     border-radius: 0;
-    clip-path: polygon(0 0, calc(100% - 1.1rem) 0, 100% 1.1rem, 100% 100%, 0 100%);
+    clip-path: polygon(
+      0 0,
+      calc(100% - 1.1rem) 0,
+      100% 1.1rem,
+      100% 100%,
+      0 100%
+    );
   }
 }
 
@@ -799,7 +876,9 @@
   color: var(--muted-foreground);
   font-size: 0.72rem;
   font-weight: 600;
-  transition: border-color 140ms ease, color 140ms ease;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .alfred-pipeline__lowsignal-toggle:hover {

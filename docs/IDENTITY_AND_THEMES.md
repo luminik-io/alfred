@@ -85,7 +85,7 @@ Operator commands use exact runtime ids. Run `alfred pause senior-dev`, not
 `alfred pause lucius`; a display name never selects an agent or changes command
 routing. Custom runtime agents use the explicit id supplied to `alfred agent add`.
 
-The stable role-slug is always available underneath. Pull request titles,
+The stable role slug remains available for scripts and logs. Pull request titles,
 worktree paths, and log filenames keep the role, so a themed name never leaks
 into a place the machine depends on.
 

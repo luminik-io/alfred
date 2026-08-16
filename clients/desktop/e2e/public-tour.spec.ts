@@ -1,6 +1,9 @@
 import { expect, test } from "playwright/test";
 
-import { assertAlfredApiComplete, installAlfredApi } from "./alfred-api.fixture";
+import {
+  assertAlfredApiComplete,
+  installAlfredApi,
+} from "./alfred-api.fixture";
 
 const pauseMs = Number(process.env.ALFRED_TOUR_PAUSE_MS ?? 0);
 
@@ -16,7 +19,7 @@ test("records the public tour from sample data only", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => {
     localStorage.setItem("alfred-theme-name", "signal-edge");
-    localStorage.setItem("alfred-theme", "dark");
+    localStorage.setItem("alfred-theme", "light");
   });
   const api = await installAlfredApi(page);
 
@@ -43,15 +46,21 @@ test("records the public tour from sample data only", async ({ page }) => {
   await pause();
 
   await page.getByRole("button", { name: "Work", exact: true }).click();
-  await expect(page.getByRole("note")).toHaveText("Sample data for visual review");
-  await page.getByRole("button", { name: /Replace legacy appearance presets/ }).click();
+  await expect(page.getByRole("note")).toHaveText(
+    "Demo data. No real repositories or agent activity.",
+  );
+  await page
+    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .click();
   await expect(
     page.getByRole("complementary", { name: "Work item inspector" }),
   ).toBeVisible();
   await pause();
 
   await page.getByRole("button", { name: "Code", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Code intelligence" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Code intelligence" }),
+  ).toBeVisible();
   await pause();
 
   await page.getByRole("button", { name: "Agents", exact: true }).click();

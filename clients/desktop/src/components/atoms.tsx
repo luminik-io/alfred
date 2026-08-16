@@ -42,7 +42,13 @@ export function StatusPill({
   const offline = Boolean(error);
   const health = snapshot?.status.reliability.status || "checking";
   const state = offline ? "offline" : health;
-  const tone = offline ? "error" : state === "ok" ? "ok" : state === "checking" ? "info" : "warn";
+  const tone = offline
+    ? "error"
+    : state === "ok"
+      ? "ok"
+      : state === "checking"
+        ? "info"
+        : "warn";
   const text =
     state === "offline"
       ? "Offline"
@@ -91,7 +97,11 @@ export function ConnectionBanner({
   // the plain-language guidance we already lead with.
   const showDetails = Boolean(errorRaw && errorRaw !== error);
   return (
-    <section className="notice-panel notice-panel--error" role="alert" aria-live="assertive">
+    <section
+      className="notice-panel notice-panel--error"
+      role="alert"
+      aria-live="assertive"
+    >
       <AlertTriangle size={20} aria-hidden="true" />
       <div className="notice-panel__body">
         <strong>Alfred serve is not reachable yet.</strong>
@@ -108,7 +118,9 @@ export function ConnectionBanner({
           <button
             className="icon-button"
             type="button"
-            disabled={nativeBusy === "core:install" || nativeBusy === "runtime:start"}
+            disabled={
+              nativeBusy === "core:install" || nativeBusy === "runtime:start"
+            }
             onClick={onInstallCore}
           >
             <Download size={16} aria-hidden="true" />
@@ -123,11 +135,15 @@ export function ConnectionBanner({
           <button
             className="secondary-button"
             type="button"
-            disabled={nativeBusy === "runtime:start" || nativeBusy === "core:install"}
+            disabled={
+              nativeBusy === "runtime:start" || nativeBusy === "core:install"
+            }
             onClick={onStartRuntime}
           >
             <Play size={16} aria-hidden="true" />
-            <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
+            <span>
+              {nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}
+            </span>
           </button>
         </div>
       ) : (
@@ -171,7 +187,9 @@ export function NativeResultPanel({
       <div className="command-result__head">
         <TerminalSquare size={18} aria-hidden="true" />
         <strong>{headline}</strong>
-        {result && !isError ? <span className="command-result__ok">Success</span> : null}
+        {result && !isError ? (
+          <span className="command-result__ok">Success</span>
+        ) : null}
         {onDismiss ? (
           <button
             className="command-result__dismiss"
@@ -194,7 +212,9 @@ export function NativeResultPanel({
         <details className="notice-details">
           <summary>Technical details</summary>
           <code>{result.command.join(" ")}</code>
-          {result.pid ? <p>Process {result.pid} is running in the background.</p> : null}
+          {result.pid ? (
+            <p>Process {result.pid} is running in the background.</p>
+          ) : null}
           {result.status !== null ? <p>Exit status: {result.status}</p> : null}
           {hasRawOutput ? (
             <>
@@ -210,16 +230,21 @@ export function NativeResultPanel({
 
 // Turn a curated CLI command into a plain-English headline for non-technical
 // users (the raw command stays available under "Technical details").
-function friendlyActionLabel(result: NativeCommandResult | null): string | null {
+function friendlyActionLabel(
+  result: NativeCommandResult | null,
+): string | null {
   if (!result) return null;
   const joined = result.command.join(" ");
-  if (joined.includes("brain doctor") || joined.includes("brain-doctor")) return "Memory check complete";
+  if (joined.includes("brain doctor") || joined.includes("brain-doctor"))
+    return "Memory check complete";
   if (joined.includes("redis")) return "Redis memory check complete";
   if (joined.includes("auth status")) return "Auth check complete";
-  if (joined.includes("status --json") || /\bstatus\b/.test(joined)) return "Agent status refreshed";
+  if (joined.includes("status --json") || /\bstatus\b/.test(joined))
+    return "Agent status refreshed";
   if (joined.includes("agents")) return "Agents listed";
   if (joined.includes("schedule set")) return "Schedule updated";
-  if (joined.includes("dry-run") || joined.includes("dry_run")) return "Dry-run complete";
+  if (joined.includes("dry-run") || joined.includes("dry_run"))
+    return "Dry-run complete";
   return null;
 }
 
@@ -246,9 +271,11 @@ export function AttentionCard({
   // A single architect plan awaiting a sign-off can be approved or declined right
   // here, before work starts. derive.ts only sets planId on that case.
   const canDecide = Boolean(item.planId) && Boolean(onDecide);
-  const actionBusy = (busyPlanAction && item.planId
-    ? busyPlanAction.startsWith(`${item.planId}:`)
-    : false) as boolean;
+  const actionBusy = (
+    busyPlanAction && item.planId
+      ? busyPlanAction.startsWith(`${item.planId}:`)
+      : false
+  ) as boolean;
   return (
     <article className={`attention-card attention-card--${item.tone}`}>
       <Icon size={20} aria-hidden="true" />
@@ -258,7 +285,8 @@ export function AttentionCard({
         <p>{item.detail}</p>
         {canDecide ? (
           <p className="attention-card__decision-note" role="note">
-            Approving starts this exact scope on the architect's next run. Declining stops it.
+            Approving starts this exact scope on the architect's next run.
+            Declining stops it.
           </p>
         ) : null}
         {item.command ? <code>{item.command}</code> : null}
@@ -296,7 +324,13 @@ export function AttentionCard({
             <span>{item.icon === "run" ? "Inspect runs" : "Review"}</span>
           </button>
         ) : null}
-        {item.href ? <ExternalButton label="Open external" href={item.href} icon={<ExternalLink size={16} />} /> : null}
+        {item.href ? (
+          <ExternalButton
+            label="Open external"
+            href={item.href}
+            icon={<ExternalLink size={16} />}
+          />
+        ) : null}
       </div>
     </article>
   );
@@ -308,8 +342,18 @@ export function SignalCard({ signal }: { signal: ReliabilitySignal }) {
       <MemoryStick size={20} aria-hidden="true" />
       <div>
         <span>{signal.severity || "memory"}</span>
-        <strong>{signal.title || signal.action || signal.codename || "Memory suggestion"}</strong>
-        <p>{signal.message || signal.summary || signal.reason || "Awaiting promotion evaluation."}</p>
+        <strong>
+          {signal.title ||
+            signal.action ||
+            signal.codename ||
+            "Memory suggestion"}
+        </strong>
+        <p>
+          {signal.message ||
+            signal.summary ||
+            signal.reason ||
+            "Awaiting promotion evaluation."}
+        </p>
         {signal.command ? <code>{signal.command}</code> : null}
       </div>
     </article>
@@ -322,7 +366,7 @@ export function PanelHeader({
   actionLabel,
   onAction,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   actionLabel?: string;
   onAction?: () => void;
@@ -330,7 +374,7 @@ export function PanelHeader({
   return (
     <div className="panel-header">
       <div>
-        <span>{eyebrow}</span>
+        {eyebrow ? <span>{eyebrow}</span> : null}
         <h2>{title}</h2>
       </div>
       {actionLabel && onAction ? (
@@ -396,7 +440,11 @@ export function ExternalButton({
   icon: React.ReactNode;
 }) {
   return (
-    <button className="secondary-button" type="button" onClick={() => void openExternal(href)}>
+    <button
+      className="secondary-button"
+      type="button"
+      onClick={() => void openExternal(href)}
+    >
       {icon}
       <span>{label}</span>
     </button>

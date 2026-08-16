@@ -272,7 +272,7 @@ export class AlfredApiFixture {
       await this.fulfill(route, {
         agents: this.mode === "ready" ? [agent] : [],
         total_today: this.mode === "ready" ? 2 : 0,
-        reliability: { status: "healthy", actions: [], failure_patterns: [] },
+        reliability: { status: "ok", actions: [], failure_patterns: [] },
         metrics: {
           spend_usd: null,
           firings: this.mode === "ready" ? 2 : 0,
@@ -290,7 +290,7 @@ export class AlfredApiFixture {
     }
     if (matches("/api/actions")) {
       await this.fulfill(route, {
-        status: "healthy",
+        status: "ok",
         actions: [],
         failure_patterns: [],
         stale_workers: [],

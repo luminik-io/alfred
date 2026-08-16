@@ -32,7 +32,10 @@ export function MemoryView({
   actionNotice: ActionNotice;
   busyMemoryAction: string | null;
   nativeBusy: string | null;
-  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
+  onMemoryCandidateAction: (
+    candidateId: string,
+    action: "promote" | "reject" | "retire",
+  ) => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
 }) {
   const candidates = snapshot?.memoryCandidates.rows || [];
@@ -48,10 +51,10 @@ export function MemoryView({
 
   return (
     <section className="panel animate-rise">
-      <PanelHeader eyebrow="Learnings" title="What Alfred remembers" />
+      <PanelHeader title="What Alfred remembers" />
       <p className="panel-intro">
-        Alfred remembers what it learns on its own, so there is nothing to click. The lessons it is
-        using are below. If one looks wrong, undo it and Alfred will forget it.
+        Alfred reuses approved lessons from earlier work. Review the active
+        lessons below. Retire a lesson when it is no longer correct.
       </p>
 
       {actionNotice ? (
@@ -72,11 +75,14 @@ export function MemoryView({
           tone="error"
         />
       ) : activeLessons.length ? (
-        <section className="lessons-active" aria-label="Lessons Alfred is using">
+        <section
+          className="lessons-active"
+          aria-label="Lessons Alfred is using"
+        >
           <h3 className="subsection-title">About your codebase</h3>
           <p className="lessons-active__intro">
-            What Alfred learned about your projects: conventions, fixes, and review patterns it
-            applies as it works. Undo any that look wrong.
+            What Alfred learned about your projects: conventions, fixes, and
+            review patterns it applies as it works. Undo any that look wrong.
           </p>
           {codebaseLessons.length ? (
             <ul className="active-lesson-list">
@@ -91,8 +97,8 @@ export function MemoryView({
             </ul>
           ) : (
             <p className="lessons-active__intro">
-              Nothing about your codebase yet. As Alfred ships work on your projects, what it learns
-              lands here.
+              Nothing about your codebase yet. As Alfred ships work on your
+              projects, what it learns lands here.
             </p>
           )}
 
@@ -103,9 +109,10 @@ export function MemoryView({
                 <span>About Alfred&rsquo;s runs ({opsLessons.length})</span>
               </summary>
               <p className="lessons-active__intro">
-                Lessons about Alfred&rsquo;s own runs, not your code: provider limits, sign-in, and
-                engine hiccups. Alfred handles these itself, so they stay out of the way here and do
-                not crowd its coding hints.
+                Lessons about Alfred&rsquo;s own runs, not your code: provider
+                limits, sign-in, and engine hiccups. Alfred handles these
+                itself, so they stay out of the way here and do not crowd its
+                coding hints.
               </p>
               <ul className="active-lesson-list">
                 {opsLessons.map((lesson) => (
@@ -138,11 +145,15 @@ export function MemoryView({
       )}
 
       {candidates.length ? (
-        <section className="lessons-review" aria-label="Lessons waiting for your confirmation">
+        <section
+          className="lessons-review"
+          aria-label="Lessons waiting for your confirmation"
+        >
           <h3 className="subsection-title">Waiting for your confirmation</h3>
           <p className="lessons-active__intro">
-            Alfred was not sure enough to remember these on its own. You can keep or dismiss them, or
-            just leave them; Alfred will not act on them until you do.
+            Alfred was not sure enough to remember these on its own. You can
+            keep or dismiss them, or just leave them; Alfred will not act on
+            them until you do.
           </p>
           <div className="lesson-list">
             {candidates.map((candidate) => (
@@ -180,7 +191,10 @@ function ActiveLessonRow({
 }: {
   lesson: MemoryLesson;
   busyMemoryAction: string | null;
-  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
+  onMemoryCandidateAction: (
+    candidateId: string,
+    action: "promote" | "reject" | "retire",
+  ) => void;
 }) {
   const canUndo = isCandidateBackedLesson(lesson.id);
   const isRetiring = busyMemoryAction === `${lesson.id}:retire`;
@@ -190,7 +204,8 @@ function ActiveLessonRow({
         <span className="active-lesson__what">{lesson.body}</span>
         <span className="active-lesson__where">
           {prettyAgent(lesson.codename)}
-          {lesson.repo ? ` · ${lesson.repo}` : ""} · {friendlyTime(lesson.created_at)}
+          {lesson.repo ? ` · ${lesson.repo}` : ""} ·{" "}
+          {friendlyTime(lesson.created_at)}
         </span>
       </div>
       {canUndo ? (
@@ -222,7 +237,11 @@ function lessonOrigin(source: string): LessonOrigin {
   if (key.startsWith("planning") || key.includes("plan")) {
     return { label: "From planning a request", icon: Wand2 };
   }
-  if (key.includes("failure") || key.includes("harvest") || key === "memory_candidate") {
+  if (
+    key.includes("failure") ||
+    key.includes("harvest") ||
+    key === "memory_candidate"
+  ) {
     return { label: "From a repeated problem Alfred hit", icon: Repeat };
   }
   return { label: "From Alfred's work", icon: Sparkles };
@@ -232,7 +251,8 @@ function lessonOrigin(source: string): LessonOrigin {
 // values (info / warning / blocker) read like log levels, so we say it plainly.
 function whyItMatters(severity: string): string | null {
   const key = severity.toLowerCase();
-  if (key === "blocker") return "Worth remembering: this caused something to get stuck.";
+  if (key === "blocker")
+    return "Worth remembering: this caused something to get stuck.";
   if (key === "warning") return "Worth a look: this caused trouble before.";
   if (key === "info") return null;
   return null;
@@ -254,7 +274,10 @@ function LessonCard({
 }: {
   candidate: MemoryCandidate;
   busyMemoryAction: string | null;
-  onMemoryCandidateAction: (candidateId: string, action: "promote" | "reject" | "retire") => void;
+  onMemoryCandidateAction: (
+    candidateId: string,
+    action: "promote" | "reject" | "retire",
+  ) => void;
 }) {
   const isPromoting = busyMemoryAction === `${candidate.id}:promote`;
   const isRejecting = busyMemoryAction === `${candidate.id}:reject`;
@@ -283,7 +306,8 @@ function LessonCard({
         {matters ? <p className="lesson-card__matters">{matters}</p> : null}
 
         <p className="lesson-card__provenance">
-          Noticed by {prettyAgent(candidate.codename)} {friendlyTime(candidate.created_at)}.{" "}
+          Noticed by {prettyAgent(candidate.codename)}{" "}
+          {friendlyTime(candidate.created_at)}.{" "}
           {confidenceWord(candidate.confidence)}.
         </p>
 
@@ -305,7 +329,8 @@ function LessonCard({
 
       <div className="lesson-card__decide">
         <p className="lesson-card__hint">
-          Keeping a lesson lets Alfred use it the next time it works on your projects.
+          Keeping a lesson lets Alfred use it the next time it works on your
+          projects.
         </p>
         <div className="card-actions">
           <button
@@ -363,8 +388,8 @@ function AdvancedPanel({
       </summary>
       <div className="advanced-panel__body">
         <p className="advanced-panel__intro">
-          Tools for inspecting where Alfred stores its memory. You do not need these to keep or
-          dismiss lessons.
+          Tools for inspecting where Alfred stores its memory. You do not need
+          these to keep or dismiss lessons.
         </p>
 
         <h4 className="subsection-title">Memory health</h4>
@@ -390,7 +415,11 @@ function AdvancedPanel({
               onClick={() => onRunLocalAction({ action: "brain_doctor" })}
             >
               <BookOpen size={16} aria-hidden="true" />
-              <span>{nativeBusy === "brain_doctor:fleet" ? "Checking" : "Run memory check"}</span>
+              <span>
+                {nativeBusy === "brain_doctor:fleet"
+                  ? "Checking"
+                  : "Run memory check"}
+              </span>
             </button>
             <button
               className="secondary-button"
@@ -399,7 +428,11 @@ function AdvancedPanel({
               onClick={() => onRunLocalAction({ action: "redis_status" })}
             >
               <MemoryStick size={16} aria-hidden="true" />
-              <span>{nativeBusy === "redis_status:fleet" ? "Checking" : "Check Redis memory"}</span>
+              <span>
+                {nativeBusy === "redis_status:fleet"
+                  ? "Checking"
+                  : "Check Redis memory"}
+              </span>
             </button>
             <button
               className="secondary-button"
@@ -409,18 +442,27 @@ function AdvancedPanel({
             >
               <DatabaseZap size={16} aria-hidden="true" />
               <span>
-                {nativeBusy === "redis_sync_preview:fleet" ? "Checking" : "Preview Redis sync"}
+                {nativeBusy === "redis_sync_preview:fleet"
+                  ? "Checking"
+                  : "Preview Redis sync"}
               </span>
             </button>
             <button
               className="secondary-button"
               type="button"
               disabled={nativeBusy === "memory_harvest:fleet"}
-              onClick={() => onRunLocalAction({ action: "memory_harvest", refreshAfter: true })}
+              onClick={() =>
+                onRunLocalAction({
+                  action: "memory_harvest",
+                  refreshAfter: true,
+                })
+              }
             >
               <Repeat size={16} aria-hidden="true" />
               <span>
-                {nativeBusy === "memory_harvest:fleet" ? "Harvesting" : "Queue failure lessons"}
+                {nativeBusy === "memory_harvest:fleet"
+                  ? "Harvesting"
+                  : "Queue failure lessons"}
               </span>
             </button>
             <button
@@ -428,7 +470,10 @@ function AdvancedPanel({
               type="button"
               disabled={nativeBusy === "memory_auto_promote:fleet"}
               onClick={() =>
-                onRunLocalAction({ action: "memory_auto_promote", refreshAfter: true })
+                onRunLocalAction({
+                  action: "memory_auto_promote",
+                  refreshAfter: true,
+                })
               }
             >
               <Sparkles size={16} aria-hidden="true" />
@@ -443,7 +488,8 @@ function AdvancedPanel({
           <p className="console-note console-note--inline">
             <AlertTriangle size={15} aria-hidden="true" />
             <span>
-              These tools run inside the desktop app. The browser preview stays read-only.
+              These tools run inside the desktop app. The browser preview stays
+              read-only.
             </span>
           </p>
         )}

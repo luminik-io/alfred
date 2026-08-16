@@ -45,9 +45,39 @@
 
 @media (max-width: 880px) {
   .workflow-graph {
+    display: flex;
+    flex-direction: column;
     min-height: 360px;
     height: min(62svh, 520px);
   }
+
+  .workflow-graph:not([data-maximized="true"]) .wf-legend {
+    position: relative;
+    inset: auto;
+    z-index: 1;
+    width: 100%;
+    max-width: none;
+    flex: 0 0 auto;
+    border-width: 0 0 1px;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .workflow-graph:not([data-maximized="true"]) > .workflow-graph__canvas {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+}
+
+.workflow-graph__canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 /* Maximize: lift the canvas to a full-viewport overlay so the wide pipeline has
@@ -166,7 +196,11 @@
   padding: 0.7rem 0.8rem;
   pointer-events: none;
   border: 1px solid
-    color-mix(in oklch, var(--accent) 26%, color-mix(in oklch, var(--border), white 12%));
+    color-mix(
+      in oklch,
+      var(--accent) 26%,
+      color-mix(in oklch, var(--border), white 12%)
+    );
   border-radius: var(--radius-lg);
   /* Slightly stronger than hero glass because the legend overlays the canvas. */
   background:
@@ -182,7 +216,8 @@
     0 2px 8px rgba(0, 0, 0, 0.32),
     0 20px 48px var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
 }
 
 /* Luminous top edge matching the hero-glass language (ember -> amber). */
@@ -374,12 +409,17 @@
      floating glass chrome (not flat cards). Corners stay sharp. */
   background:
     linear-gradient(180deg, var(--glass-highlight), transparent 34%),
-    color-mix(in oklch, var(--wf-tone) 10%, color-mix(in oklch, var(--card), transparent 14%));
+    color-mix(
+      in oklch,
+      var(--wf-tone) 10%,
+      color-mix(in oklch, var(--card), transparent 14%)
+    );
   box-shadow:
     inset 0 1px 0 var(--glass-highlight),
     0 10px 26px var(--glass-shadow);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -555,7 +595,12 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--agent-accent), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--agent-accent),
+    transparent
+  );
   opacity: 0.7;
 }
 
@@ -590,7 +635,8 @@
 .agent-card:hover {
   transform: translateY(-3px);
   border-color: color-mix(in oklch, var(--agent-accent), var(--border) 30%);
-  box-shadow: 0 16px 40px color-mix(in oklch, var(--agent-accent), transparent 84%);
+  box-shadow: 0 16px 40px
+    color-mix(in oklch, var(--agent-accent), transparent 84%);
 }
 
 .agent-card:hover .agent-card__scan {

@@ -10,8 +10,11 @@ def test_public_tour_is_fixture_only() -> None:
 
     assert tour_spec.is_file()
     assert capture_script.is_file()
-    assert "installAlfredApi" in tour_spec.read_text()
-    assert "assertAlfredApiComplete" in tour_spec.read_text()
+    tour_source = tour_spec.read_text()
+    assert "installAlfredApi" in tour_source
+    assert "assertAlfredApiComplete" in tour_source
+    assert 'localStorage.setItem("alfred-theme", "light")' in tour_source
+    assert 'localStorage.setItem("alfred-theme", "dark")' not in tour_source
     assert "sample-data fixture" in homepage
     assert (ROOT / "docs/media/alfred-tour.mp4").read_bytes() == (
         ROOT / "site/public/media/alfred-tour.mp4"

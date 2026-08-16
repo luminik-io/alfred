@@ -12,7 +12,8 @@
   background: color-mix(in oklch, var(--card), var(--background) 6%);
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
 }
 
 .agent-drawer__inner {
@@ -27,7 +28,8 @@
   display: grid;
   gap: 0.6rem;
   padding: 1.15rem 1.15rem 1rem;
-  border-bottom: 1px solid color-mix(in oklch, var(--agent-accent), var(--border) 82%);
+  border-bottom: 1px solid
+    color-mix(in oklch, var(--agent-accent), var(--border) 82%);
   background: color-mix(in oklch, var(--agent-accent), var(--card) 93%);
 }
 
@@ -224,9 +226,7 @@
   border: 1px solid color-mix(in oklch, var(--metric-tone), var(--border) 74%);
   border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--metric-tone) 4%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 6px 18px color-mix(in oklch, var(--metric-tone), transparent 94%);
+  box-shadow: none;
 }
 
 .alfred-metric[data-tone="ok"] {
@@ -380,11 +380,7 @@
   border: 1px solid color-mix(in oklch, var(--border), white 8%);
   border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--card), var(--background) 8%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 34px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  box-shadow: none;
 }
 
 .panel {
@@ -448,7 +444,7 @@
 
 .logs-view,
 .settings-view {
-  min-height: min(680px, calc(100svh - 8rem));
+  min-height: 0;
 }
 
 @media (max-width: 440px) {

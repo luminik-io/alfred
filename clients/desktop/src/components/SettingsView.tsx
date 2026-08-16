@@ -24,7 +24,8 @@ import { FirstRunReadinessPanel } from "./onboarding/FirstRunReadinessPanel";
 import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
 import { Tabs, type TabItem } from "./Tabs";
 
-type SettingsSection = "appearance" | "runtime" | "collaborators" | "diagnostics";
+type SettingsSection =
+  "appearance" | "runtime" | "collaborators" | "diagnostics";
 
 export function SettingsView({
   baseUrl,
@@ -164,7 +165,11 @@ export function SettingsView({
   const tabs: TabItem<SettingsSection>[] = [
     { key: "runtime", label: "Runtime" },
     { key: "appearance", label: "Appearance" },
-    { key: "collaborators", label: "Collaborators", badge: trustedUsers.length || null },
+    {
+      key: "collaborators",
+      label: "Collaborators",
+      badge: trustedUsers.length || null,
+    },
     { key: "diagnostics", label: "Diagnostics" },
   ];
 
@@ -176,7 +181,7 @@ export function SettingsView({
         !loading && !setupLoading && setupStatus !== null ? "true" : "false"
       }
     >
-      <PanelHeader eyebrow="Alfred" title="Settings" />
+      <PanelHeader title="Settings" />
       <Tabs
         tabs={tabs}
         active={section}
@@ -202,9 +207,9 @@ export function SettingsView({
         {section === "runtime" ? (
           <div className="settings-section">
             <p className="panel-intro">
-              Install or repair Alfred on this Mac, then connect to the local server it starts.
-              Slack stays the collaboration UI, and the CLI remains the inspectable headless path
-              underneath.
+              Install or repair Alfred on this Mac, then connect to the local
+              server it starts. Slack stays the collaboration UI. The CLI
+              remains available for headless use and direct inspection.
             </p>
             <FirstRunReadinessPanel
               readiness={setupStatus?.first_run}
@@ -253,7 +258,11 @@ export function SettingsView({
               <button
                 className="icon-button"
                 type="button"
-                disabled={!canRun || nativeBusy === "core:install" || nativeBusy === "runtime:start"}
+                disabled={
+                  !canRun ||
+                  nativeBusy === "core:install" ||
+                  nativeBusy === "runtime:start"
+                }
                 onClick={onInstallCore}
               >
                 <Download size={16} aria-hidden="true" />
@@ -268,17 +277,30 @@ export function SettingsView({
               <button
                 className="secondary-button"
                 type="button"
-                disabled={!canRun || nativeBusy === "runtime:start" || nativeBusy === "core:install"}
+                disabled={
+                  !canRun ||
+                  nativeBusy === "runtime:start" ||
+                  nativeBusy === "core:install"
+                }
                 onClick={onStartRuntime}
               >
                 <Play size={16} aria-hidden="true" />
-                <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
+                <span>
+                  {nativeBusy === "runtime:start"
+                    ? "Starting"
+                    : "Start runtime"}
+                </span>
               </button>
               <button
                 className="secondary-button"
                 type="button"
                 disabled={!canRun || nativeBusy === "auth_status:fleet"}
-                onClick={() => onRunLocalAction({ action: "auth_status", refreshAfter: true })}
+                onClick={() =>
+                  onRunLocalAction({
+                    action: "auth_status",
+                    refreshAfter: true,
+                  })
+                }
               >
                 <CheckCircle2 size={16} aria-hidden="true" />
                 <span>Auth check</span>
@@ -299,7 +321,8 @@ export function SettingsView({
             </div>
             {!canRun ? (
               <p className="console-note">
-                Native actions appear in the desktop app. Browser preview stays read-only.
+                Native actions appear in the desktop app. Browser preview stays
+                read-only.
               </p>
             ) : null}
           </div>
@@ -308,11 +331,13 @@ export function SettingsView({
         {section === "collaborators" ? (
           <div className="settings-section">
             <p className="panel-intro">
-              Add people who can discuss plans and request drafts in Slack. The final approval gate
-              stays with the designated operator.
+              Add people who can discuss plans and request drafts in Slack. The
+              final approval gate stays with the designated operator.
             </p>
             {actionNotice ? (
-              <p className={`inline-notice inline-notice--${actionNotice.tone}`}>
+              <p
+                className={`inline-notice inline-notice--${actionNotice.tone}`}
+              >
                 {actionNotice.message}
               </p>
             ) : null}
@@ -330,17 +355,28 @@ export function SettingsView({
                 <input
                   id="trusted-user-id"
                   value={trustedUserId}
-                  onChange={(event) => setTrustedUserId(event.currentTarget.value)}
+                  onChange={(event) =>
+                    setTrustedUserId(event.currentTarget.value)
+                  }
                   placeholder="U0123ABCDEF"
                   spellCheck={false}
                 />
-                <button className="icon-button" type="submit" disabled={!canAddTrusted}>
+                <button
+                  className="icon-button"
+                  type="submit"
+                  disabled={!canAddTrusted}
+                >
                   <UserPlus size={16} aria-hidden="true" />
-                  <span>{busyTrustedUser?.startsWith("add:") ? "Adding" : "Trust"}</span>
+                  <span>
+                    {busyTrustedUser?.startsWith("add:") ? "Adding" : "Trust"}
+                  </span>
                 </button>
               </div>
             </form>
-            <div className="trusted-list" aria-label="Trusted Slack collaborators">
+            <div
+              className="trusted-list"
+              aria-label="Trusted Slack collaborators"
+            >
               {trustedUsers.length ? (
                 trustedUsers.map((user) => (
                   <div className="trusted-user" key={user.user_id}>
@@ -376,15 +412,18 @@ export function SettingsView({
         {section === "diagnostics" ? (
           <div className="settings-section">
             <p className="panel-intro">
-              Raw runtime probes for power users. Output appears in the result panel at the top of
-              the app. Per-agent controls live on Agents; memory checks live in Learnings.
+              Raw runtime probes for power users. Output appears in the result
+              panel at the top of the app. Per-agent controls live on Agents;
+              memory checks live in Learnings.
             </p>
             <div className="console-panel__actions">
               <button
                 className="secondary-button"
                 type="button"
                 disabled={!canRun || nativeBusy === "status:fleet"}
-                onClick={() => onRunLocalAction({ action: "status", refreshAfter: true })}
+                onClick={() =>
+                  onRunLocalAction({ action: "status", refreshAfter: true })
+                }
               >
                 <TerminalSquare size={16} aria-hidden="true" />
                 <span>Agent status</span>
@@ -393,7 +432,9 @@ export function SettingsView({
                 className="secondary-button"
                 type="button"
                 disabled={!canRun || nativeBusy === "agents:fleet"}
-                onClick={() => onRunLocalAction({ action: "agents", refreshAfter: true })}
+                onClick={() =>
+                  onRunLocalAction({ action: "agents", refreshAfter: true })
+                }
               >
                 <Server size={16} aria-hidden="true" />
                 <span>Agents</span>
@@ -411,7 +452,9 @@ export function SettingsView({
                 className="secondary-button"
                 type="button"
                 disabled={!canRun || nativeBusy === "code_memory_status:fleet"}
-                onClick={() => onRunLocalAction({ action: "code_memory_status" })}
+                onClick={() =>
+                  onRunLocalAction({ action: "code_memory_status" })
+                }
               >
                 <MemoryStick size={16} aria-hidden="true" />
                 <span>Code memory</span>
@@ -438,7 +481,9 @@ export function SettingsView({
                 className="icon-button"
                 type="button"
                 disabled={
-                  !canRun || !cleanConsoleAgent || nativeBusy === `dry_run:${cleanConsoleAgent}`
+                  !canRun ||
+                  !cleanConsoleAgent ||
+                  nativeBusy === `dry_run:${cleanConsoleAgent}`
                 }
                 onClick={() => {
                   if (!cleanConsoleAgent) return;
@@ -455,12 +500,13 @@ export function SettingsView({
             </div>
             <details className="cli-fallback">
               <summary>
-                <strong>What runs underneath</strong>
-                <span>Transparent previews for the curated local actions.</span>
+                <strong>View exact commands</strong>
+                <span>See the command behind each local action.</span>
               </summary>
               <p>
-                Alfred does not expose an arbitrary shell here. Each button maps to a narrow local
-                action, then the result panel shows the command, exit status, stdout, and stderr.
+                Alfred does not expose an arbitrary shell here. Each button maps
+                to a narrow local action, then the result panel shows the
+                command, exit status, stdout, and stderr.
               </p>
               <div className="cli-chip-list">
                 <code>alfred serve --port 7010</code>
@@ -480,7 +526,8 @@ export function SettingsView({
             </details>
             {!canRun ? (
               <p className="console-note">
-                Native actions appear in the desktop app. Browser preview stays read-only.
+                Native actions appear in the desktop app. Browser preview stays
+                read-only.
               </p>
             ) : null}
           </div>
