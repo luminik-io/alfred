@@ -20,6 +20,16 @@ The order can change when testing finds a reliability or safety problem.
 
 - Publish v0.7.0 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
+- Match every Desktop screen to the approved Signal Edge, Category Standard,
+  and Linked Fold references. Verify light and dark mode at desktop and phone
+  widths on a real Mac.
+- Keep the current top-level information architecture unless task testing shows
+  that a destination is duplicated or hard to find. Fix screen composition,
+  spacing, type, empty states, and responsive behavior without hiding evidence.
+- Publish only fixture-backed light-mode screenshots and video. Keep dark-mode
+  captures in the internal visual audit.
+- Require clean Markdown, direct copy, and current verification evidence in
+  every pull request description, including documentation-only changes.
 - Add a complete scratch-home test. It must install Alfred, configure a fleet,
   start the local API, exercise the desktop-ready setup path, verify optional
   battery status, and remove its temporary state.

@@ -64,7 +64,8 @@ decisions, review, and merge policy.
 
 The product name is Alfred. The voice is direct, calm, and technically precise.
 Use familiar engineering terms when they add meaning. Avoid fictional claims,
-agent theatrics, and language that suggests unsupervised authority.
+agent theatrics, and language that suggests agents can bypass configured policy,
+review, or merge rules.
 
 Alfred can feel capable and distinctive without hiding its controls. Themes are
 optional presentation. They are not the product identity.

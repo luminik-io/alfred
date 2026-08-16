@@ -33,9 +33,9 @@ time.
 | Uses one active harness | Routes roles between Claude Code and Codex |
 | Returns an answer or diff | Produces a PR, review findings, tests, and evidence |
 
-Alfred is local-first and open source. It targets solo builders and small teams
-that want ongoing agent work without giving an unsupervised process broad merge
-authority.
+Alfred is local-first and open source. It is for solo builders and small teams
+that want autonomous work to continue between check-ins while they retain
+explicit control over risky actions and merge policy.
 
 ## How work moves
 

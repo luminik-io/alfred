@@ -66,14 +66,14 @@ type PendingAction = { action: NativeAction; codename: string; label: string } |
 type RosterView = "workflow" | "list";
 const ROSTER_VIEW_KEY = "alfred.rosterView";
 
-function readRosterView(): RosterView {
+function readRosterViewPreference(): RosterView | null {
   try {
-    return window.localStorage.getItem(ROSTER_VIEW_KEY) === "list"
-      ? "list"
-      : "workflow";
+    const stored = window.localStorage.getItem(ROSTER_VIEW_KEY);
+    if (stored === "list" || stored === "workflow") return stored;
   } catch {
-    return "workflow";
+    // Private mode / no storage: keep the preference in memory only.
   }
+  return null;
 }
 
 export function FleetControlView({
@@ -136,7 +136,10 @@ export function FleetControlView({
   const [selectedCodename, setSelectedCodename] = useState<string | null>(defaultSelected);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
-  const [viewMode, setViewMode] = useState<RosterView>(() => readRosterView());
+  const [viewPreference, setViewPreference] = useState<RosterView | null>(() =>
+    readRosterViewPreference(),
+  );
+  const viewMode = viewPreference ?? (rows.length <= 1 ? "list" : "workflow");
   const [modelRecords, setModelRecords] = useState<Record<string, AgentModelRecord>>({});
   const [modelsLoading, setModelsLoading] = useState(true);
   const [modelBusy, setModelBusy] = useState<string | null>(null);
@@ -245,12 +248,13 @@ export function FleetControlView({
   };
 
   useEffect(() => {
+    if (!viewPreference) return;
     try {
-      window.localStorage.setItem(ROSTER_VIEW_KEY, viewMode);
+      window.localStorage.setItem(ROSTER_VIEW_KEY, viewPreference);
     } catch {
       // Private mode / no storage: keep the choice in memory only.
     }
-  }, [viewMode]);
+  }, [viewPreference]);
   const selectedRow = rows.find((row) => row.codename === selectedCodename) || rows[0] || null;
   const selectedSchedule = selectedRow
     ? scheduleFor(scheduleByCodename, selectedRow.codename)
@@ -347,7 +351,7 @@ export function FleetControlView({
                 data-active={viewMode === "workflow" ? "true" : "false"}
                 aria-pressed={viewMode === "workflow"}
                 aria-label="Workflow view"
-                onClick={() => setViewMode("workflow")}
+                onClick={() => setViewPreference("workflow")}
               >
                 <WorkflowIcon aria-hidden="true" />
                 <span>Workflow</span>
@@ -357,7 +361,7 @@ export function FleetControlView({
                 data-active={viewMode === "list" ? "true" : "false"}
                 aria-pressed={viewMode === "list"}
                 aria-label="List view"
-                onClick={() => setViewMode("list")}
+                onClick={() => setViewPreference("list")}
               >
                 <Rows3 aria-hidden="true" />
                 <span>List</span>
@@ -367,7 +371,9 @@ export function FleetControlView({
 
           <div
             className={
-              viewMode === "workflow" ? "agents-deck__stage" : "agents-deck__grid"
+              viewMode === "workflow"
+                ? "agents-deck__stage"
+                : "agents-deck__grid agents-deck__grid--list"
             }
           >
             {viewMode === "workflow" ? (

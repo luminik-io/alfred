@@ -88,7 +88,7 @@ export function AppShell({
             className="hidden h-3 shrink-0 md:block"
             data-tauri-drag-region
           />
-          <SidebarHeader className="gap-3 px-3 py-3">
+          <SidebarHeader className="gap-3 px-3 py-4">
             <SidebarBrandButton onNavigate={onNavigate} />
           </SidebarHeader>
 
@@ -159,7 +159,7 @@ export function AppShell({
 
         <SidebarInset className="h-svh overflow-hidden bg-transparent">
           <div className="flex h-full min-w-0 flex-col">
-            <header className="alfred-glass flex h-12 shrink-0 items-center gap-2 rounded-none border-x-0 border-t-0 px-3 md:hidden">
+            <header className="alfred-glass flex h-14 shrink-0 items-center gap-2.5 rounded-none border-x-0 border-t-0 px-4 md:hidden">
               <SidebarTrigger>
                 <PanelLeft aria-hidden="true" />
               </SidebarTrigger>
@@ -179,7 +179,7 @@ export function AppShell({
               </div>
             </header>
             <div
-              className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5 lg:px-7"
+              className="min-h-0 flex-1 overflow-auto px-4 py-5 sm:px-6 lg:px-6"
               data-alfred-scroll-region
             >
               {children}
@@ -251,7 +251,7 @@ function ShellNavMenuItem({
         isActive={active}
         tooltip={item.label}
         onClick={navigate}
-        className="transition-transform duration-150 hover:translate-x-0.5 data-active:translate-x-0.5"
+        className={`${active ? "nav-item-active" : ""} transition-transform duration-150 hover:translate-x-0.5 data-active:translate-x-0.5`}
       >
         <Icon aria-hidden="true" />
         <span>{item.label}</span>

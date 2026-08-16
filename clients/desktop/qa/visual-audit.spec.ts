@@ -76,6 +76,13 @@ async function assertShellContract(
       width,
       "desktop sidebar must use the approved compact rail",
     ).toBeLessThanOrEqual(208);
+    const labels = await sidebar
+      .locator('[data-sidebar="menu-button"] > span')
+      .allTextContents();
+    expect(
+      labels.slice(0, 3),
+      "the rail must lead from decisions to autonomous work, then new requests",
+    ).toEqual(["Inbox", "Work", "Ask"]);
   }
 }
 
@@ -84,6 +91,13 @@ async function assertWorkflowContract(
   viewport: ViewportName,
 ): Promise<void> {
   if (viewport !== "mobile") return;
+  if (
+    (await page
+      .getByRole("button", { name: "Workflow view" })
+      .getAttribute("aria-pressed")) !== "true"
+  ) {
+    return;
+  }
 
   const legend = await page.getByLabel("Workflow legend").boundingBox();
   const canvas = await page.locator(".workflow-graph__canvas").boundingBox();
@@ -169,6 +183,16 @@ for (const appearance of appearances) {
         await expect(
           page.getByRole("heading", { name: "Work", exact: true }),
         ).toBeVisible();
+        if (appearance.theme !== "category-standard") {
+          const cardTitleSize = await page
+            .locator(".alfred-card__outcome")
+            .first()
+            .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+          expect(
+            cardTitleSize,
+            `${appearance.theme} must keep the more spacious approved card typography`,
+          ).toBeGreaterThanOrEqual(14);
+        }
         await capture(page, viewportName, "work");
 
         await page
@@ -179,6 +203,24 @@ for (const appearance of appearances) {
             ? page.getByRole("complementary", { name: "Work item inspector" })
             : page.getByRole("dialog", { name: "Work item" }),
         ).toBeVisible();
+        if (viewportName === "desktop") {
+          const inspector = await page
+            .getByRole("complementary", { name: "Work item inspector" })
+            .boundingBox();
+          expect(
+            inspector?.width,
+            "the desktop evidence inspector must remain readable beside the board",
+          ).toBeGreaterThanOrEqual(360);
+
+          const lanes = await page.locator(".alfred-pipeline__column").all();
+          for (const lane of lanes) {
+            const box = await lane.boundingBox();
+            expect(
+              box?.width,
+              "each lifecycle lane must preserve a readable card width with the inspector open",
+            ).toBeGreaterThanOrEqual(190);
+          }
+        }
         await capture(page, viewportName, "work-inspector");
 
         if (viewportName === "mobile") {
@@ -197,13 +239,25 @@ for (const appearance of appearances) {
         await expect(
           page.getByRole("heading", { name: "Agents" }),
         ).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "List view" }),
+          "a one-agent roster must use the compact list instead of an empty workflow canvas",
+        ).toHaveAttribute("aria-pressed", "true");
         await assertWorkflowContract(page, viewportName);
         await capture(page, viewportName, "agents-roster");
 
         await page.getByRole("tab", { name: "Activity" }).click();
+        await expect(
+          page.getByText("Completed the Desktop visual contract"),
+          "the fixture-backed visual audit must exercise a real activity row",
+        ).toBeVisible();
         await capture(page, viewportName, "agents-activity");
 
         await page.getByRole("tab", { name: "Learnings" }).click();
+        await expect(
+          page.getByText("Keep fixture data separate from operator data."),
+          "the fixture-backed visual audit must exercise a real memory card",
+        ).toBeVisible();
         await capture(page, viewportName, "agents-learnings");
 
         await openPrimaryView(page, viewportName, "Settings");

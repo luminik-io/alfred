@@ -28,6 +28,10 @@
   padding: 0.75rem;
 }
 
+.agents-deck__grid--list .agents-deck__rail {
+  align-content: start;
+}
+
 .agents-deck__summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -150,6 +150,51 @@ describe("FleetControlView", () => {
     expect(screen.getByRole("button", { name: /^Resume$/i })).toBeInTheDocument();
   });
 
+  it("defaults a one-agent roster to the compact list", () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[agent("senior-dev")]}
+        schedule={[]}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /list view/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("uses the workflow when an initially empty roster loads several agents", () => {
+    const props = {
+      baseUrl: "http://127.0.0.1:7010",
+      modelRefreshVersion: 1,
+      schedule: [] as ScheduledRun[],
+      service: {},
+      nativeBusy: null,
+      onRunLocalAction: vi.fn(),
+      onViewLogs: vi.fn(),
+    };
+    const { rerender } = render(<FleetControlView {...props} agents={[]} />);
+
+    rerender(
+      <FleetControlView
+        {...props}
+        agents={[agent("senior-dev"), agent("test-engineer")]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /workflow view/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("shows selected-agent controls and switches to a paused agent", async () => {
     renderView();
     const user = userEvent.setup();

@@ -15,7 +15,9 @@ No changes are pending.
 - Added one capability registry for Claude Code and Codex across setup,
   diagnostics, scheduled roles, Slack, and Desktop.
 - Added three desktop themes and a Work inspector that shows pull-request
-  evidence without treating unavailable data as zero.
+  evidence without treating unavailable data as zero. Reworked every primary
+  Desktop screen against the approved theme references at desktop and phone
+  widths.
 - Made memory query misses stay empty and aligned SQLite, pgvector, and
   FleetBrain on one bounded lexical policy.
 - Required explicit trusted scope for code-memory indexing and isolated each
@@ -64,6 +66,11 @@ No changes are pending.
 - Work evidence collection now has a board-wide request budget, fair selection,
   bounded concurrency, and bounded semaphore waits.
 - Desktop Settings tabs keep full labels at narrow window widths.
+- Desktop navigation, Work lanes, the evidence inspector, the one-agent roster,
+  and Runtime settings keep readable proportions across supported window sizes.
+- Public screenshots and video use fixture data in light mode. The internal
+  visual audit still checks all three themes in light and dark mode.
+- Public PR metadata rejects escaped newline markers and automated attribution.
 
 ### Removed
 

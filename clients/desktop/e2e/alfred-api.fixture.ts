@@ -303,11 +303,45 @@ export class AlfredApiFixture {
       return true;
     }
     if (matches("/api/memory/lessons", "?limit=30")) {
-      await this.fulfill(route, { rows: [] });
+      await this.fulfill(route, {
+        rows: [
+          {
+            id: "lesson:fixture-boundary",
+            codename: "senior-dev",
+            repo: "example/workspace",
+            body: "Keep fixture data separate from operator data.",
+            tags: ["privacy", "testing"],
+            severity: "info",
+            created_at: "2026-07-23T19:45:00Z",
+            firing_id: "senior-dev-visual-contract",
+            ops: false,
+          },
+        ],
+      });
       return true;
     }
     if (matches("/api/firings", "?limit=14")) {
-      await this.fulfill(route, { rows: [] });
+      await this.fulfill(route, {
+        rows: [
+          {
+            firing_id: "senior-dev-visual-contract",
+            codename: "senior-dev",
+            started_at: "2026-07-23T19:40:00Z",
+            ended_at: "2026-07-23T19:44:00Z",
+            status: "ok",
+            summary: "Completed the Desktop visual contract",
+            transcript_path: null,
+            events_path: "state/fixtures/visual-contract.jsonl",
+            timeline: {
+              headline: "Completed the Desktop visual contract",
+              severity: "ok",
+              error: null,
+              outcome: "All layout checks passed.",
+              steps: [],
+            },
+          },
+        ],
+      });
       return true;
     }
     if (matches("/api/plans", "?limit=14")) {

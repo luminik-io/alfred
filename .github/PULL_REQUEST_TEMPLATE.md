@@ -1,44 +1,31 @@
 ## Summary
 
-<!-- One paragraph: what changes, why. Link the issue this resolves. -->
+<!-- State what changed and why in one short paragraph. -->
 
-## Type of change
+## Changes
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to change)
-- [ ] Documentation only
+<!-- List the material product or code changes. Remove this comment. -->
 
-## Design alignment
-
-<!-- Alfred is deliberately small. Confirm your change fits the constraints in CONTRIBUTING.md. -->
-
-- [ ] My change does NOT broaden scope (no multi-tenant, no web UI, no hosted-service patterns).
-- [ ] My change does NOT add a runtime dependency that's not already in `pyproject.toml` (or I justify it in the PR body).
-- [ ] My change is testable. I added tests under `tests/` for new behaviour.
-- [ ] If this change affects a user-facing Alfred flow (`install.sh`, `bin/`, `examples/bin/`), I updated the relevant doc.
+-
 
 ## Verification
 
-<!-- Reviewer needs to know what you ran. -->
+<!-- List the checks that passed. Summarize results. Do not paste raw logs. -->
 
-- [ ] `uv run --with pytest pytest tests/`: all green
-- [ ] `bash bin/doctor.sh`: passes locally
-- [ ] `ruff check .`: no new violations
-- [ ] `bash bin/scrub-check.sh`: clean
-- [ ] PR title and description contain no local paths, private repo names, or raw command output
-      <!-- A squash merge copies this title and body into the permanent commit message, so the Public PR metadata check scans them (and every commit message) to keep private text out of history. -->
-- [ ] (If shell change) `shellcheck <file>`: clean
+-
 
-## Screenshots / output
+## Visual evidence
 
-<!-- For UI / CLI / Slack-message changes, paste before/after. -->
+<!--
+For UI changes, attach fixture-backed screenshots or video captured in light
+mode. Do not include account names, local paths, repository names, or live data.
+Remove this section when it does not apply.
+-->
 
 ## Checklist
 
-- [ ] I read [`CONTRIBUTING.md`](../CONTRIBUTING.md).
-- [ ] My commits are signed-off (`git commit -s`) if you're contributing under DCO.
-- [ ] I updated `CHANGELOG.md` under `[Unreleased]`.
-- [ ] I added a doc update if the change is operator-visible.
-
-🤖 If this PR was generated with assistance, mention which tool in the body.
+- [ ] The title and description use real Markdown, not escaped newline markers.
+- [ ] The description contains no local paths, private names, raw logs, or automated attribution.
+- [ ] Tests cover the changed behavior.
+- [ ] Operator-facing docs and `CHANGELOG.md` describe the current behavior.
+- [ ] UI evidence uses fixture data and light mode.

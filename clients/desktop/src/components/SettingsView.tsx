@@ -211,120 +211,135 @@ export function SettingsView({
               server it starts. Slack stays the collaboration UI. The CLI
               remains available for headless use and direct inspection.
             </p>
-            <FirstRunReadinessPanel
-              readiness={setupStatus?.first_run}
-              compact
-              canRunActions={canRun}
-              nativeBusy={nativeBusy}
-              onRunRepair={runReadinessRepair}
-            />
-            <InstallInventoryPanel
-              inventory={setupStatus?.install ?? null}
-              queue={setupStatus?.queue ?? null}
-              compact
-            />
-            {setupError ? (
-              <p className="console-note">
-                Runtime inventory unavailable: {setupError}
-              </p>
-            ) : null}
-            <form
-              className="server-connect-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const nextUrl = serverUrl.trim();
-                if (nextUrl) onConnectServer(nextUrl);
-              }}
-            >
-              <label htmlFor="server-url">Local server URL</label>
-              <div className="server-row">
-                <input
-                  id="server-url"
-                  value={serverUrl}
-                  onChange={(event) => setServerUrl(event.currentTarget.value)}
-                  placeholder="http://127.0.0.1:7010"
-                  spellCheck={false}
+            <div className="settings-runtime-layout">
+              <div className="settings-runtime-status">
+                <FirstRunReadinessPanel
+                  readiness={setupStatus?.first_run}
+                  compact
+                  canRunActions={canRun}
+                  nativeBusy={nativeBusy}
+                  onRunRepair={runReadinessRepair}
                 />
-                <button
-                  className="secondary-button"
-                  type="submit"
-                  disabled={loading || !serverUrl.trim()}
-                >
-                  <span>{loading ? "Checking" : "Use URL"}</span>
-                </button>
+                <InstallInventoryPanel
+                  inventory={setupStatus?.install ?? null}
+                  queue={setupStatus?.queue ?? null}
+                  compact
+                />
+                {setupError ? (
+                  <p className="console-note">
+                    Runtime inventory unavailable: {setupError}
+                  </p>
+                ) : null}
               </div>
-            </form>
-            <div className="console-panel__actions">
-              <button
-                className="icon-button"
-                type="button"
-                disabled={
-                  !canRun ||
-                  nativeBusy === "core:install" ||
-                  nativeBusy === "runtime:start"
-                }
-                onClick={onInstallCore}
+              <section
+                className="settings-runtime-connect"
+                aria-labelledby="runtime-connection-title"
               >
-                <Download size={16} aria-hidden="true" />
-                <span>
-                  {nativeBusy === "core:install"
-                    ? "Installing"
-                    : nativeBusy === "runtime:start"
-                      ? "Starting"
-                      : "Install or repair"}
-                </span>
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={
-                  !canRun ||
-                  nativeBusy === "runtime:start" ||
-                  nativeBusy === "core:install"
-                }
-                onClick={onStartRuntime}
-              >
-                <Play size={16} aria-hidden="true" />
-                <span>
-                  {nativeBusy === "runtime:start"
-                    ? "Starting"
-                    : "Start runtime"}
-                </span>
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={!canRun || nativeBusy === "auth_status:fleet"}
-                onClick={() =>
-                  onRunLocalAction({
-                    action: "auth_status",
-                    refreshAfter: true,
-                  })
-                }
-              >
-                <CheckCircle2 size={16} aria-hidden="true" />
-                <span>Auth check</span>
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={setupLoading}
-                onClick={refreshSetupStatus}
-              >
-                <RefreshCw
-                  size={16}
-                  aria-hidden="true"
-                  className={setupLoading ? "animate-spin" : undefined}
-                />
-                <span>{setupLoading ? "Checking" : "Recheck setup"}</span>
-              </button>
+                <div>
+                  <h2 id="runtime-connection-title">Runtime connection</h2>
+                  <p>Choose the local server, then run setup checks.</p>
+                </div>
+                <form
+                  className="server-connect-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const nextUrl = serverUrl.trim();
+                    if (nextUrl) onConnectServer(nextUrl);
+                  }}
+                >
+                  <label htmlFor="server-url">Local server URL</label>
+                  <div className="server-row">
+                    <input
+                      id="server-url"
+                      value={serverUrl}
+                      onChange={(event) =>
+                        setServerUrl(event.currentTarget.value)
+                      }
+                      placeholder="http://127.0.0.1:7010"
+                      spellCheck={false}
+                    />
+                    <button
+                      className="secondary-button"
+                      type="submit"
+                      disabled={loading || !serverUrl.trim()}
+                    >
+                      <span>{loading ? "Checking" : "Use URL"}</span>
+                    </button>
+                  </div>
+                </form>
+                <div className="console-panel__actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    disabled={
+                      !canRun ||
+                      nativeBusy === "core:install" ||
+                      nativeBusy === "runtime:start"
+                    }
+                    onClick={onInstallCore}
+                  >
+                    <Download size={16} aria-hidden="true" />
+                    <span>
+                      {nativeBusy === "core:install"
+                        ? "Installing"
+                        : nativeBusy === "runtime:start"
+                          ? "Starting"
+                          : "Install or repair"}
+                    </span>
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={
+                      !canRun ||
+                      nativeBusy === "runtime:start" ||
+                      nativeBusy === "core:install"
+                    }
+                    onClick={onStartRuntime}
+                  >
+                    <Play size={16} aria-hidden="true" />
+                    <span>
+                      {nativeBusy === "runtime:start"
+                        ? "Starting"
+                        : "Start runtime"}
+                    </span>
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={!canRun || nativeBusy === "auth_status:fleet"}
+                    onClick={() =>
+                      onRunLocalAction({
+                        action: "auth_status",
+                        refreshAfter: true,
+                      })
+                    }
+                  >
+                    <CheckCircle2 size={16} aria-hidden="true" />
+                    <span>Auth check</span>
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={setupLoading}
+                    onClick={refreshSetupStatus}
+                  >
+                    <RefreshCw
+                      size={16}
+                      aria-hidden="true"
+                      className={setupLoading ? "animate-spin" : undefined}
+                    />
+                    <span>{setupLoading ? "Checking" : "Recheck setup"}</span>
+                  </button>
+                </div>
+                {!canRun ? (
+                  <p className="console-note">
+                    Native actions appear in the desktop app. Browser preview
+                    stays read-only.
+                  </p>
+                ) : null}
+              </section>
             </div>
-            {!canRun ? (
-              <p className="console-note">
-                Native actions appear in the desktop app. Browser preview stays
-                read-only.
-              </p>
-            ) : null}
           </div>
         ) : null}
 

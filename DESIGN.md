@@ -1,6 +1,6 @@
 ---
 name: Alfred
-description: A calm, inspectable operations interface for supervised coding-agent work.
+description: A calm operations interface for autonomous coding-agent work with visible control and merge boundaries.
 colors:
   canvas: "oklch(0.975 0.006 95)"
   ink: "oklch(0.255 0.015 240)"
