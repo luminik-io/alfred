@@ -542,6 +542,32 @@
   box-shadow: inset 3px 0 0 var(--warn);
 }
 
+:root[data-theme="linked-fold"] .command-center__decision {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 1.1rem) 0,
+    100% 1.1rem,
+    100% 100%,
+    0 100%
+  );
+}
+
+:root[data-theme="linked-fold"] .command-center__decision::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  pointer-events: none;
+  content: "";
+  border-left: 1px solid var(--fold-line);
+  border-bottom: 1px solid var(--fold-line);
+  background: color-mix(in oklch, var(--surface), var(--accent) 12%);
+}
+
 @media (min-width: 1280px) {
   .alfred-pipeline__workspace.has-inspector {
     grid-template-columns: minmax(0, 1fr) clamp(22.5rem, 25vw, 24rem);

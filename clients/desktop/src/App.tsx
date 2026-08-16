@@ -507,6 +507,7 @@ function App() {
               onOpenMemory={() => goTo("lessons")}
               firings={snapshot?.firings || []}
               focus={logsFocus}
+              sample={Boolean(shipped?.sample)}
             />
           ) : null}
           {fleetTab === "lessons" ? (

@@ -481,6 +481,30 @@
   line-height: 1.2;
 }
 
+/* Short desktop windows still show one complete role card. Compress repeated
+   summary tiles before allowing the first rail section to clip its content. */
+@media (min-width: 1181px) and (max-height: 800px) {
+  .command-center__rail {
+    grid-template-rows: minmax(7.25rem, 1fr) auto auto;
+    gap: 0.65rem;
+  }
+
+  .command-center__route,
+  .command-center__pulse,
+  .command-center__capacity {
+    padding: 0.7rem;
+  }
+
+  .command-center__rail-head {
+    margin-bottom: 0.4rem;
+  }
+
+  .command-center__metric,
+  .usage-tile {
+    padding: 0.5rem 0.6rem;
+  }
+}
+
 @media (max-width: 1180px) {
   .command-center {
     height: auto;

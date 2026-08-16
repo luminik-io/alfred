@@ -14,6 +14,8 @@
     "build": "tsc && vite build",
     "precapture:tour": "npm run build",
     "capture:tour": "node scripts/capture-public-tour.mjs",
+    "precapture:gallery": "npm run build",
+    "capture:gallery": "node scripts/capture-public-gallery.mjs",
     "precapture:visual": "npm run build",
     "capture:visual": "node scripts/run-contract-tests.mjs --config=playwright.visual.config.ts",
     "preview": "vite preview",

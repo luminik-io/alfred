@@ -45,6 +45,7 @@ export function LogsView({
   onOpenMemory,
   firings,
   focus,
+  sample = false,
 }: {
   baseUrl: string;
   feed: FeedItem[];
@@ -55,6 +56,7 @@ export function LogsView({
   onOpenMemory?: () => void;
   firings: FiringRecord[];
   focus: { agent: string | null; nonce: number };
+  sample?: boolean;
 }) {
   const [subtab, setSubtab] = useState<LogsSubtab>("activity");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(
@@ -93,6 +95,11 @@ export function LogsView({
         }
         onAction={subtab === "activity" && unseen ? onMarkAllSeen : undefined}
       />
+      {sample ? (
+        <p className="sample-board-notice" role="note">
+          Demo data. No real repositories or agent activity.
+        </p>
+      ) : null}
       <Tabs
         tabs={tabs}
         active={subtab}
