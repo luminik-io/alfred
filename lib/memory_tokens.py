@@ -16,16 +16,18 @@ from ipaddress import AddressValueError, IPv4Address
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _MIN_LANGUAGE_STANDARD_DIGITS = 2
 _MAX_LANGUAGE_STANDARD_DIGITS = 4
+_SLASH_IDENTITY_PATTERN = r"(?:HTTP/[0-9]{1,3}(?:\.[0-9]{1,3})?|I/O|A/B)"
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
     rf"(?<![A-Za-z0-9])(?:"
     rf"C\+\+[0-9]{{{_MIN_LANGUAGE_STANDARD_DIGITS},{_MAX_LANGUAGE_STANDARD_DIGITS}}}|"
     rf"C#[0-9]{{{_MIN_LANGUAGE_STANDARD_DIGITS},{_MAX_LANGUAGE_STANDARD_DIGITS}}}|"
     r"C\+\+|[A-Za-z]#|N\+[0-9]+|"
     r"O\((?:[0-9]+|n|log[ \t]+n)\)|"
-    r"(?<!/)(?:HTTP/[0-9]{1,3}(?:\.[0-9]{1,3})?|I/O|A/B)(?![./]))"
+    rf"(?<!/){_SLASH_IDENTITY_PATTERN}(?![./]))"
     r"(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+_SLASH_IDENTITY_RE = re.compile(_SLASH_IDENTITY_PATTERN, re.IGNORECASE)
 _MIN_DOTTED_VERSION_COMPONENTS = 2
 _MAX_DOTTED_VERSION_COMPONENTS = 3
 _MAX_DOTTED_VERSION_COMPONENT_DIGITS = 3
@@ -490,20 +492,38 @@ def escape_like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def identity_glob_pattern(value: str) -> str:
-    """Return a SQLite GLOB pattern for one boundary-delimited identity."""
-
-    escapes = {"*": "[*]", "?": "[?]", "[": "[[]", "]": "[]]"}
-    literal = "".join(escapes.get(char, char) for char in value)
-    return f"*[^A-Za-z0-9]{literal}[^A-Za-z0-9]*"
-
-
 def identity_regex_pattern(value: str) -> str:
-    """Return a PostgreSQL regex for one boundary-delimited identity."""
+    """Return a PostgreSQL-compatible regex with canonical identity bounds."""
 
+    value = lexical_surface(value)
     metacharacters = frozenset(r"\.^$|?*+(){}[]")
     literal = "".join(f"\\{char}" if char in metacharacters else char for char in value)
+    if _is_ipv4_identity(value):
+        return (
+            rf"(^|[^A-Za-z0-9./:]){literal}"
+            rf"($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])"
+        )
+    if _DOTTED_VERSION_RE.fullmatch(value):
+        return (
+            rf"(^|[^A-Za-z0-9./]){literal}"
+            rf"($|[^A-Za-z0-9/.]|\.$|\.[^A-Za-z0-9])"
+        )
+    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(value):
+        return (
+            rf"(^|[^A-Za-z0-9]){literal}"
+            rf"($|[^A-Za-z0-9.]|\.$|\.[^A-Za-z0-9])"
+        )
+    if _SLASH_IDENTITY_RE.fullmatch(value):
+        return rf"(^|[^A-Za-z0-9/]){literal}($|[^A-Za-z0-9./])"
     return rf"(^|[^A-Za-z0-9]){literal}([^A-Za-z0-9]|$)"
+
+
+def identity_variant_matches(text: str | None, identity: str | None) -> bool:
+    """Return whether text contains one identity with its canonical bounds."""
+
+    if not isinstance(text, str) or not isinstance(identity, str):
+        return False
+    return re.search(identity_regex_pattern(identity), lexical_surface(text)) is not None
 
 
 def required_lexical_overlap(query_tokens: list[str]) -> int:

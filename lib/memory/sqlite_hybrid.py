@@ -71,7 +71,7 @@ from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
 )
-from memory_tokens import identity_glob_pattern as _identity_glob_pattern
+from memory_tokens import identity_variant_matches as _identity_variant_matches
 from memory_tokens import is_identity_token as _is_identity_token
 from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
@@ -346,6 +346,12 @@ class SqliteHybridProvider:
 
     def _open(self, target: str) -> sqlite3.Connection:
         conn = sqlite3.connect(target)
+        conn.create_function(
+            "alfred_identity_variant_matches",
+            2,
+            _identity_variant_matches,
+            deterministic=True,
+        )
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
         return conn
@@ -787,8 +793,10 @@ class SqliteHybridProvider:
         clauses: list[str] = []
         for group in token_groups:
             if _is_identity_token(group[0]):
-                group_clauses = ["(' ' || l.lexical_text || ' ') GLOB ?" for _variant in group]
-                like_params.extend(_identity_glob_pattern(variant) for variant in group)
+                group_clauses = [
+                    "alfred_identity_variant_matches(l.lexical_text, ?) = 1" for _variant in group
+                ]
+                like_params.extend(group)
             else:
                 group_clauses = ["l.lexical_text LIKE ? ESCAPE '\\'" for _variant in group]
                 like_params.extend(f"%{_escape_like_literal(variant)}%" for variant in group)

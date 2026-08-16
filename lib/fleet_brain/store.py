@@ -26,7 +26,7 @@ from memory_tokens import (
     MAX_LITERAL_QUERY_CANDIDATES,
     escape_like_literal,
     has_meaningful_lexical_overlap,
-    identity_glob_pattern,
+    identity_variant_matches,
     is_identity_token,
     lexical_surface,
     literal_fallback_query,
@@ -629,6 +629,12 @@ class SQLiteStore:
                 self._memory_conn.create_function(
                     "alfred_lexical_surface", 1, lexical_surface, deterministic=True
                 )
+                self._memory_conn.create_function(
+                    "alfred_identity_variant_matches",
+                    2,
+                    identity_variant_matches,
+                    deterministic=True,
+                )
                 self._memory_conn.execute("PRAGMA foreign_keys = ON")
                 # WAL is a no-op for ``:memory:`` but the synchronous setting
                 # is harmless; keep the call shape symmetric with the disk
@@ -640,6 +646,12 @@ class SQLiteStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.create_function("alfred_lexical_surface", 1, lexical_surface, deterministic=True)
+        conn.create_function(
+            "alfred_identity_variant_matches",
+            2,
+            identity_variant_matches,
+            deterministic=True,
+        )
         conn.execute("PRAGMA foreign_keys = ON")
         # WAL lets concurrent readers proceed while a writer holds the
         # database, and lets two short-lived writers from sibling firings
@@ -747,9 +759,9 @@ class SQLiteStore:
             if search_text:
                 if identity_only_group is not None:
                     identity_clauses = [
-                        "((' ' || alfred_lexical_surface(body) || ' ') GLOB ? OR EXISTS ("
+                        "(alfred_identity_variant_matches(body, ?) = 1 OR EXISTS ("
                         "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
-                        "AND (' ' || alfred_lexical_surface(lt.tag) || ' ') GLOB ?))"
+                        "AND alfred_identity_variant_matches(lt.tag, ?) = 1))"
                         for _variant in identity_only_group
                     ]
                     wheres.append(f"({' OR '.join(identity_clauses)})")
@@ -772,8 +784,7 @@ class SQLiteStore:
             if search_text:
                 if identity_only_group is not None:
                     for variant in identity_only_group:
-                        pattern = identity_glob_pattern(variant)
-                        params.extend([pattern, pattern])
+                        params.extend([variant, variant])
                 else:
                     pattern = f"%{escape_like_literal(search_text)}%"
                     params.extend([pattern, pattern])
@@ -821,9 +832,9 @@ class SQLiteStore:
             for group in token_groups:
                 if is_identity_token(group[0]):
                     variant_clauses = [
-                        "((' ' || alfred_lexical_surface(body) || ' ') GLOB ? OR EXISTS ("
+                        "(alfred_identity_variant_matches(body, ?) = 1 OR EXISTS ("
                         "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
-                        "AND (' ' || alfred_lexical_surface(lt.tag) || ' ') GLOB ?))"
+                        "AND alfred_identity_variant_matches(lt.tag, ?) = 1))"
                         for _variant in group
                     ]
                 else:
@@ -839,7 +850,7 @@ class SQLiteStore:
             for group in token_groups:
                 for variant in group:
                     pattern = (
-                        identity_glob_pattern(variant)
+                        variant
                         if is_identity_token(group[0])
                         else f"%{escape_like_literal(variant)}%"
                     )

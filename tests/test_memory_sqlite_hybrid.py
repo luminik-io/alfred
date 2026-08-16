@@ -960,8 +960,13 @@ def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
 @pytest.mark.parametrize(
     ("query", "prefix_collision", "matching_body"),
     [
-        ("192.168.1.2", "192.168.1.20", "address=(192.168.1.2),"),
-        ("Node 2", "Node 20", "runtime [Node 2]."),
+        ("Node 2", "Node 2.0", "runtime [Node 2]."),
+        ("TLS 1.3", "TLS /1.3", "TLS (1.3)."),
+        ("192.168.1.2", "/192.168.1.2", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2:443", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2.9", "address=(192.168.1.2)."),
+        ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
+        ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
     ],
 )
 def test_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
@@ -996,14 +1001,23 @@ def test_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
     ]
     assert [lesson.id for lesson in out] == [relevant.id]
     assert len(fallback_queries) == 1
-    assert "GLOB" in fallback_queries[0]
+    assert "alfred_identity_variant_matches" in fallback_queries[0]
+    assert "LIMIT 50" in fallback_queries[0]
 
 
 @pytest.mark.parametrize(
     ("query", "matching_body"),
     [
+        ("Node 2", "Node 2."),
+        ("Node 2", "Node 2 starts the lesson"),
         ("192.168.1.2", "192.168.1.2 starts the lesson"),
         ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("1.3", "1.3 starts the lesson"),
+        ("1.3", "the lesson ends at 1.3"),
+        ("TLS 1.3", "TLS uses (1.3), here"),
+        ("HTTP/2.1", "HTTP/2.1 starts the lesson"),
+        ("HTTP/2.1", "the lesson ends at HTTP/2.1"),
+        ("HTTP/2.1", "protocol uses (HTTP/2.1), here"),
         ("Node 2", "use (Node 2), then verify"),
     ],
 )
@@ -1803,14 +1817,6 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
 
     assert len(groups) == 24
     assert all(1 <= len(group) <= 2 for group in groups)
-
-
-def test_identity_glob_pattern_escapes_sql_wildcards() -> None:
-    conn = sqlite3.connect(":memory:")
-    pattern = token_mod.identity_glob_pattern("x[*?]y")
-
-    assert conn.execute("SELECT (' x[*?]y ') GLOB ?", (pattern,)).fetchone() == (1,)
-    assert conn.execute("SELECT (' xABCy ') GLOB ?", (pattern,)).fetchone() == (0,)
 
 
 @pytest.mark.parametrize(

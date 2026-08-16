@@ -600,16 +600,57 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
 
 
 @pytest.mark.parametrize(
-    ("query", "prefix_collision", "matching_text"),
+    ("query", "prefix_collision", "matching_text", "expected_pattern"),
     [
-        ("192.168.1.2", "192.168.1.20", "address=(192.168.1.2),"),
-        ("Node 2", "Node 20", "runtime [node 2]."),
+        (
+            "Node 2",
+            "Node 2.0",
+            "runtime [node 2].",
+            r"(^|[^A-Za-z0-9])node 2($|[^A-Za-z0-9.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "TLS 1.3",
+            "TLS /1.3",
+            "tls (1.3).",
+            r"(^|[^A-Za-z0-9./])1\.3($|[^A-Za-z0-9/.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "192.168.1.2",
+            "/192.168.1.2",
+            "address=(192.168.1.2),",
+            r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "192.168.1.2",
+            "192.168.1.2:443",
+            "address=(192.168.1.2),",
+            r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "192.168.1.2",
+            "192.168.1.2.9",
+            "address=(192.168.1.2).",
+            r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "HTTP/2.1",
+            "HTTP/2.1/path",
+            "protocol [http/2.1],",
+            r"(^|[^A-Za-z0-9/])http/2\.1($|[^A-Za-z0-9./])",
+        ),
+        (
+            "HTTP/2.1",
+            "HTTP/2.1.next",
+            "protocol [http/2.1]",
+            r"(^|[^A-Za-z0-9/])http/2\.1($|[^A-Za-z0-9./])",
+        ),
     ],
 )
 def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
     query: str,
     prefix_collision: str,
     matching_text: str,
+    expected_pattern: str,
 ) -> None:
     prefix_rows = [
         (
@@ -636,7 +677,7 @@ def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
             if "FROM lessons l WHERE" not in normalized:
                 raise AssertionError(f"unexpected SQL: {normalized}")
             self.candidate_calls += 1
-            if "l.lexical_text ~ %s" in normalized:
+            if expected_pattern in params:
                 return Cursor([("matching", matching_text, _NOW - timedelta(days=1))])
             page_size = int(params[-1])
             start = (self.candidate_calls - 1) * page_size
@@ -652,9 +693,9 @@ def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
     assert conn.candidate_calls == 1
 
 
-def test_lexical_like_identity_regex_preserves_boundaries_and_escapes_metacharacters() -> None:
+def test_lexical_like_identity_regex_uses_canonical_class_boundaries() -> None:
     sql, params = _lexical_like_query(
-        [("c++",), ("192.168.1.2",)],
+        [("c++",), ("node 2",), ("1.3",), ("192.168.1.2",), ("http/2.1",)],
         table="lessons",
         codename="c",
         repo="r",
@@ -662,10 +703,13 @@ def test_lexical_like_identity_regex_preserves_boundaries_and_escapes_metacharac
         now=_NOW,
     )
 
-    assert sql.count("l.lexical_text ~ %s") == 2
-    assert params[:2] == [
+    assert sql.count("l.lexical_text ~ %s") == 5
+    assert params[:5] == [
         r"(^|[^A-Za-z0-9])c\+\+([^A-Za-z0-9]|$)",
-        r"(^|[^A-Za-z0-9])192\.168\.1\.2([^A-Za-z0-9]|$)",
+        r"(^|[^A-Za-z0-9])node 2($|[^A-Za-z0-9.]|\.$|\.[^A-Za-z0-9])",
+        r"(^|[^A-Za-z0-9./])1\.3($|[^A-Za-z0-9/.]|\.$|\.[^A-Za-z0-9])",
+        r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        r"(^|[^A-Za-z0-9/])http/2\.1($|[^A-Za-z0-9./])",
     ]
 
 

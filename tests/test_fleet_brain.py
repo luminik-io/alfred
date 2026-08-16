@@ -671,16 +671,22 @@ def test_recall_query_requires_ipv4_identity(brain: FleetBrain) -> None:
 @pytest.mark.parametrize(
     ("query", "prefix_collision", "matching_body"),
     [
-        ("192.168.1.2", "192.168.1.20", "address=(192.168.1.2),"),
-        ("Node 2", "Node 20", "runtime [Node 2]."),
+        ("Node 2", "Node 2.0", "runtime [Node 2]."),
+        ("TLS 1.3", "TLS /1.3", "TLS (1.3)."),
+        ("192.168.1.2", "/192.168.1.2", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2:443", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2.9", "address=(192.168.1.2)."),
+        ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
+        ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
     ],
 )
 def test_recall_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
-    brain: FleetBrain,
     query: str,
     prefix_collision: str,
     matching_body: str,
 ) -> None:
+    store = SQLiteStore(db_path=Path(":memory:"))
+    brain = FleetBrain(store=store)
     brain.reflect(
         codename="lucius",
         repo="org/api",
@@ -694,17 +700,36 @@ def test_recall_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
             body=f"{prefix_collision} collision {index}",
             created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
         )
+    assert store._memory_conn is not None
+    statements: list[str] = []
+    store._memory_conn.set_trace_callback(statements.append)
 
     out = brain.recall(codename="lucius", repo="org/api", query=query)
 
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT id, codename, repo, body, severity")
+        and "alfred_identity_variant_matches" in statement
+    ]
     assert [lesson.body for lesson in out] == [matching_body]
+    assert 1 <= len(candidate_queries) <= 2
+    assert "LIMIT 50" in candidate_queries[-1]
 
 
 @pytest.mark.parametrize(
     ("query", "matching_body"),
     [
+        ("Node 2", "Node 2."),
+        ("Node 2", "Node 2 starts the lesson"),
         ("192.168.1.2", "192.168.1.2 starts the lesson"),
         ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("1.3", "1.3 starts the lesson"),
+        ("1.3", "the lesson ends at 1.3"),
+        ("TLS 1.3", "TLS uses (1.3), here"),
+        ("HTTP/2.1", "HTTP/2.1 starts the lesson"),
+        ("HTTP/2.1", "the lesson ends at HTTP/2.1"),
+        ("HTTP/2.1", "protocol uses (HTTP/2.1), here"),
         ("Node 2", "use (Node 2), then verify"),
     ],
 )
