@@ -38,6 +38,12 @@ _RAW_OUTPUT = (
     re.compile(r"(?m)^\s*running\s+\d+\s+tests?\s*$"),
     re.compile(r"(?m)^\s*Traceback \(most recent call last\):\s*$"),
 )
+_ESCAPED_NEWLINES = re.compile(r"(?:\\n){2,}")
+_AUTOMATED_ATTRIBUTION = re.compile(
+    r"(?im)(?:<!--\s*codesmith:footer\s*-->|"
+    r"^\s*(?:built|created|generated|written)\s+(?:by|with)\s+"
+    r"(?:\[code\]smith|codex|claude(?:\s+code)?|an?\s+(?:ai|agent))\b)"
+)
 
 
 def _contains_private_home_path(text: str) -> bool:
@@ -76,6 +82,10 @@ def metadata_findings(title: str, body: str, *, allow_oversized: bool = False) -
         findings.append("oversized PR description")
     if any(pattern.search(text) for pattern in _RAW_OUTPUT):
         findings.append("raw command, test, compiler, or stack output")
+    if _ESCAPED_NEWLINES.search(body):
+        findings.append("escaped newline markers")
+    if _AUTOMATED_ATTRIBUTION.search(body):
+        findings.append("automated attribution")
     return findings
 
 

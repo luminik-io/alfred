@@ -633,3 +633,8 @@
   flex: 1 1 auto;
   gap: 0.75rem;
 }
+
+.agents-deck__grid--list {
+  min-height: 0;
+  flex: 0 1 auto;
+}

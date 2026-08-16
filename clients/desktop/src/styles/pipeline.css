@@ -381,13 +381,13 @@
 .sample-board-notice {
   align-self: flex-start;
   margin: -0.25rem 0 0;
-  border: 1px solid color-mix(in oklch, var(--warn), var(--hairline) 64%);
-  background: color-mix(in oklch, var(--warn), transparent 92%);
-  padding: 0.25rem 0.5rem;
-  color: color-mix(in oklch, var(--warn), var(--foreground) 30%);
-  font-family: var(--font-mono);
-  font-size: 0.63rem;
-  letter-spacing: 0.02em;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-2), transparent 24%);
+  padding: 0.3rem 0.55rem;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  letter-spacing: 0;
 }
 
 .alfred-pipeline__workspace {
@@ -435,7 +435,7 @@
   margin: 0;
   color: var(--foreground);
   font-family: var(--font-heading);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 650;
 }
 
@@ -443,7 +443,7 @@
   max-width: 25rem;
   margin: 0.2rem 0 0;
   color: var(--muted-foreground);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   line-height: 1.4;
 }
 

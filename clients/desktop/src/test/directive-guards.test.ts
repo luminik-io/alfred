@@ -71,8 +71,8 @@ describe("primary nav job-shaped IA (do not revert)", () => {
   it("uses exactly the product labels Inbox / Ask / Work / Code / Agents / Settings", () => {
     expect(PRIMARY_TABS.map((tab) => tab.label)).toEqual([
       "Inbox",
-      "Ask",
       "Work",
+      "Ask",
       "Code",
       "Agents",
       "Settings",

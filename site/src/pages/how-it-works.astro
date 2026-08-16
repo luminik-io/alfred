@@ -32,7 +32,7 @@ const lifecycle = [
   {
     n: "05",
     title: "Claude Code or Codex writes the code",
-    body: "The agent hands the task to Claude Code or Codex on the command line, with the full project in context. Everything it does is saved to a log file on your machine.",
+    body: "The agent hands the task to Claude Code or Codex on the command line, with the full project in context. Alfred saves the run log under ALFRED_HOME.",
     log: "[12:00:06] claude_invoke pid=84217  log=state/logs/12000305.log",
   },
   {
@@ -115,7 +115,7 @@ const labels = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="TRY IT ON YOUR MACHINE"
+        eyebrow="TRY IT LOCALLY"
         title="Do a test run before you spend anything."
         lede="A test run walks through every step above without calling Claude or Codex, so nothing is spent. Run it once on every new setup."
       />

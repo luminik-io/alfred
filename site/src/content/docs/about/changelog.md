@@ -27,7 +27,8 @@ Desktop workflow.
   routing, setup, diagnostics, scheduled roles, Slack, and Desktop.
 - Signal Edge, The Category Standard, and Linked Fold provide coordinated
   light and dark desktop themes. The Work inspector shows checks, reviews,
-  files, commits, and unavailable GitHub evidence.
+  files, commits, and unavailable GitHub evidence. Every primary screen is
+  checked at desktop and phone widths against the approved theme references.
 - Query-bearing memory recall now keeps misses empty. SQLite, pgvector, and
   FleetBrain use one bounded lexical policy for technical symbols, Unicode
   text, tags, scope, and result limits.
@@ -36,6 +37,8 @@ Desktop workflow.
 - Behavior-changing memory is held for review by default.
 - The release removes Mac Mini CI, retired proof assets, and fixed subscription
   quota estimates from benchmark output.
+- Public product media uses fixture data in light mode. Pull-request metadata
+  rejects escaped newline markers and automated attribution.
 
 Read the complete
 [`0.7.0` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#070---2026-08-16).
