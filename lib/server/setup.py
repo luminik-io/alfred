@@ -1758,7 +1758,7 @@ def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
     explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
     if explicit:
-        resolved = _resolve_configured_binary(explicit)
+        resolved = _resolve_configured_binary(env, explicit)
         if resolved:
             return {
                 "resolved": True,
@@ -1790,8 +1790,8 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def _resolve_configured_binary(value: str) -> str | None:
-    path = _safe_expand_path(value) or Path(value)
+def _resolve_configured_binary(env: Mapping[str, str], value: str) -> str | None:
+    path = _code_memory_expand_user_path(env, value)
     if path.is_file() and os.access(path, os.X_OK):
         return str(path)
     return None

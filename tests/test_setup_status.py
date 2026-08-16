@@ -1834,6 +1834,83 @@ def test_code_memory_status_ignores_ambient_path_binary(tmp_path: Path) -> None:
     }
 
 
+@pytest.mark.parametrize("use_home", [True, False])
+def test_launcher_status_and_battery_agree_on_explicit_tilde_binary(
+    tmp_path: Path,
+    use_home: bool,
+) -> None:
+    alfred_home = tmp_path / "runtime"
+    home = tmp_path / "home"
+    expansion_root = home if use_home else alfred_home
+    binary = expansion_root / "bin" / "custom-memory"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nprintf 'custom-memory 1.0\\n'\n", encoding="utf-8")
+    binary.chmod(0o755)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_CODE_MEMORY_BIN": "~/bin/custom-memory",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+    }
+    if use_home:
+        env["HOME"] = str(home)
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert f"binary:  {binary}" in launcher.stderr
+    assert code_memory["binary"] == {
+        "resolved": True,
+        "path": str(binary),
+        "source": "env",
+        "configured": "~/bin/custom-memory",
+    }
+    assert setup_mod.batteries._code_memory_binary(env) is True
+
+
+def test_launcher_status_and_battery_reject_missing_explicit_tilde_binary(
+    tmp_path: Path,
+) -> None:
+    alfred_home = tmp_path / "runtime"
+    cache = alfred_home / "bin" / "codebase-memory-mcp"
+    cache.parent.mkdir(parents=True)
+    cache.write_text("#!/bin/sh\nprintf 'cache 1.0\\n'\n", encoding="utf-8")
+    cache.chmod(0o755)
+    missing = alfred_home / "bin" / "custom-memory"
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_CODE_MEMORY_BIN": "~/bin/custom-memory",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+    }
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert f"explicit binary is not executable: {missing}" in launcher.stderr
+    assert "binary:  NOT RESOLVED" in launcher.stderr
+    assert str(cache) not in launcher.stderr
+    assert code_memory["binary"] == {
+        "resolved": False,
+        "path": None,
+        "source": "env",
+        "configured": "~/bin/custom-memory",
+    }
+    assert setup_mod.batteries._code_memory_binary(env) is False
+
+
 def test_bootstrap_status_respects_code_memory_disable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
