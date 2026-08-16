@@ -104,7 +104,7 @@ test("narrow Settings keeps every section label readable", async ({ page }) => {
   expect(metrics.every(({ labelWidth, labelScrollWidth }) => labelWidth >= labelScrollWidth)).toBe(
     true,
   );
-  expect(metrics.every(({ tabHeight }) => tabHeight >= 36)).toBe(true);
+  expect(metrics.every(({ tabHeight }) => tabHeight >= 38)).toBe(true);
 });
 
 test("primary navigation loads code, models, settings, and returns to Inbox", async ({ page }) => {
