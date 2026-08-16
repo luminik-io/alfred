@@ -34,6 +34,15 @@ _DOTTED_VERSION_RE = re.compile(
     rf"{{{_MIN_DOTTED_VERSION_COMPONENTS - 1},{_MAX_DOTTED_VERSION_COMPONENTS - 1}}}"
     r"(?![A-Za-z0-9/]|\.[A-Za-z0-9])"
 )
+_MAJOR_VERSION_CONTEXTS = ("python", "node")
+_MIN_MAJOR_VERSION_DIGITS = 1
+_MAX_MAJOR_VERSION_DIGITS = 2
+_CONTEXTUAL_MAJOR_VERSION_RE = re.compile(
+    rf"(?<![A-Za-z0-9])(?:{'|'.join(_MAJOR_VERSION_CONTEXTS)})[ \t]+"
+    rf"[1-9][0-9]{{{_MIN_MAJOR_VERSION_DIGITS - 1},{_MAX_MAJOR_VERSION_DIGITS - 1}}}"
+    r"(?![A-Za-z0-9]|\.[A-Za-z0-9])",
+    re.IGNORECASE,
+)
 _ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
 _MAX_QUERY_TOKENS = 24
 _MAX_RETRIEVAL_VARIANTS_PER_CONCEPT = 2
@@ -112,6 +121,7 @@ def _compound_matches(text: str) -> list[re.Match[str]]:
     matches = [
         *_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text),
         *_DOTTED_VERSION_RE.finditer(text),
+        *_CONTEXTUAL_MAJOR_VERSION_RE.finditer(text),
     ]
     return sorted(matches, key=lambda match: (match.start(), match.end()))
 
@@ -123,6 +133,7 @@ def _is_identity_token(token: str) -> bool:
         token in _ONE_CHAR_TECHNICAL_TOKENS
         or bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
         or bool(_DOTTED_VERSION_RE.fullmatch(token))
+        or bool(_CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token))
     )
 
 
@@ -265,11 +276,13 @@ def meaningful_tokens(text: str) -> Iterator[str]:
     Symbolic terms such as ``C++``, ``C#``, ``N+12``, ``O(42)``, and
     ``HTTP/2.1`` stay intact. Standalone numeric versions have two or three
     components of one to three digits each, such as ``1.3`` or ``10.20.30``.
-    Words inside any compound span are not yielded a second time. A lesson
-    containing only ``HTTP/2`` therefore contributes one overlap concept, not
-    both ``http/2`` and ``http``. Ordinary punctuation is only a spelling
-    separator, so ``cold-start`` yields ``cold`` and ``start`` and can match the
-    spelling ``cold start``.
+    Explicit Python and Node major versions have one or two digits and stay
+    bound to their runtime context, such as ``Python 3`` or ``Node 22``. Words
+    inside any compound span are not yielded a second time. A lesson containing
+    only ``HTTP/2`` therefore contributes one overlap concept, not both
+    ``http/2`` and ``http``. Ordinary punctuation is only a spelling separator,
+    so ``cold-start`` yields ``cold`` and ``start`` and can match the spelling
+    ``cold start``.
     """
 
     text = lexical_surface(text)

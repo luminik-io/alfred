@@ -692,6 +692,58 @@ def test_lexical_like_fallback_requires_atomic_language_standard_identity(
     assert ids == ["matching"]
 
 
+@pytest.mark.parametrize(
+    ("query", "identity", "wrong_text", "matching_text"),
+    [
+        (
+            "Fix Python 3 migration",
+            "python 3",
+            "python 2 migration guidance",
+            "python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "node 22",
+            "node 20 runtime guidance",
+            "node 22 runtime guidance",
+        ),
+    ],
+)
+def test_lexical_like_fallback_requires_contextual_major_version_identity(
+    query: str,
+    identity: str,
+    wrong_text: str,
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", wrong_text, _NOW),
+                ("matching", matching_text, _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert f"%{identity}%" in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
 def test_lexical_like_fallback_recalls_unicode_query() -> None:
     query = "認証エラーを修正"
     lesson_body = f"手順: {query}してください"

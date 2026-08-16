@@ -217,6 +217,41 @@ def test_default_chain_requires_atomic_language_standard_identity(
     assert [item.id for item in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+    ],
+)
+def test_default_chain_requires_contextual_major_version_identity(
+    tmp_path: Path,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred-home"),
@@ -872,6 +907,67 @@ def test_like_recall_requires_atomic_language_standard_identity(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+    ],
+)
+def test_fts_recall_requires_contextual_major_version_identity(
+    provider: SqliteHybridProvider,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+    ],
+)
+def test_like_recall_requires_contextual_major_version_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="c", repo="r", body="The API client retries requests")
     relevant = provider.reflect(
@@ -1229,6 +1325,57 @@ def test_atomic_language_standard_identity_is_mandatory(
     wrong_lesson: str,
 ) -> None:
     assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
+
+
+@pytest.mark.parametrize("runtime", ["Python 3", "Node 22"])
+def test_tokenize_recognizes_contextual_major_version_identity(runtime: str) -> None:
+    assert mod._tokenize(runtime) == [runtime.casefold()]
+
+
+def test_contextual_major_versions_casefold_and_keep_punctuation_boundaries() -> None:
+    tokens = mod._tokenize("Upgrade PYTHON 3, then Node 22.")
+
+    assert {"python 3", "node 22"}.issubset(tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_lesson"),
+    [
+        ("Fix Python 3 migration", "Python 2 migration guidance"),
+        ("Fix Node 22 runtime", "Node 20 runtime guidance"),
+    ],
+)
+def test_contextual_major_version_identity_is_mandatory(
+    query: str,
+    wrong_lesson: str,
+) -> None:
+    assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
+
+
+@pytest.mark.parametrize(
+    ("query", "forbidden_identity"),
+    [
+        ("Run 3 tests", "run 3"),
+        ("Fix 2 bugs", "fix 2"),
+        ("Rust 3 migration", "rust 3"),
+        ("Python 03 migration", "python 03"),
+        ("Python 123 migration", "python 123"),
+        ("Python3 migration", "python 3"),
+    ],
+)
+def test_tokenize_does_not_create_generic_or_unbounded_major_identities(
+    query: str,
+    forbidden_identity: str,
+) -> None:
+    assert forbidden_identity not in mod._tokenize(query)
+
+
+def test_contextual_major_does_not_double_count_dotted_version() -> None:
+    tokens = mod._tokenize("Python 3.13 migration")
+
+    assert "3.13" in tokens
+    assert "python" in tokens
+    assert "python 3" not in tokens
 
 
 @pytest.mark.parametrize("version", ["1.3", "3.13", "10.20.30", "123.456.789"])

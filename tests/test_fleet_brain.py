@@ -485,6 +485,35 @@ def test_recall_query_requires_atomic_language_standard_identity(
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+    ],
+)
+def test_recall_query_requires_contextual_major_version_identity(
+    brain: FleetBrain,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=wrong_body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
     matching_body = "Use C++ for the client"
