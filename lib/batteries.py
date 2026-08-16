@@ -536,12 +536,33 @@ def _is_executable_file(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+def _expand_user_path(env: Mapping[str, str], raw: str) -> Path:
+    """Expand ``~`` with the code-memory launcher's home precedence."""
+
+    path = Path(raw)
+    if raw != "~" and not raw.startswith("~/"):
+        return path
+    home = next(
+        (
+            Path(value)
+            for key in ("HOME", "ALFRED_HOME")
+            if (value := str(env.get(key, "")).strip())
+        ),
+        None,
+    )
+    if home is None:
+        try:
+            home = Path.home()
+        except RuntimeError:
+            return path
+    suffix = raw.removeprefix("~/") if raw != "~" else ""
+    return home / suffix
+
+
 def _code_memory_binary(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
-    if override and _is_executable_file(Path(override).expanduser()):
-        return True
-    if shutil.which("codebase-memory-mcp"):
-        return True
+    if override:
+        return _is_executable_file(_expand_user_path(env, override))
     fetched = _alfred_home(env) / "bin" / "codebase-memory-mcp"
     return _is_executable_file(fetched)
 

@@ -727,21 +727,20 @@ export type SetupCodeMemory = {
   binary: {
     resolved: boolean;
     path: string | null;
-    source: "env" | "path" | "cache" | "none" | string;
+    source: "env" | "cache" | "none";
     configured: string | null;
   };
   version_pin: string;
   repo: string;
   index_dir: string;
   index_present: boolean;
-  repos?: {
+  repos: {
     configured: string[];
-    configured_existing?: string[];
-    discovered?: string[];
-    selected?: string[];
-    source?: "configured" | "auto" | "auto-fallback" | string;
+    configured_existing: string[];
+    discovered: string[];
+    selected: string[];
+    source: "configured" | "configured-missing" | "unconfigured" | "disabled";
     count: number;
-    limit?: number;
   };
   detail: string;
 };

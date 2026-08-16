@@ -42,11 +42,11 @@ it at a binary you installed yourself.
   index (`index` / `refresh`). Run `bin/code-memory-mcp doctor` to see what is
   resolved.
 - **Indexing.** The launcher indexes the repos in your scope list into
-  `$ALFRED_HOME/state/code-memory`. If no scope list is configured, Alfred
-  auto-discovers git repos under `WORKSPACE_ROOT/product` by default, skipping
-  archive, worktree, build, and dependency directories. Once a scope list is
-  configured, Alfred indexes only entries that resolve to real git repos; stale
-  entries are skipped instead of falling back to broad auto-discovery. The
+  `$ALFRED_HOME/state/code-memory`. Set `ALFRED_CODE_MEMORY_REPOS`, or set
+  `ALFRED_CODE_MAP_REPOS` as the fallback scope. Alfred does not infer a runtime
+  scope from nearby checkouts. The interactive repository picker can scan for
+  choices, but it does not enable those repositories. Alfred indexes only scope
+  entries that resolve to git repositories. The
   installed `code-map-refresh` agent keeps Alfred's lightweight local JSON code map
   current. The `code-memory-mcp` launcher refreshes the MCP graph separately so
   graph search, call traces, change detection, and architecture queries track git changes without a
@@ -82,30 +82,35 @@ alfred code-map impact frontend src/lib/api.ts --brief
 alfred code-map blast-radius frontend src/lib/api.ts src/App.tsx --json
 ```
 
-If the binary cannot be resolved (no network, autofetch disabled, unsupported
-platform), the MCP server is a no-op for that firing and the rest of memory is
-unaffected. Nothing fails closed.
+If the scope is not configured, or none of its entries resolve to git
+checkouts, the MCP server is a no-op for that firing. Explicit `index` and
+`refresh` actions fail with a scope error. Alfred checks the resolved scope
+before it fetches or runs the binary. If the binary cannot be resolved, the MCP
+server is also a no-op and the rest of memory is unaffected.
 
 ## Configuration
 
-All knobs are environment variables; set them in `$ALFRED_HOME/.env`.
-Defaults work out of the box.
+All knobs are environment variables. Set them in `$ALFRED_HOME/.env`.
 
 | Variable | Default | What it does |
 |---|---|---|
 | `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the code-memory MCP to Claude firings. Set `0` to disable. |
-| `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`, then auto-discovery) | Comma-separated repo dir names under your workspace to index. |
+| `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`) | Required comma-separated repo directory names or slugs to index. An empty scope disables serving and blocks indexing. |
 | `ALFRED_REPO_LOCAL_MAP` | (unset) | Optional shell-tokenized `repo-slug=local-path` map for repos whose GitHub slug differs from the checkout directory, for example `ALFRED_REPO_LOCAL_MAP='acme-api=api acme-site=../marketing/site'`. Relative paths resolve under the configured workspace subdir. |
-| `ALFRED_CODE_MEMORY_DISCOVERY_LIMIT` | `25` | Max git repos auto-discovered when no explicit code-memory/code-map scope is configured. |
-| `ALFRED_WORKSPACE_SUBDIR` | (falls back to `WORKSPACE_SUBDIR`, then `product`) | Optional subdirectory under `WORKSPACE_ROOT` to scan for code-memory repos. Set it to an empty value to scan `WORKSPACE_ROOT` directly. |
-| `ALFRED_CODE_MEMORY_BIN` | (unset) | Explicit path to the `codebase-memory-mcp` binary. Skips PATH + autofetch. |
+| `ALFRED_WORKSPACE_SUBDIR` | (falls back to `WORKSPACE_SUBDIR`, then `product`) | Optional subdirectory under `WORKSPACE_ROOT` where configured relative repo paths resolve. Set an empty value to resolve them from `WORKSPACE_ROOT`. |
+| `ALFRED_CODE_MEMORY_BIN` | (unset) | Trusted executable path to `codebase-memory-mcp`. This bypasses Alfred's pinned download verification. A missing or non-executable path fails closed and does not use the cache or auto-fetch. |
 | `ALFRED_CODE_MEMORY_VERSION` | pinned (`v0.8.1`) | Upstream release tag to fetch. |
 | `ALFRED_CODE_MEMORY_REPO` | `DeusData/codebase-memory-mcp` | Upstream GitHub repo for release assets. |
 | `ALFRED_CODE_MEMORY_AUTOFETCH` | `1` (on) | Fetch the pinned binary on first use. Set `0` for a strict no-network install. |
 | `ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S` | `10` | Connect timeout for first-use release downloads. |
 | `ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S` | `120` | Overall timeout for first-use release downloads. |
 | `ALFRED_CODE_MEMORY_INDEX_DIR` | `$ALFRED_HOME/state/code-memory` | Default storage root for code-memory state when `ALFRED_CODE_MEMORY_HOME` is unset. |
-| `ALFRED_CODE_MEMORY_HOME` | `ALFRED_CODE_MEMORY_INDEX_DIR` | HOME used for the upstream binary, which stores graph DBs under `.cache/codebase-memory-mcp`. |
+| `ALFRED_CODE_MEMORY_HOME` | `ALFRED_CODE_MEMORY_INDEX_DIR` | HOME used for the upstream binary and the default root for graph caches. |
+| `CBM_CACHE_DIR` | `$ALFRED_CODE_MEMORY_HOME/.cache/codebase-memory-mcp` | Optional graph-cache root. Alfred creates one deterministic subdirectory per exact resolved repository scope. |
+
+Relative values for the index, code-memory home, and cache roots resolve under
+`ALFRED_HOME`. The launcher and Setup therefore inspect the same physical cache
+even when they start from different working directories.
 
 ## `alfred-codegraph@1`
 
@@ -134,9 +139,12 @@ unmapped, ambiguous, generated, or hidden behind dynamic imports.
 
 Binary resolution order (first hit wins):
 
-1. `ALFRED_CODE_MEMORY_BIN` if it points at an executable
-2. `codebase-memory-mcp` on `PATH` (system or package install)
-3. `$ALFRED_HOME/bin/codebase-memory-mcp` (the pinned cache, auto-fetched here)
+1. `ALFRED_CODE_MEMORY_BIN` if it points at an executable.
+2. `$ALFRED_HOME/bin/codebase-memory-mcp`, the pinned cache that Alfred can fetch.
+
+Alfred does not use an ambient `codebase-memory-mcp` executable from `PATH`.
+If `ALFRED_CODE_MEMORY_BIN` is set but invalid, Alfred stops resolution. It does
+not fall back to another binary.
 
 ## Scope
 
@@ -148,10 +156,17 @@ actually shaped right now.
 
 ## Privacy
 
-The binary runs locally and indexes only the repos you list. No code, symbols,
-or graph data leave the host. Fetching the binary contacts GitHub releases
-only; disable that with `ALFRED_CODE_MEMORY_AUTOFETCH=0` and install the binary
-yourself.
+The binary runs locally and Alfred asks it to index only the repositories you
+list. Fetching the binary contacts GitHub releases. Disable that with
+`ALFRED_CODE_MEMORY_AUTOFETCH=0` and set `ALFRED_CODE_MEMORY_BIN` to a binary
+that you installed.
+
+Alfred derives each active graph-cache directory from a SHA-256 fingerprint of
+the sorted canonical paths in the resolved repository scope. Repository order
+does not affect the fingerprint. A different or narrower scope uses a different
+cache, so the MCP server cannot query graphs retained under an older scope.
+Old scope caches remain on disk until you remove them. Alfred does not delete or
+migrate them automatically.
 
 ## Phase 2: typed, linked, and time-aware lessons
 

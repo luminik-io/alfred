@@ -27,6 +27,7 @@ twin.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -128,7 +129,6 @@ _CODE_MEMORY_VERSION_RE = re.compile(
     r'^CODE_MEMORY_VERSION="\$\{ALFRED_CODE_MEMORY_VERSION:-([^}]+)\}"'
 )
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
-_CODE_MEMORY_DISCOVERY_LIMIT = 25
 _REPO_DISCOVERY_SLOT = threading.Lock()
 _CODE_MEMORY_DISCOVERY_IGNORES = {
     ".git",
@@ -883,27 +883,41 @@ def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
 
     ``bin/code-memory-mcp doctor`` may auto-fetch the pinned upstream binary,
     which is great for an explicit repair action but too surprising for the
-    read-only setup checklist. This probe only inspects config, PATH, the
-    pinned launcher metadata, and the existing index directory.
+    read-only setup checklist. This probe only inspects config, configured
+    repository paths, the pinned launcher metadata, and the existing index
+    directory.
     """
 
     launcher_env = env or _code_memory_launcher_env()
     enabled = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_MCP", default=True)
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
+    graphify_fallback = (
+        _config_flag(launcher_env, "ALFRED_GRAPHIFY_MCP", default=False)
+        and _code_memory_config(launcher_env, "ALFRED_GRAPHIFY_FALLBACK").lower() == "code-memory"
+    )
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
+    if enabled or graphify_fallback:
+        repo_scope, resolved_repo_paths = _code_memory_repo_scope_with_paths(launcher_env)
+    else:
+        repo_scope = _disabled_code_memory_repo_scope(launcher_env)
+        resolved_repo_paths = []
     index_home = _code_memory_home(launcher_env, index_dir)
-    graph_dir = _code_memory_graph_dir(launcher_env, index_home)
-    repo_scope = (
-        _code_memory_repo_scope(launcher_env)
-        if enabled
-        else _disabled_code_memory_repo_scope(launcher_env)
-    )
-    index_present = _code_memory_index_present(graph_dir)
+    graph_dir = _code_memory_graph_dir(launcher_env, index_home, resolved_repo_paths)
+    index_present = bool(resolved_repo_paths) and _code_memory_index_present(graph_dir)
     pin = _code_memory_pin(launcher_env)
 
+    scope_configured = bool(repo_scope["configured"])
+    scope_resolved = bool(repo_scope["selected"])
     if not enabled:
         detail = "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    elif not scope_configured:
+        detail = (
+            "Code-memory repository scope is not configured. Set "
+            "ALFRED_CODE_MEMORY_REPOS or ALFRED_CODE_MAP_REPOS."
+        )
+    elif not scope_resolved:
+        detail = "Configured code-memory repositories do not resolve to git checkouts."
     elif binary["resolved"] and index_present:
         detail = "Code-memory binary and index are present."
     elif binary["resolved"]:
@@ -968,7 +982,8 @@ def capability_status(
         "actionable": sum(
             1
             for item in capabilities
-            if item["state"] in {"installable", "missing", "needs_index", "available"}
+            if item["state"]
+            in {"installable", "missing", "needs_index", "needs_scope", "available"}
         ),
         "disabled": sum(1 for item in capabilities if item["state"] == "disabled"),
     }
@@ -1105,10 +1120,12 @@ def _code_graph_capability(
 ) -> dict[str, Any]:
     code_binary = code_memory.get("binary") or {}
     fallback_enabled = bool(graphify and graphify.get("fallback") == "code-memory")
+    scope_resolved = bool((code_memory.get("repos") or {}).get("selected"))
     code_ready = (
         (bool(code_memory.get("enabled")) or fallback_enabled)
         and bool(code_binary.get("resolved"))
         and bool(code_memory.get("index_present"))
+        and scope_resolved
     )
     if graphify and bool(graphify.get("configured")):
         installed = bool(graphify.get("installed"))
@@ -1164,6 +1181,12 @@ def _code_graph_capability(
     if not enabled:
         state = "disabled"
         install_hint = "Set ALFRED_CODE_MEMORY_MCP=1 to re-enable code graph memory."
+    elif not scope_resolved:
+        state = "needs_scope"
+        install_hint = (
+            "Set ALFRED_CODE_MEMORY_REPOS or ALFRED_CODE_MAP_REPOS, then run "
+            "`alfred code-memory index`."
+        )
     elif installed and indexed:
         state = "ready"
         install_hint = "Run `alfred code-memory doctor`, then `alfred code-memory index`."
@@ -1424,31 +1447,51 @@ def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
 def _code_memory_index_dir(env: dict[str, str]) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_INDEX_DIR")
     if raw.strip():
-        path = _safe_expand_path(raw)
-        if path:
-            return path
-        return Path(raw)
+        return _code_memory_state_path(env, raw)
     return _alfred_home(env) / "state" / "code-memory"
 
 
 def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_HOME")
     if raw.strip():
-        path = _safe_expand_path(raw)
-        if path:
-            return path
-        return Path(raw)
+        return _code_memory_state_path(env, raw)
     return index_dir
 
 
-def _code_memory_graph_dir(env: dict[str, str], index_home: Path) -> Path:
+def _code_memory_state_path(env: dict[str, str], raw: str) -> Path:
+    tilde_path = raw == "~" or raw.startswith("~/")
+    if tilde_path and not env.get("HOME", "").strip():
+        suffix = raw.removeprefix("~/") if raw != "~" else ""
+        path = _alfred_home(env) / suffix
+    elif expanded := _safe_expand_path(raw):
+        path = expanded
+    elif raw == "~":
+        path = _alfred_home(env)
+    elif raw.startswith("~/"):
+        path = _alfred_home(env) / raw.removeprefix("~/")
+    else:
+        path = Path(raw)
+    return path if path.is_absolute() else _alfred_home(env) / path
+
+
+def _code_memory_graph_dir(
+    env: dict[str, str], index_home: Path, resolved_repo_paths: list[Path]
+) -> Path:
     upstream_cache = _code_memory_config(env, "CBM_CACHE_DIR")
     if upstream_cache:
-        path = _safe_expand_path(upstream_cache)
-        if path:
-            return path
-        return Path(upstream_cache)
-    return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
+        cache_root = _code_memory_state_path(env, upstream_cache)
+    else:
+        cache_root = index_home / ".cache" / _CODE_MEMORY_BIN_NAME
+    fingerprint = _code_memory_scope_fingerprint(resolved_repo_paths)
+    return cache_root / "scopes" / (fingerprint or "unavailable")
+
+
+def _code_memory_scope_fingerprint(resolved_repo_paths: list[Path]) -> str | None:
+    if not resolved_repo_paths:
+        return None
+    canonical = sorted({str(path) for path in resolved_repo_paths})
+    material = "".join(f"{path}\n" for path in canonical).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
 
 
 def _code_memory_repos(env: dict[str, str]) -> list[str]:
@@ -1483,10 +1526,7 @@ def _code_memory_workspace(env: dict[str, str]) -> Path:
 def _code_memory_workspace_root(env: dict[str, str]) -> Path:
     configured = _code_memory_config(env, "WORKSPACE_ROOT")
     if configured:
-        path = _safe_expand_path(configured)
-        if path:
-            return path
-        return Path(configured)
+        return _code_memory_expand_user_path(env, configured)
     home = env.get("HOME", "").strip()
     if home:
         path = _safe_expand_path(home)
@@ -1497,30 +1537,6 @@ def _code_memory_workspace_root(env: dict[str, str]) -> Path:
         return Path.home() / "code"
     except (OSError, RuntimeError):
         return Path.cwd() / ".alfred-code-memory-workspace-unavailable"
-
-
-def _code_memory_discovery_limit(env: dict[str, str]) -> int:
-    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT")
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return _CODE_MEMORY_DISCOVERY_LIMIT
-    return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
-
-
-def _discover_code_memory_repos(
-    env: dict[str, str],
-    *,
-    deadline: float | None = None,
-) -> list[str]:
-    workspace = _code_memory_workspace(env)
-    limit = _code_memory_discovery_limit(env)
-    found: list[str] = []
-    for repo in _iter_workspace_git_repos(env, deadline=deadline, include_nested=False):
-        found.append(str(repo.relative_to(workspace)))
-        if len(found) >= limit:
-            break
-    return found
 
 
 def _iter_workspace_git_repos(
@@ -1577,15 +1593,6 @@ def _iter_workspace_git_repos(
         except OSError:
             continue
         queue.extend(sorted(children))
-
-
-def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
-    repo_map = _code_memory_repo_map(env)
-    return [
-        name
-        for name in configured
-        if _is_code_memory_git_repo(_code_memory_configured_repo_path(env, name, repo_map))
-    ]
 
 
 def _code_memory_repo_map(env: dict[str, str], *, include_aliases: bool = True) -> dict[str, str]:
@@ -1664,10 +1671,28 @@ def _code_memory_configured_repo_path(
 ) -> Path:
     mapping = repo_map if repo_map is not None else _code_memory_repo_map(env)
     mapped = mapping.get(name, mapping.get(name.casefold(), name))
-    path = Path(mapped)
+    path = _code_memory_expand_user_path(env, mapped)
     if path.is_absolute():
         return path
     return _code_memory_workspace(env) / path
+
+
+def _code_memory_expand_user_path(env: Mapping[str, str], raw: str) -> Path:
+    """Expand ``~`` with the same precedence as the code-memory launcher."""
+
+    path = Path(raw)
+    if raw != "~" and not raw.startswith("~/"):
+        return path
+    home = next(
+        (Path(value) for key in ("HOME", "ALFRED_HOME") if (value := env.get(key, "").strip())),
+        None,
+    )
+    if home is None:
+        home = _safe_home({})
+    if home is None:
+        return path
+    suffix = raw.removeprefix("~/") if raw != "~" else ""
+    return home / suffix
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:
@@ -1678,25 +1703,44 @@ def _is_code_memory_git_repo(path: Path) -> bool:
 
 
 def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
+    scope, _resolved_paths = _code_memory_repo_scope_with_paths(env)
+    return scope
+
+
+def _code_memory_repo_scope_with_paths(
+    env: dict[str, str],
+) -> tuple[dict[str, Any], list[Path]]:
     configured = _code_memory_repos(env)
-    configured_existing = _existing_code_memory_configured_repos(env, configured)
-    discovered: list[str] = [] if configured else _discover_code_memory_repos(env)
-    selected = configured_existing if configured else discovered
+    repo_map = _code_memory_repo_map(env)
+    configured_existing: list[str] = []
+    resolved_paths: set[Path] = set()
+    for name in configured:
+        path = _code_memory_configured_repo_path(env, name, repo_map)
+        if not _is_code_memory_git_repo(path):
+            continue
+        configured_existing.append(name)
+        try:
+            resolved_paths.add(path.resolve())
+        except OSError:
+            resolved_paths.add(path.absolute())
+    selected = configured_existing
     if configured and configured_existing:
         source = "configured"
     elif configured:
         source = "configured-missing"
     else:
-        source = "auto"
-    return {
-        "configured": configured,
-        "configured_existing": configured_existing,
-        "discovered": discovered,
-        "selected": selected,
-        "source": source,
-        "count": len(selected),
-        "limit": _code_memory_discovery_limit(env),
-    }
+        source = "unconfigured"
+    return (
+        {
+            "configured": configured,
+            "configured_existing": configured_existing,
+            "discovered": [],
+            "selected": selected,
+            "source": source,
+            "count": len(selected),
+        },
+        sorted(resolved_paths, key=str),
+    )
 
 
 def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
@@ -1708,15 +1752,13 @@ def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
         "selected": configured,
         "source": "configured" if configured else "disabled",
         "count": len(configured),
-        "limit": _code_memory_discovery_limit(env),
     }
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
-    search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
     if explicit:
-        resolved = _resolve_configured_binary(explicit, search=search)
+        resolved = _resolve_configured_binary(env, explicit)
         if resolved:
             return {
                 "resolved": True,
@@ -1724,10 +1766,12 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
                 "source": "env",
                 "configured": explicit,
             }
-
-    on_path = shutil.which(_CODE_MEMORY_BIN_NAME, path=search)
-    if on_path:
-        return {"resolved": True, "path": on_path, "source": "path", "configured": explicit or None}
+        return {
+            "resolved": False,
+            "path": None,
+            "source": "env",
+            "configured": explicit,
+        }
 
     cache_bin = _alfred_home(env) / "bin" / _CODE_MEMORY_BIN_NAME
     if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
@@ -1741,17 +1785,16 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
     return {
         "resolved": False,
         "path": None,
-        "source": "env" if explicit else "none",
-        "configured": explicit or None,
+        "source": "none",
+        "configured": None,
     }
 
 
-def _resolve_configured_binary(value: str, *, search: str) -> str | None:
-    path = _safe_expand_path(value) or Path(value)
+def _resolve_configured_binary(env: Mapping[str, str], value: str) -> str | None:
+    path = _code_memory_expand_user_path(env, value)
     if path.is_file() and os.access(path, os.X_OK):
         return str(path)
-    found = shutil.which(value, path=search)
-    return found or None
+    return None
 
 
 def _code_memory_pin(env: dict[str, str]) -> dict[str, str]:
@@ -2136,7 +2179,6 @@ def _repo_discovery_config(env: Mapping[str, str]) -> dict[str, str]:
         "ALFRED_WORKSPACE_SUBDIR",
         "WORKSPACE_SUBDIR",
         REPO_LOCAL_MAP_ENV,
-        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT",
     )
     return {key: env[key] for key in keys if key in env}
 

@@ -91,7 +91,14 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
       repo: "DeusData/codebase-memory-mcp",
       index_dir: "/tmp/.alfred/state/code-memory",
       index_present: false,
-      repos: { configured: [], count: 0 },
+      repos: {
+        configured: [],
+        configured_existing: [],
+        discovered: [],
+        selected: [],
+        source: "unconfigured",
+        count: 0,
+      },
       detail:
         "Code-memory binary is not installed yet; Alfred can fetch the pinned release on first explicit use.",
     },
@@ -124,7 +131,9 @@ function makeIndexedStatus(): SetupStatus {
       repos: {
         configured: ["web"],
         configured_existing: ["web"],
+        discovered: [],
         selected: ["web"],
+        source: "configured",
         count: 1,
       },
       detail: "Code graph is ready.",
@@ -817,7 +826,14 @@ describe("OnboardingView eight-step takeover", () => {
           repo: "DeusData/codebase-memory-mcp",
           index_dir: "/opt/alfred/state/code-memory",
           index_present: true,
-          repos: { configured: ["api", "web"], count: 2 },
+          repos: {
+            configured: ["api", "web"],
+            configured_existing: ["api", "web"],
+            discovered: [],
+            selected: ["api", "web"],
+            source: "configured",
+            count: 2,
+          },
           detail: "Code-memory binary and index are present.",
         },
         capability_plane: {
@@ -934,14 +950,14 @@ describe("OnboardingView eight-step takeover", () => {
     expect(within(capabilityCard as HTMLElement).queryByText(/^ready$/i)).not.toBeInTheDocument();
   });
 
-  it("handles older code-memory payloads without repo metadata", async () => {
-    const incompleteCodeMemory = { ...makeStatus().code_memory! };
-    delete incompleteCodeMemory.repos;
+  it("shows that code-memory scope is required when no repos are configured", async () => {
+    const status = makeStatus();
+    if (!status.code_memory) throw new Error("test setup requires code-memory status");
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       makeStatus({
         github: { ok: false, account: null, detail: "Not signed in to GitHub." },
         code_memory: {
-          ...incompleteCodeMemory,
+          ...status.code_memory,
           binary: {
             resolved: true,
             path: "/opt/alfred/bin/codebase-memory-mcp",
@@ -949,7 +965,15 @@ describe("OnboardingView eight-step takeover", () => {
             configured: null,
           },
           index_present: true,
-          detail: "Code-memory binary and index are present.",
+          repos: {
+            configured: [],
+            configured_existing: [],
+            discovered: [],
+            selected: [],
+            source: "unconfigured",
+            count: 0,
+          },
+          detail: "Code-memory repository scope is not configured.",
         },
       }),
     );
@@ -957,10 +981,61 @@ describe("OnboardingView eight-step takeover", () => {
     const user = userEvent.setup();
     await gotoStep(user, /^tools$/i);
 
-    expect(await screen.findByText(/code-memory binary and index are present/i)).toBeInTheDocument();
-    await user.click(screen.getByText(/advanced: code-memory probe/i));
-    expect(screen.getByText(/auto-discovered repos/i)).toBeInTheDocument();
-    expect(screen.getByText(/none found yet/i)).toBeInTheDocument();
+    const codeMemoryCard = (await screen.findByText(/^code memory$/i)).closest<HTMLElement>(
+      '[data-slot="card"]',
+    );
+    expect(codeMemoryCard).not.toBeNull();
+    const codeMemory = within(codeMemoryCard!);
+    expect(codeMemory.getByText(/^scope required$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/^ready$/i)).not.toBeInTheDocument();
+    await user.click(codeMemory.getByText(/advanced: code-memory probe/i));
+    expect(codeMemory.getByText(/^repository scope$/i)).toBeInTheDocument();
+    expect(codeMemory.getByText(/^not configured$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/auto-discovered repos/i)).not.toBeInTheDocument();
+  });
+
+  it("shows stale configured code-memory repos as unavailable", async () => {
+    const status = makeStatus();
+    if (!status.code_memory) throw new Error("test setup requires code-memory status");
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+        code_memory: {
+          ...status.code_memory,
+          binary: {
+            resolved: true,
+            path: "/opt/alfred/bin/codebase-memory-mcp",
+            source: "cache",
+            configured: null,
+          },
+          index_present: true,
+          repos: {
+            configured: ["removed-repo"],
+            configured_existing: [],
+            discovered: [],
+            selected: [],
+            source: "configured-missing",
+            count: 0,
+          },
+          detail: "Configured code-memory repositories do not resolve to git checkouts.",
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+
+    const codeMemoryCard = (await screen.findByText(/^code memory$/i)).closest<HTMLElement>(
+      '[data-slot="card"]',
+    );
+    expect(codeMemoryCard).not.toBeNull();
+    const codeMemory = within(codeMemoryCard!);
+    expect(codeMemory.getByText(/^scope unavailable$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/^ready$/i)).not.toBeInTheDocument();
+    await user.click(codeMemory.getByText(/advanced: code-memory probe/i));
+    expect(codeMemory.getByText(/^configured repos not found$/i)).toBeInTheDocument();
+    expect(codeMemory.getByText(/^removed-repo$/i)).toBeInTheDocument();
+    expect(codeMemory.queryByText(/auto-discovered repos/i)).not.toBeInTheDocument();
   });
 
   it("shows an honest empty state when no engine is found", async () => {
