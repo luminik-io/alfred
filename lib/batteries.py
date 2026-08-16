@@ -538,10 +538,8 @@ def _is_executable_file(path: Path) -> bool:
 
 def _code_memory_binary(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
-    if override and _is_executable_file(Path(override).expanduser()):
-        return True
-    if shutil.which("codebase-memory-mcp"):
-        return True
+    if override:
+        return _is_executable_file(Path(override).expanduser())
     fetched = _alfred_home(env) / "bin" / "codebase-memory-mcp"
     return _is_executable_file(fetched)
 

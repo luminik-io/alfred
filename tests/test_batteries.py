@@ -134,6 +134,37 @@ def test_code_memory_detection_requires_an_executable_file(
     assert batteries._code_memory_binary(env) is True
 
 
+def test_code_memory_detection_ignores_path_binary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        batteries.shutil,
+        "which",
+        lambda name: f"/ambient/{name}",
+    )
+
+    assert batteries._code_memory_binary({"ALFRED_HOME": str(tmp_path)}) is False
+
+
+def test_code_memory_detection_invalid_override_does_not_fall_back_to_cache(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "bin" / "codebase-memory-mcp"
+    cache.parent.mkdir()
+    cache.write_text("#!/bin/sh\n", encoding="utf-8")
+    cache.chmod(0o700)
+
+    assert (
+        batteries._code_memory_binary(
+            {
+                "ALFRED_HOME": str(tmp_path),
+                "ALFRED_CODE_MEMORY_BIN": str(tmp_path / "missing"),
+            }
+        )
+        is False
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Zero batteries: Alfred is fully functional with only built-ins
 # --------------------------------------------------------------------------- #

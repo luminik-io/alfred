@@ -145,9 +145,20 @@ deletes the download and fails closed, so an unverified binary is never run.
 Auto-fetch is opt-out (`ALFRED_CODE_MEMORY_AUTOFETCH=0`), in which case a missing
 binary is a clean no-op.
 
-Binary resolution order (first hit wins): `ALFRED_CODE_MEMORY_BIN`, then
-`codebase-memory-mcp` on `PATH`, then the pinned cache at
-`$ALFRED_HOME/bin/codebase-memory-mcp`.
+Binary resolution order is an explicit executable path in
+`ALFRED_CODE_MEMORY_BIN`, then the pinned cache at
+`$ALFRED_HOME/bin/codebase-memory-mcp`. Alfred does not use an ambient binary
+from `PATH`. An invalid explicit path blocks cache and auto-fetch fallback.
+
+The server starts only when `ALFRED_CODE_MEMORY_REPOS` or its
+`ALFRED_CODE_MAP_REPOS` fallback contains at least one repository that resolves
+to a git checkout. An empty or stale scope is a clean no-op for MCP serving and
+an error for `index` or `refresh`.
+
+Alfred gives each exact resolved repository scope its own graph-cache
+subdirectory. It derives the directory from a stable SHA-256 fingerprint of the
+sorted canonical repository paths. Changing or narrowing scope cannot expose a
+graph retained under an older scope.
 
 The tools Alfred allows from this server (kept as a fixed allowlist so a future
 upstream tool cannot silently widen agent capability without a code change in
@@ -215,7 +226,8 @@ firings that get MCP at all).
 | `ALFRED_MCP_ALLOW_RAW_MEMORY` | (unset) | When `1` / `true` / `yes`, `alfred_memory_candidates` includes full bodies, evidence, and review notes instead of previews. Leave unset for preview-only. |
 | `ALFRED_FLEET_BRAIN_DB` | `$ALFRED_HOME/fleet-brain.db` (else `~/.alfred/fleet-brain.db`) | Explicit path to the SQLite brain the `alfred_memory` server reads. |
 | `ALFRED_HOME` | `~/.alfred` | Runtime home. Resolves the default brain path and the code-memory cache. |
-| `ALFRED_CODE_MEMORY_BIN` | (unset) | Explicit path to the `codebase-memory-mcp` binary. Skips PATH and auto-fetch. |
+| `ALFRED_CODE_MEMORY_BIN` | (unset) | Trusted executable path to `codebase-memory-mcp`. This bypasses Alfred's pinned download verification. An invalid path blocks fallback. |
+| `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`) | Required repository scope for serving and indexing. |
 | `ALFRED_CODE_MEMORY_VERSION` | `v0.8.1` | Pinned upstream release tag to fetch. |
 | `ALFRED_CODE_MEMORY_AUTOFETCH` | `1` (on) | Fetch the pinned binary on first use. Set `0` for a strict no-network install. |
 

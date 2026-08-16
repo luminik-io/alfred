@@ -58,7 +58,14 @@ One firing is one short-lived process working one task:
 | Approval gate (`agent:plan-pending-approval`) | Autonomous pickup of un-approved single-repo plans |
 | `do-not-pickup` operator override | Any agent claiming an issue you parked |
 | Never auto-merge by default | Unaudited code reaching your main branch |
+| Explicit code-memory repository scope | Workspace checkouts entering the external graph index by discovery |
+| Pinned or explicitly configured code-memory binary | An ambient executable on `PATH` entering the agent toolchain |
 | Per-agent IAM (recommended) | An agent acting with operator-level cloud privilege |
+
+Code-memory scope controls new indexing and whether Alfred starts the MCP
+server. Alfred gives each exact resolved repository scope a separate graph
+cache. A scope change cannot serve graphs retained under an older scope. Old
+scope caches remain on disk until the operator removes them.
 
 ## Inputs Alfred treats as untrusted
 

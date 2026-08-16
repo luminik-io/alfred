@@ -43,25 +43,34 @@ export function EngineStep({
     : null;
   const capabilityBadgeVariant =
     capabilityBadgeLabel === "ready" ? ("secondary" as const) : ("outline" as const);
-  const codeMemoryReady = Boolean(
-    codeMemory?.enabled && codeMemory.binary.resolved && codeMemory.index_present,
-  );
   const codeMemoryRepos = codeMemory?.repos;
-  const scopedCodeRepos = codeMemoryRepos?.selected ?? codeMemoryRepos?.configured ?? [];
+  const configuredCodeRepos = codeMemoryRepos?.configured ?? [];
+  const selectedCodeRepos = codeMemoryRepos?.selected ?? [];
+  const scopeConfigured = configuredCodeRepos.length > 0;
+  const scopeResolved = codeMemoryRepos?.source === "configured" && selectedCodeRepos.length > 0;
+  const codeMemoryReady = Boolean(
+    codeMemory?.enabled &&
+    codeMemory.binary.resolved &&
+    codeMemory.index_present &&
+    scopeResolved,
+  );
+  const scopedCodeRepos =
+    codeMemoryRepos?.source === "configured-missing" ? configuredCodeRepos : selectedCodeRepos;
   const codeRepoScopeLabel =
-    codeMemoryRepos?.source === "configured" ||
-    (!codeMemoryRepos?.source && (codeMemoryRepos?.configured?.length ?? 0) > 0)
+    codeMemoryRepos?.source === "configured"
       ? "Configured repos"
-      : "Auto-discovered repos";
-  const codeMemoryTone = !codeMemory?.enabled
-    ? "off"
-    : codeMemoryReady
-      ? "ready"
-      : codeMemory?.binary.resolved
-        ? "index pending"
-        : codeMemory?.autofetch
-          ? "will fetch"
-          : "not found";
+      : codeMemoryRepos?.source === "configured-missing"
+        ? "Configured repos not found"
+        : "Repository scope";
+  const emptyCodeRepoScope = scopeConfigured ? "none available" : "not configured";
+  let codeMemoryTone = "not found";
+  if (!codeMemory?.enabled) codeMemoryTone = "off";
+  else if (!scopeConfigured || codeMemoryRepos?.source === "unconfigured") {
+    codeMemoryTone = "scope required";
+  } else if (!scopeResolved) codeMemoryTone = "scope unavailable";
+  else if (codeMemoryReady) codeMemoryTone = "ready";
+  else if (codeMemory.binary.resolved) codeMemoryTone = "index pending";
+  else if (codeMemory.autofetch) codeMemoryTone = "will fetch";
 
   return (
     <div className="grid gap-4">
@@ -238,7 +247,7 @@ export function EngineStep({
                 <div className="grid gap-0.5">
                   <dt className="font-medium text-foreground">{codeRepoScopeLabel}</dt>
                   <dd>
-                    {scopedCodeRepos.length ? scopedCodeRepos.join(", ") : "none found yet"}
+                    {scopedCodeRepos.length ? scopedCodeRepos.join(", ") : emptyCodeRepoScope}
                   </dd>
                 </div>
               </dl>

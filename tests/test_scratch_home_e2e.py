@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import platform
@@ -204,7 +205,17 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
             )
         )
 
-    graph_dir = runtime / "state" / "code-memory" / ".cache" / "codebase-memory-mcp"
+    scope_material = f"{repo.resolve()}\n".encode()
+    scope_fingerprint = hashlib.sha256(scope_material).hexdigest()
+    graph_dir = (
+        runtime
+        / "state"
+        / "code-memory"
+        / ".cache"
+        / "codebase-memory-mcp"
+        / "scopes"
+        / scope_fingerprint
+    )
     graph_dir.mkdir(parents=True)
     (graph_dir / "scratch.sqlite").write_bytes(b"scratch graph")
 

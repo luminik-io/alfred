@@ -12,6 +12,16 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Changed
 
+- Code-memory serving and indexing now require an explicit repository scope.
+  Alfred no longer scans workspace checkouts when the scope is empty. Setup
+  reports `needs_scope` until `ALFRED_CODE_MEMORY_REPOS` or
+  `ALFRED_CODE_MAP_REPOS` contains at least one repository that resolves to a
+  git checkout. Each exact resolved scope now uses a deterministic, isolated
+  graph cache, so changing or narrowing scope cannot serve retained graphs from
+  an older scope.
+- Code-memory binary resolution now accepts only an explicit executable path or
+  Alfred's pinned cache. It ignores ambient `PATH` binaries, and an invalid
+  `ALFRED_CODE_MEMORY_BIN` value blocks fallback.
 - Model routing now reads only the namespaced `ALFRED_CLAUDE_MODEL` and
   `ALFRED_CODEX_MODEL` fleet settings. The former bare `CODEX_MODEL` setting is
   no longer read.
