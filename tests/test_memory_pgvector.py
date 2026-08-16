@@ -184,6 +184,66 @@ def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
     assert conn.calls[0][1][0] == ["caching", "cached", "responses"]
 
 
+@pytest.mark.parametrize(
+    ("query", "collision_body", "matching_body"),
+    [
+        ("C++", "Use C# for the client", "Use C++ for the client"),
+        ("C#", "Use C++ for the client", "Use C# for the client"),
+        ("N+12", "Avoid N+13 queries", "Avoid N+12 queries"),
+        ("O(42)", "The lookup is O(1)", "The lookup is O(42)"),
+        ("I/O", "Use IO batching", "Use I/O batching"),
+        ("HTTP/2.1", "Require HTTP/3", "Require HTTP/2.1"),
+    ],
+)
+def test_fts_enabled_symbolic_queries_use_exact_bounded_fallback(
+    query: str,
+    collision_body: str,
+    matching_body: str,
+) -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.fts_calls = 0
+            self.fallback_calls = 0
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "body_tsv" in normalized:
+                self.fts_calls += 1
+                return Cursor([("collision",)])
+            if "FROM lessons l WHERE" in normalized:
+                self.fallback_calls += 1
+                assert params[-1] == 50
+                return Cursor(
+                    [
+                        ("collision", collision_body, "[]", _NOW),
+                        (
+                            "matching",
+                            matching_body,
+                            "[]",
+                            _NOW - timedelta(seconds=1),
+                        ),
+                    ]
+                )
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(conn, query, codename="c", repo="r", now=_NOW)
+
+    assert ids == ["matching"]
+    assert conn.fts_calls == 0
+    assert conn.fallback_calls == 1
+
+
 def test_lexical_like_fallback_matches_body_and_tags() -> None:
     sql, params = _lexical_like_query(
         ["graphql"], table="lessons", codename=None, repo="r", pool=3, now=_NOW

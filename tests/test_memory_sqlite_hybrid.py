@@ -248,6 +248,17 @@ def test_like_fallback_recalls_symbolic_technical_terms(
     assert [item.id for item in out] == [lesson.id]
 
 
+def test_symbolic_query_distinguishes_punctuation_collision(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Use C# for the client")
+    matching = provider.reflect(codename="c", repo="r", body="Use C++ for the client")
+
+    out = provider.recall(query="C++", codename="c", repo="r")
+
+    assert [item.id for item in out] == [matching.id]
+
+
 def test_like_fallback_recalls_unicode_query(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
     provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)

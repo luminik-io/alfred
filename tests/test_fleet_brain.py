@@ -323,6 +323,16 @@ def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query:
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
+    matching_body = "Use C++ for the client"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query="C++")
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_query_accepts_japanese_issue_title(brain: FleetBrain) -> None:
     query = "認証エラーを修正"
     matching_body = f"手順: {query}してください"

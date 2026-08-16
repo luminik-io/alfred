@@ -412,6 +412,12 @@ def _lexical_like_query(
     return sql, params
 
 
+def _requires_exact_lexical_tokens(tokens: list[str]) -> bool:
+    """Return whether PostgreSQL lexemes would erase concept identity."""
+
+    return any(not token.isalnum() for token in tokens)
+
+
 def _lexical_literal_query(
     text: str,
     *,
@@ -1055,7 +1061,7 @@ class PgvectorProvider:
                 now=now,
             )
             return [str(row[0]) for row in conn.execute(sql, params).fetchall()]
-        if self._fts_ok:
+        if self._fts_ok and not _requires_exact_lexical_tokens(tokens):
             sql, params = _lexical_query(
                 tokens,
                 table=self._lessons,
