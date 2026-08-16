@@ -194,6 +194,76 @@ def test_engine_inventory_uses_scheduler_selected_claude_profile(
     assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/secondary"
 
 
+def test_engine_inventory_keeps_static_claude_profile_without_manager_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    (runtime_home / ".env").write_text(
+        "CLAUDE_CONFIG_DIR=/profiles/static\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/profiles/shell-only",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_value",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/static"
+
+
+def test_engine_inventory_excludes_shell_only_claude_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/profiles/shell-only",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_value",
+        lambda *_args, **_kwargs: "",
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert "CLAUDE_CONFIG_DIR" not in captured["environ"]
+
+
 def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     home = tmp_path / "home"
     alfred_home = tmp_path / ".alfred"

@@ -590,7 +590,7 @@ def test_cli_codex_status_fails_when_cli_is_signed_out(tmp_path):
 
 def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):
     cli = _load_cli_module()
-    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    monkeypatch.setattr(cli.scheduler._load(), "SCHEDULER", "systemd")
     target = tmp_path / "claude-secondary"
 
     def fake_run(cmd, **_kwargs):
@@ -609,7 +609,7 @@ def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):
 
 def test_claude_routing_decodes_systemd_escaped_environment(monkeypatch, tmp_path):
     cli = _load_cli_module()
-    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    monkeypatch.setattr(cli.scheduler._load(), "SCHEDULER", "systemd")
     target = tmp_path / "home with spaces" / ".claude-secondary"
 
     def fake_run(cmd, **_kwargs):

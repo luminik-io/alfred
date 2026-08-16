@@ -254,6 +254,17 @@ def _runtime_config_env() -> dict[str, str]:
     return env
 
 
+def _runtime_env_file_value(name: str, runtime_env: dict[str, str]) -> str:
+    """Read one value from Alfred's runtime file without shell inheritance."""
+
+    file_env: dict[str, str] = {}
+    home = runtime_env.get("HOME", "").strip()
+    if home:
+        file_env["HOME"] = home
+    _load_launcher_env_file(_env_path(runtime_env), file_env)
+    return file_env.get(name, "").strip()
+
+
 def _alfred_init_managed_scope_patterns(path: Path) -> frozenset[str]:
     """Return setup-owned env keys from the generated alfred-init block."""
     try:
@@ -752,17 +763,20 @@ def engine_clis(*, deadline: float | None = None) -> list[dict[str, Any]]:
     probe_env = dict(os.environ)
     probe_env.update(runtime_env)
     probe_env["PATH"] = search
+    static_profile = _runtime_env_file_value("CLAUDE_CONFIG_DIR", runtime_env)
+    if static_profile:
+        probe_env["CLAUDE_CONFIG_DIR"] = static_profile
+    else:
+        probe_env.pop("CLAUDE_CONFIG_DIR", None)
     remaining = None if deadline is None else deadline - time.monotonic()
     if remaining is None or remaining > 0:
         selected_profile = runtime_facade.scheduler_environment_value(
             "CLAUDE_CONFIG_DIR",
-            environ=probe_env,
+            environ={},
             timeout=2.0 if remaining is None else min(2.0, remaining),
         )
         if selected_profile:
             probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
-        else:
-            probe_env.pop("CLAUDE_CONFIG_DIR", None)
     deadline_seconds = 8.0
     if deadline is not None:
         deadline_seconds = max(0.0, deadline - time.monotonic())
