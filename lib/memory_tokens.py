@@ -13,8 +13,13 @@ import unicodedata
 from collections.abc import Iterator
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
+_MIN_LANGUAGE_STANDARD_DIGITS = 2
+_MAX_LANGUAGE_STANDARD_DIGITS = 4
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:C\+\+|[A-Za-z]#|N\+[0-9]+|"
+    rf"(?<![A-Za-z0-9])(?:"
+    rf"C\+\+[0-9]{{{_MIN_LANGUAGE_STANDARD_DIGITS},{_MAX_LANGUAGE_STANDARD_DIGITS}}}|"
+    rf"C#[0-9]{{{_MIN_LANGUAGE_STANDARD_DIGITS},{_MAX_LANGUAGE_STANDARD_DIGITS}}}|"
+    r"C\+\+|[A-Za-z]#|N\+[0-9]+|"
     r"O\((?:[0-9]+|n|log[ \t]+n)\)|"
     r"(?<!/)(?:HTTP/[0-9]{1,3}(?:\.[0-9]{1,3})?|I/O|A/B)(?![./]))"
     r"(?![A-Za-z0-9])",

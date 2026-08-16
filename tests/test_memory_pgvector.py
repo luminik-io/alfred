@@ -638,6 +638,60 @@ def test_lexical_like_fallback_requires_dotted_version_identity(
     assert ids == ["matching"]
 
 
+@pytest.mark.parametrize(
+    ("query", "identity", "wrong_texts", "matching_text"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            "c++17",
+            ["fix c#17 compiler warnings", "fix c++20 compiler warnings"],
+            "fix c++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            "c#17",
+            ["fix c++17 compiler warnings", "fix c#12 compiler warnings"],
+            "fix c#17 compiler warnings",
+        ),
+    ],
+)
+def test_lexical_like_fallback_requires_atomic_language_standard_identity(
+    query: str,
+    identity: str,
+    wrong_texts: list[str],
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            rows = [
+                (f"wrong-{index}", text, _NOW - timedelta(seconds=index))
+                for index, text in enumerate(wrong_texts)
+            ]
+            rows.append(("matching", matching_text, _NOW - timedelta(seconds=10)))
+            return rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert f"%{identity}%" in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=3)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
 def test_lexical_like_fallback_recalls_unicode_query() -> None:
     query = "認証エラーを修正"
     lesson_body = f"手順: {query}してください"

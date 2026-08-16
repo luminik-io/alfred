@@ -181,6 +181,42 @@ def test_default_chain_requires_dotted_version_identity(
     assert [item.id for item in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_default_chain_requires_atomic_language_standard_identity(
+    tmp_path: Path,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    for body in wrong_bodies:
+        writer.reflect(codename="c", repo="r", body=body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred-home"),
@@ -773,6 +809,69 @@ def test_like_recall_requires_dotted_version_identity(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_fts_recall_requires_atomic_language_standard_identity(
+    provider: SqliteHybridProvider,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    for body in wrong_bodies:
+        provider.reflect(codename="c", repo="r", body=body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_like_recall_requires_atomic_language_standard_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    for body in wrong_bodies:
+        provider.reflect(codename="c", repo="r", body=body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="c", repo="r", body="The API client retries requests")
     relevant = provider.reflect(
@@ -1094,6 +1193,42 @@ def test_unicode_word_is_one_overlap_concept(
 )
 def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
     assert mod._tokenize(query) == [expected]
+
+
+@pytest.mark.parametrize("standard", ["C++17", "C++23", "C#12", "C#17"])
+def test_tokenize_recognizes_bounded_atomic_language_standards(standard: str) -> None:
+    assert mod._tokenize(standard) == [standard.casefold()]
+
+
+@pytest.mark.parametrize(
+    "not_standard",
+    ["C++7", "C++12345", "C#7", "C#12345", "fooC++17", "C++17beta", "F#12", "Java17"],
+)
+def test_tokenize_rejects_unbounded_embedded_or_generic_language_standards(
+    not_standard: str,
+) -> None:
+    assert not any(token.startswith(("c++", "c#")) for token in mod._tokenize(not_standard))
+
+
+def test_atomic_language_standards_keep_punctuation_boundaries() -> None:
+    tokens = mod._tokenize("Use (C++23), then C#12.")
+
+    assert {"c++23", "c#12"}.issubset(tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_lesson"),
+    [
+        ("Fix C++17 compiler warnings", "Fix C#17 compiler warnings"),
+        ("Fix C++17 compiler warnings", "Fix C++20 compiler warnings"),
+        ("Fix C#17 compiler warnings", "Fix C++17 compiler warnings"),
+    ],
+)
+def test_atomic_language_standard_identity_is_mandatory(
+    query: str,
+    wrong_lesson: str,
+) -> None:
+    assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
 
 
 @pytest.mark.parametrize("version", ["1.3", "3.13", "10.20.30", "123.456.789"])

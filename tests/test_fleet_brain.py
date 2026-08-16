@@ -455,6 +455,36 @@ def test_recall_query_requires_dotted_version_identity(
     assert [lesson.body for lesson in out] == [matching_body]
 
 
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_recall_query_requires_atomic_language_standard_identity(
+    brain: FleetBrain,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    for body in wrong_bodies:
+        brain.reflect(codename="lucius", repo="org/api", body=body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
     matching_body = "Use C++ for the client"
