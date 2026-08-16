@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,15 @@ from typing import Any
 # Signature: ``(path, *, extra_vars=None) -> str`` (see
 # ``agent_runner.metadata.load_prompt``).
 PromptLoader = Callable[..., str]
+
+
+@dataclass(frozen=True)
+class SchedulerEnvironmentLookup:
+    """One scheduler lookup with absence distinct from an unavailable query."""
+
+    value: str = ""
+    available: bool = False
+    supported: bool = True
 
 
 def prompt_loader() -> PromptLoader | None:
@@ -112,17 +122,21 @@ def engine_binary(
     )
 
 
-def scheduler_environment_value(
+def scheduler_environment_lookup(
     name: str,
     *,
-    environ: Mapping[str, str],
     timeout: float,
-) -> str:
-    """Read one scheduler-selected value without importing scheduler at startup."""
+) -> SchedulerEnvironmentLookup:
+    """Read one scheduler-selected value without collapsing query failures."""
 
     import scheduler
 
-    return scheduler.manager_environment_value(name, environ=environ, timeout=timeout)
+    lookup = scheduler.manager_environment_lookup(name, timeout=timeout)
+    return SchedulerEnvironmentLookup(
+        value=lookup.value,
+        available=lookup.available,
+        supported=lookup.supported,
+    )
 
 
 def model_providers() -> frozenset[str]:

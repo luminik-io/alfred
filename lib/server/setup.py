@@ -773,6 +773,7 @@ def engine_clis(
         raise ValueError(f"unknown engine environment: {environment}")
     probe_env["PATH"] = search
     remaining = None if deadline is None else deadline - time.monotonic()
+    profile_lookup_failed = False
     if environment == "scheduler":
         static_profile = _runtime_env_file_value("CLAUDE_CONFIG_DIR", runtime_env)
         if static_profile:
@@ -780,21 +781,40 @@ def engine_clis(
         else:
             probe_env.pop("CLAUDE_CONFIG_DIR", None)
         if remaining is None or remaining > 0:
-            selected_profile = runtime_facade.scheduler_environment_value(
+            profile_lookup = runtime_facade.scheduler_environment_lookup(
                 "CLAUDE_CONFIG_DIR",
-                environ={},
                 timeout=2.0 if remaining is None else min(2.0, remaining),
             )
-            if selected_profile:
-                probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
+            if profile_lookup.available:
+                if profile_lookup.value:
+                    probe_env["CLAUDE_CONFIG_DIR"] = profile_lookup.value
+            elif profile_lookup.supported:
+                profile_lookup_failed = True
+        else:
+            profile_lookup_failed = True
     deadline_seconds = 8.0
     if deadline is not None:
         deadline_seconds = max(0.0, deadline - time.monotonic())
-    return runtime_facade.engine_inventory(
+    engines = runtime_facade.engine_inventory(
         environ=probe_env,
         search_path=search,
         deadline_seconds=deadline_seconds,
     )
+    if profile_lookup_failed:
+        for engine in engines:
+            if engine.get("name") != "claude" or not engine.get("installed"):
+                continue
+            engine.update(
+                {
+                    "ready": False,
+                    "state": "probe_failed",
+                    "detail": (
+                        "Alfred could not read the scheduler-selected Claude profile. Retry setup."
+                    ),
+                    "failures": ["profile_lookup_failed"],
+                }
+            )
+    return engines
 
 
 def engine_cli_path(engine: str) -> str | None:

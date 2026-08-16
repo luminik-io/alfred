@@ -786,6 +786,7 @@ def test_engine_doctor_uses_ready_codex_for_hybrid_capability_gap(
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    scheduler_module = cli_module.scheduler._load()
     results = {
         "claude": _engine_readiness(
             cli_module,
@@ -812,6 +813,11 @@ def test_engine_doctor_uses_ready_codex_for_hybrid_capability_gap(
         "probe_engine",
         lambda descriptor, **_kwargs: results[descriptor.id],
     )
+    monkeypatch.setattr(
+        scheduler_module,
+        "manager_environment_lookup",
+        lambda _name: scheduler_module.ManagerEnvironmentLookup(available=True),
+    )
 
     assert cli_module.main(["engine", "doctor"]) == 0
     output = capsys.readouterr().out
@@ -824,6 +830,7 @@ def test_engine_doctor_does_not_hide_hybrid_claude_auth_failure(
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    scheduler_module = cli_module.scheduler._load()
     probes: list[str] = []
     signed_out = _engine_readiness(
         cli_module,
@@ -845,6 +852,11 @@ def test_engine_doctor_does_not_hide_hybrid_claude_auth_failure(
         lambda: {"hybrid": ("senior-dev",)},
     )
     monkeypatch.setattr(cli_module.agent_runner, "probe_engine", probe)
+    monkeypatch.setattr(
+        scheduler_module,
+        "manager_environment_lookup",
+        lambda _name: scheduler_module.ManagerEnvironmentLookup(available=True),
+    )
 
     assert cli_module.main(["engine", "doctor"]) == 1
     output = capsys.readouterr().out
@@ -972,6 +984,7 @@ def test_engine_doctor_renders_unsupported_version_remediation(
     capsys: pytest.CaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    scheduler_module = cli_module.scheduler._load()
     unsupported = _engine_readiness(
         cli_module,
         "claude",
@@ -990,6 +1003,11 @@ def test_engine_doctor_renders_unsupported_version_remediation(
         cli_module.agent_runner,
         "probe_engine",
         lambda *_args, **_kwargs: unsupported,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "manager_environment_lookup",
+        lambda _name: scheduler_module.ManagerEnvironmentLookup(available=True),
     )
 
     assert cli_module.main(["engine", "doctor"]) == 1

@@ -184,14 +184,58 @@ def test_engine_inventory_uses_scheduler_selected_claude_profile(
     monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
     monkeypatch.setattr(
         setup_mod.runtime_facade,
-        "scheduler_environment_value",
-        lambda *_args, **_kwargs: "/profiles/secondary",
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            value="/profiles/secondary",
+            available=True,
+        ),
     )
     monkeypatch.setattr(setup_mod.runtime_facade, "engine_inventory", inventory)
 
     setup_mod.engine_clis(deadline=time.monotonic() + 5)
 
     assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/secondary"
+
+
+def test_engine_inventory_fails_closed_when_scheduler_profile_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+                "failures": [],
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+                "failures": [],
+            },
+        ],
+    )
+
+    engines = setup_mod.engine_clis(deadline=time.monotonic() + 5)
+    by_name = {engine["name"]: engine for engine in engines}
+
+    assert by_name["claude"]["ready"] is False
+    assert by_name["claude"]["state"] == "probe_failed"
+    assert by_name["claude"]["failures"] == ["profile_lookup_failed"]
+    assert by_name["codex"]["ready"] is True
 
 
 def test_engine_inventory_keeps_static_claude_profile_without_manager_override(
@@ -217,8 +261,10 @@ def test_engine_inventory_keeps_static_claude_profile_without_manager_override(
     )
     monkeypatch.setattr(
         setup_mod.runtime_facade,
-        "scheduler_environment_value",
-        lambda *_args, **_kwargs: "",
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            available=True
+        ),
     )
     monkeypatch.setattr(
         setup_mod.runtime_facade,
@@ -250,8 +296,10 @@ def test_engine_inventory_excludes_shell_only_claude_profile(
     )
     monkeypatch.setattr(
         setup_mod.runtime_facade,
-        "scheduler_environment_value",
-        lambda *_args, **_kwargs: "",
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            available=True
+        ),
     )
     monkeypatch.setattr(
         setup_mod.runtime_facade,
@@ -287,7 +335,7 @@ def test_engine_inventory_can_probe_the_current_process_profile(
     )
     monkeypatch.setattr(
         setup_mod.runtime_facade,
-        "scheduler_environment_value",
+        "scheduler_environment_lookup",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             AssertionError("process-profile probes must not query the scheduler")
         ),
