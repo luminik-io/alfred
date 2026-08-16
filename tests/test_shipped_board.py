@@ -341,7 +341,7 @@ def test_pr_evidence_batch_caps_work_before_the_client_deadline(monkeypatch):
     assert deferred["github_evidence_unavailable"] is True
 
 
-def test_pr_evidence_budget_is_global_and_keeps_board_order(monkeypatch):
+def test_pr_evidence_budget_is_global_without_starving_later_repos(monkeypatch):
     repos = ["acme/api", "acme/web"]
     prs = [
         {
@@ -377,13 +377,14 @@ def test_pr_evidence_budget_is_global_and_keeps_board_order(monkeypatch):
     cards = sb.build_board(repos, now=NOW)["columns"]["in_progress"]
 
     assert len(viewed) == sb._PR_EVIDENCE_LIMIT
-    assert set(viewed) == {("acme/api", number) for number in range(1, sb._PR_EVIDENCE_LIMIT + 1)}
+    assert {repo for repo, _number in viewed} == set(repos)
     assert [(card["repo"], card["number"]) for card in cards] == [
         (repo, number) for repo in repos for number in range(1, sb._PR_EVIDENCE_LIMIT + 1)
     ]
-    skipped = [card for card in cards if card["repo"] == "acme/web"]
-    assert all(card["github_evidence"] is None for card in skipped)
-    assert all(card["github_evidence_unavailable"] is True for card in skipped)
+    for repo in repos:
+        repo_cards = [card for card in cards if card["repo"] == repo]
+        assert any(card["github_evidence"] is not None for card in repo_cards)
+        assert any(card["github_evidence_unavailable"] is True for card in repo_cards)
 
 
 def test_expired_global_evidence_deadline_skips_calls_without_dropping_cards(monkeypatch):

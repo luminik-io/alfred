@@ -589,6 +589,54 @@ def _demo_cards() -> dict[str, list[dict]]:
     return out
 
 
+def _pr_evidence_indexes(
+    selected_cards: list[tuple[str, dict, str, str]], *, limit: int
+) -> list[int]:
+    """Choose bounded evidence work without letting repo order starve a repo.
+
+    Give each repository one slot before a repository receives a second slot.
+    Within that coverage guarantee, prefer active work and newer cards. The
+    remaining budget follows the same product priority across the whole board.
+    Returned indexes let the caller preserve the board's original card order.
+    """
+    if limit <= 0 or not selected_cards:
+        return []
+    if len(selected_cards) <= limit:
+        return list(range(len(selected_cards)))
+
+    def priority(index: int) -> tuple[int, float, int]:
+        _repo, pr, lane, ts_field = selected_cards[index]
+        timestamp = _parse_ts(pr.get(ts_field))
+        return (
+            0 if lane == "in_progress" else 1,
+            -(timestamp.timestamp() if timestamp else 0.0),
+            index,
+        )
+
+    prioritized = sorted(range(len(selected_cards)), key=priority)
+    selected: list[int] = []
+    selected_set: set[int] = set()
+    covered_repos: set[str] = set()
+
+    for index in prioritized:
+        repo = selected_cards[index][0]
+        if repo in covered_repos:
+            continue
+        selected.append(index)
+        selected_set.add(index)
+        covered_repos.add(repo)
+        if len(selected) == limit:
+            return selected
+
+    for index in prioritized:
+        if index in selected_set:
+            continue
+        selected.append(index)
+        if len(selected) == limit:
+            break
+    return selected
+
+
 def build_board(
     repos: list[str],
     *,
@@ -654,35 +702,36 @@ def build_board(
             if errored:
                 errors.append(repo)
 
-        evidence_cards = selected_cards[:_PR_EVIDENCE_LIMIT]
-        if evidence_cards:
-            workers = min(len(evidence_cards), _PR_EVIDENCE_WORKERS)
+        evidence_indexes = _pr_evidence_indexes(selected_cards, limit=_PR_EVIDENCE_LIMIT)
+        evidence_results: dict[int, tuple[dict, bool]] = {}
+        if evidence_indexes:
+            workers = min(len(evidence_indexes), _PR_EVIDENCE_WORKERS)
             with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as evidence_pool:
                 evidence_rows = evidence_pool.map(
-                    lambda selected: _with_pr_evidence(
-                        selected[0], selected[1], deadline=evidence_deadline
+                    lambda index: _with_pr_evidence(
+                        selected_cards[index][0],
+                        selected_cards[index][1],
+                        deadline=evidence_deadline,
                     ),
-                    evidence_cards,
+                    evidence_indexes,
                 )
-                for (repo, _pr, lane, ts_field), (enriched, evidence_error) in zip(
-                    evidence_cards, evidence_rows, strict=True
+                for index, (enriched, evidence_error) in zip(
+                    evidence_indexes, evidence_rows, strict=True
                 ):
+                    repo = selected_cards[index][0]
+                    evidence_results[index] = (enriched, evidence_error)
                     if evidence_error:
                         errors.append(repo)
-                    target = in_progress if lane == "in_progress" else shipped
-                    target.append(_card(repo, enriched, kind="pr", ts_field=ts_field, now=now))
 
-        for repo, pr, lane, ts_field in selected_cards[_PR_EVIDENCE_LIMIT:]:
-            target = in_progress if lane == "in_progress" else shipped
-            target.append(
-                _card(
-                    repo,
-                    {**pr, "_github_evidence_unavailable": True},
-                    kind="pr",
-                    ts_field=ts_field,
-                    now=now,
-                )
+        for index, (repo, pr, lane, ts_field) in enumerate(selected_cards):
+            evidence_result = evidence_results.get(index)
+            enriched = (
+                evidence_result[0]
+                if evidence_result is not None
+                else {**pr, "_github_evidence_unavailable": True}
             )
+            target = in_progress if lane == "in_progress" else shipped
+            target.append(_card(repo, enriched, kind="pr", ts_field=ts_field, now=now))
 
     def _sort(cards: list[dict]) -> list[dict]:
         return sorted(cards, key=lambda c: c.get("timestamp") or "", reverse=True)
