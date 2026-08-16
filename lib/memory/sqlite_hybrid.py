@@ -46,7 +46,6 @@ import contextlib
 import json
 import logging
 import os
-import re
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -67,6 +66,15 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
+from memory_tokens import (
+    has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
+)
+from memory_tokens import (
+    required_lexical_overlap as _required_lexical_overlap,
+)
+from memory_tokens import (
+    tokenize as _tokenize,
+)
 
 __all__ = ["SqliteHybridProvider", "default_hybrid_db_path"]
 
@@ -80,12 +88,6 @@ _DEFAULT_EMBEDDING_DIM = 1024
 _DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 _EMBED_TIMEOUT_S = 5.0
 
-# Token extraction for the FTS/LIKE lexical arm. One-character tokens are
-# dropped as noise; the list is capped so a giant issue-body query cannot build
-# a pathological MATCH expression.
-_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
-_COMPOUND_TOKEN_RE = re.compile(r"\b[A-Za-z0-9]+(?:\s*[+/#-]\s*[A-Za-z0-9]+)+\b")
-_MAX_QUERY_TOKENS = 24
 # The substring fallback is a last-resort path for SQLite builds without FTS5.
 # Keep it predictably bounded even when every recent lesson is a false
 # substring match. Eight keyset pages of at most 50 rows means one recall
@@ -93,48 +95,6 @@ _MAX_QUERY_TOKENS = 24
 # queries. Smaller configured pools keep their existing page size.
 _LEXICAL_FALLBACK_PAGE_SIZE = 50
 _MAX_LEXICAL_FALLBACK_PAGES = 8
-_LOW_SIGNAL_QUERY_TOKENS = frozenset(
-    {
-        "add",
-        "and",
-        "are",
-        "as",
-        "at",
-        "be",
-        "by",
-        "change",
-        "create",
-        "ensure",
-        "fix",
-        "for",
-        "from",
-        "has",
-        "have",
-        "implement",
-        "in",
-        "into",
-        "is",
-        "it",
-        "its",
-        "make",
-        "of",
-        "on",
-        "or",
-        "remove",
-        "so",
-        "that",
-        "the",
-        "their",
-        "then",
-        "this",
-        "to",
-        "update",
-        "use",
-        "using",
-        "with",
-        "without",
-    }
-)
 
 
 def default_hybrid_db_path(env: Mapping[str, str] | None = None) -> Path:
@@ -1291,56 +1251,6 @@ def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
                 seen.add(token)
                 out.append(token)
     return ", ".join(out) if out else None
-
-
-def _tokenize(text: str) -> list[str]:
-    """Return bounded, de-duplicated terms for a lexical query."""
-
-    seen: set[str] = set()
-    out: list[str] = []
-    for tok in _meaningful_tokens(text):
-        if tok in seen:
-            continue
-        seen.add(tok)
-        out.append(tok)
-        if len(out) >= _MAX_QUERY_TOKENS:
-            break
-    return out
-
-
-def _meaningful_tokens(text: str) -> Iterator[str]:
-    """Yield every meaningful term without applying the query-size cap."""
-
-    # Keep compact technical terms such as ``N+1`` intact. FTS5 interprets a
-    # quoted ``N+1`` token as the adjacent ``n 1`` phrase, while the LIKE
-    # fallback matches the literal spelling. Splitting first would discard both
-    # one-character parts and turn the query into an unrelated recency lookup.
-    for compound in _COMPOUND_TOKEN_RE.findall(text):
-        yield re.sub(r"\s+", "", compound).lower()
-    for match in _TOKEN_RE.finditer(text):
-        raw = match.group(0)
-        token = raw.lower()
-        if len(raw) > 1 and token not in _LOW_SIGNAL_QUERY_TOKENS:
-            yield token
-
-
-def _has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
-    """Require one term for a single-term query and two for a longer query."""
-
-    required = _required_lexical_overlap(query_tokens)
-    query_token_set = set(query_tokens)
-    matched: set[str] = set()
-    for token in _meaningful_tokens(text):
-        if token not in query_token_set:
-            continue
-        matched.add(token)
-        if len(matched) >= required:
-            return True
-    return False
-
-
-def _required_lexical_overlap(query_tokens: list[str]) -> int:
-    return 1 if len(query_tokens) == 1 else 2
 
 
 def _lexical_fallback_page_size(pool: int) -> int:

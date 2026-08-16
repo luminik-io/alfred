@@ -334,6 +334,36 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
     assert conn.candidate_calls == 8
 
 
+@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
+def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor([("match", f"Prefer {query} for this case.", "[]", _NOW)])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["match"]
+
+
 def test_recency_query_is_scoped_and_ordered() -> None:
     sql, params = _recency_query(table="lessons", codename="c", repo="r", limit=4, now=_NOW)
     assert "ORDER BY l.created_at DESC" in sql

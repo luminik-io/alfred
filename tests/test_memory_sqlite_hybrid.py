@@ -101,6 +101,54 @@ def test_lexical_recall_keeps_compound_single_character_terms(
     assert out[0].id == match.id
 
 
+@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
+def test_default_chain_round_trips_symbolic_technical_terms(
+    tmp_path: Path,
+    query: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    lesson = writer.reflect(
+        codename="c",
+        repo="r",
+        body=f"Use {query} carefully in the request path.",
+    )
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_default_chain_keeps_generic_low_signal_queries_as_hard_misses(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Fix the release process.")
+
+    assert load_provider(env).recall(query="fix", codename="c", repo="r") == []
+
+
+@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
+def test_like_fallback_recalls_symbolic_technical_terms(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    lesson = provider.reflect(codename="c", repo="r", body=f"Prefer {query} for this case.")
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
 def test_recall_scopes_by_codename_and_repo(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="lucius", repo="acme/api", body="shared token about caching")
     other = provider.reflect(codename="drake", repo="acme/web", body="shared token about caching")
@@ -261,6 +309,28 @@ def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
         "schema",
         "loader",
     ]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("C++", "c++"),
+        ("C#", "c#"),
+        ("N+12", "n+12"),
+        ("O(42)", "o(42)"),
+        ("HTTP/2.1", "http/2.1"),
+    ],
+)
+def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
+    assert mod._tokenize(query) == [expected]
+
+
+def test_compound_and_constituent_count_as_one_overlap_concept() -> None:
+    query_tokens = mod._tokenize("Fix GraphQL schema transport over HTTP/2")
+
+    assert "http/2" in query_tokens
+    assert "http" not in query_tokens
+    assert not mod._has_meaningful_lexical_overlap("Only HTTP/2 is supported", query_tokens)
 
 
 def test_lexical_overlap_scans_lesson_terms_beyond_query_token_cap() -> None:

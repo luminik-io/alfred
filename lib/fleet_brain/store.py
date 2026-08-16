@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import secrets
 import sqlite3
 import time
@@ -22,6 +21,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal, Protocol
+
+from memory_tokens import has_meaningful_memory_query
 
 from . import schema as schema_mod
 from .taxonomy import (
@@ -564,11 +565,6 @@ AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "triage/",
 )
 NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("architect:fanout-complete",)
-_SYMBOLIC_TECHNICAL_TERM_RE: Final[re.Pattern[str]] = re.compile(
-    r"(?<![A-Za-z0-9])(?:N\+[0-9]+|C(?:\+\+|#)|HTTP/[0-9]+(?:\.[0-9]+)?|O\([0-9]+\))"
-    r"(?![A-Za-z0-9])",
-    re.IGNORECASE,
-)
 
 
 def _to_iso(dt: datetime) -> str:
@@ -596,21 +592,9 @@ def _escape_like_literal(value: str) -> str:
 
 
 def _has_meaningful_memory_query(value: str) -> bool:
-    """Apply the canonical gate, with narrow literal technical-term support.
+    """Apply the canonical memory query gate without importing a provider."""
 
-    The import stays on the read path because :mod:`memory` imports FleetBrain's
-    public types. Loading it at module import time would create an import cycle.
-    Keeping token policy in the hybrid provider prevents the two SQLite-backed
-    recall paths from acquiring separate stop-word lists. Fleet's escaped
-    literal search can also preserve compact terms such as ``N+1`` and ``C++``
-    that the word tokenizer intentionally drops; punctuation alone stays noise.
-    """
-
-    from memory.sqlite_hybrid import _tokenize
-
-    if _tokenize(value):
-        return True
-    return _SYMBOLIC_TECHNICAL_TERM_RE.search(value) is not None
+    return has_meaningful_memory_query(value)
 
 
 @dataclass

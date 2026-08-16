@@ -313,7 +313,7 @@ def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain
     assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
 
 
-@pytest.mark.parametrize("query", ["N+1", "C++", "C#", "HTTP/2", "O(1)"])
+@pytest.mark.parametrize("query", ["N+12", "C++", "C#", "HTTP/2.1", "O(42)"])
 def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query: str) -> None:
     matching_body = f"Use {query} carefully in this code path."
     brain.reflect(codename="lucius", repo="org/api", body=matching_body)

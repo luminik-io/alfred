@@ -71,6 +71,15 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
+from memory_tokens import (
+    has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
+)
+from memory_tokens import (
+    required_lexical_overlap as _required_lexical_overlap,
+)
+from memory_tokens import (
+    tokenize as _tokenize,
+)
 
 # Reuse the exact helpers the SQLite hybrid provider uses so the two stores stay
 # in lockstep: the same embedder config, the same RRF fusion (k=60 convention),
@@ -87,12 +96,9 @@ from .sqlite_hybrid import (
     _env_flag,
     _env_int,
     _from_iso,
-    _has_meaningful_lexical_overlap,
     _lexical_fallback_page_size,
     _OllamaEmbedder,
     _reciprocal_rank_fusion,
-    _required_lexical_overlap,
-    _tokenize,
     _union_provenance,
 )
 
