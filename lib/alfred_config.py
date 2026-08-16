@@ -413,13 +413,6 @@ _VARS: tuple[ConfigVar, ...] = (
         "engine",
         "Per-request timeout in seconds for LLM helper calls.",
     ),
-    V(
-        "ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_MAX_5X",
-        "int",
-        None,
-        "engine",
-        "Per-plan turn budget override for the claude-max-5x benchmark tier.",
-    ),
     # ---- memory: providers, ranking, extraction, consolidation ----
     V(
         "ALFRED_MEMORY_PROVIDERS",
@@ -2564,7 +2557,6 @@ _VARS: tuple[ConfigVar, ...] = (
 # --------------------------------------------------------------------------
 NON_VAR_TOKENS: dict[str, str] = {
     # Dynamic-prefix families (the concrete key is built at runtime).
-    "ALFRED_BENCHMARK_TURN_BUDGET_": "prefix for per-tier benchmark turn budgets",
     "ALFRED_CODE_MEMORY_SHA256_": "prefix for per-tag code-memory checksums",
     "ALFRED_SHIPPED_SUMMARY_": "infix for ALFRED_SHIPPED_SUMMARY_<PERIOD>_REPOS",
     # Doc/wildcard artifacts (appear only in comments/docstrings as *_*).

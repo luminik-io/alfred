@@ -7,9 +7,9 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **391**
+- Declared variables: **390**
 - Operator-facing (in `.env.example`): **73**
-- Internal / experimental: **318**
+- Internal / experimental: **317**
 
 Operator-facing vars also appear, with their defaults, in
 `.env.example`. Internal vars are listed here for completeness; they
@@ -158,7 +158,6 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_LLM_BACKOFF_BASE_S` | float |  | internal | Base backoff seconds for LLM helper retries. |
 | `ALFRED_LLM_BACKOFF_MAX_S` | float |  | internal | Max backoff seconds for LLM helper retries. |
 | `ALFRED_LLM_TIMEOUT_PER_REQUEST_S` | float |  | internal | Per-request timeout in seconds for LLM helper calls. |
-| `ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_MAX_5X` | int |  | internal | Per-plan turn budget override for the claude-max-5x benchmark tier. |
 
 ## Context batteries (governor, read-delta, digests)
 
