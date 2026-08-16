@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -56,6 +57,7 @@ _PR_EVIDENCE_FIELDS = (
 )
 _PR_EVIDENCE_WORKERS = 8
 _PR_EVIDENCE_LIMIT = 24
+_PR_EVIDENCE_DEADLINE_SECONDS = 12
 _PR_EVIDENCE_SLOTS = threading.BoundedSemaphore(_PR_EVIDENCE_WORKERS)
 
 # Open issues carrying any of these label substrings are NOT genuine queue
@@ -289,7 +291,7 @@ def _gh_subprocess_env() -> dict[str, str]:
     return env
 
 
-def _gh_json(args: list[str], *, timeout: int = 30) -> Any:
+def _gh_json(args: list[str], *, timeout: float = 30) -> Any:
     """Run a ``gh`` command with ``--json`` output and return parsed JSON.
 
     Returns ``None`` on any failure (missing gh, auth error, rate limit, bad
@@ -440,7 +442,7 @@ def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> 
     }
 
 
-def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
+def _with_pr_evidence(repo: str, pr: dict, *, deadline: float) -> tuple[dict, bool]:
     """Load bounded evidence for one PR without risking the collection query.
 
     GitHub expands each nested connection requested by ``gh pr list`` for every
@@ -453,6 +455,9 @@ def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
         return pr, False
     try:
         with _PR_EVIDENCE_SLOTS:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return {**pr, "_github_evidence_unavailable": True}, False
             evidence = _gh_json(
                 [
                     "pr",
@@ -463,7 +468,7 @@ def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
                     "--json",
                     _PR_EVIDENCE_FIELDS,
                 ],
-                timeout=2,
+                timeout=min(2, remaining),
             )
     except Exception:
         evidence = None
@@ -474,16 +479,16 @@ def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
 
 def _fetch_repo(
     repo: str, *, cutoff: float, now: datetime, limit: int
-) -> tuple[str, list[dict], list[dict], list[dict], list[dict], bool]:
+) -> tuple[str, list[dict], list[tuple[dict, str, str]], list[dict], bool]:
     """Query one repo's PRs + issues. Returns
-    ``(repo, queued, in_progress, shipped, awaiting_approval, errored)``.
+    ``(repo, queued, selected_prs, awaiting_approval, errored)``.
     ``errored`` is True if either gh call failed, so the caller records it
-    without losing the cards it did get. Pure per-repo work, safe to run
-    concurrently across repos.
+    without losing the cards it did get. Evidence is added after all lightweight
+    repo queries finish, which gives the whole board one deterministic budget.
+    Pure per-repo work is safe to run concurrently across repos.
     """
     queued: list[dict] = []
-    in_progress: list[dict] = []
-    shipped: list[dict] = []
+    selected_prs: list[tuple[dict, str, str]] = []
     awaiting_approval: list[dict] = []
     errored = False
 
@@ -505,7 +510,6 @@ def _fetch_repo(
     if prs is None:
         errored = True
     else:
-        selected_prs: list[tuple[dict, str, str]] = []
         for pr in prs:
             if pr.get("state") == "OPEN" and (
                 not _in_progress_requires_agent_evidence() or _pr_is_agent_shipped(pr)
@@ -515,32 +519,6 @@ def _fetch_repo(
                 merged = _parse_ts(pr.get("mergedAt"))
                 if merged and merged.timestamp() >= cutoff and _pr_is_agent_shipped(pr):
                     selected_prs.append((pr, "shipped", "mergedAt"))
-
-        evidence_prs = selected_prs[:_PR_EVIDENCE_LIMIT]
-        if evidence_prs:
-            workers = min(len(evidence_prs), _PR_EVIDENCE_WORKERS)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as evidence_pool:
-                evidence_rows = evidence_pool.map(
-                    lambda selected: _with_pr_evidence(repo, selected[0]),
-                    evidence_prs,
-                )
-                for (_pr, lane, ts_field), (enriched, evidence_error) in zip(
-                    evidence_prs, evidence_rows, strict=True
-                ):
-                    errored = errored or evidence_error
-                    target = in_progress if lane == "in_progress" else shipped
-                    target.append(_card(repo, enriched, kind="pr", ts_field=ts_field, now=now))
-        for pr, lane, ts_field in selected_prs[_PR_EVIDENCE_LIMIT:]:
-            target = in_progress if lane == "in_progress" else shipped
-            target.append(
-                _card(
-                    repo,
-                    {**pr, "_github_evidence_unavailable": True},
-                    kind="pr",
-                    ts_field=ts_field,
-                    now=now,
-                )
-            )
 
     issues = _gh_json(
         [
@@ -576,7 +554,7 @@ def _fetch_repo(
             if _issue_is_queue_work(issue):
                 queued.append(_card(repo, issue, kind="issue", ts_field="createdAt", now=now))
 
-    return repo, queued, in_progress, shipped, awaiting_approval, errored
+    return repo, queued, selected_prs, awaiting_approval, errored
 
 
 def _demo_cards() -> dict[str, list[dict]]:
@@ -640,6 +618,7 @@ def build_board(
     shipped: list[dict] = []
     awaiting_approval: list[dict] = []
     errors: list[str] = []
+    evidence_deadline = time.monotonic() + _PR_EVIDENCE_DEADLINE_SECONDS
 
     if include_demo:
         demo = _demo_cards()
@@ -650,22 +629,60 @@ def build_board(
 
     if repos:
         max_workers = min(len(repos), 8)
+        repo_results: list[
+            tuple[str, list[dict], list[tuple[dict, str, str]], list[dict], bool] | None
+        ] = [None] * len(repos)
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = [
-                pool.submit(_fetch_repo, repo, cutoff=cutoff, now=now, limit=limit)
-                for repo in repos
-            ]
+            futures = {
+                pool.submit(_fetch_repo, repo, cutoff=cutoff, now=now, limit=limit): index
+                for index, repo in enumerate(repos)
+            }
             for fut in concurrent.futures.as_completed(futures):
                 try:
-                    repo, q, ip, sh, aa, errored = fut.result()
+                    repo_results[futures[fut]] = fut.result()
                 except Exception:  # never let one repo's failure break the board
                     continue
-                queued.extend(q)
-                in_progress.extend(ip)
-                shipped.extend(sh)
-                awaiting_approval.extend(aa)
-                if errored:
-                    errors.append(repo)
+
+        selected_cards: list[tuple[str, dict, str, str]] = []
+        for repo_result in repo_results:
+            if repo_result is None:
+                continue
+            repo, q, selected_prs, aa, errored = repo_result
+            selected_cards.extend((repo, pr, lane, ts_field) for pr, lane, ts_field in selected_prs)
+            queued.extend(q)
+            awaiting_approval.extend(aa)
+            if errored:
+                errors.append(repo)
+
+        evidence_cards = selected_cards[:_PR_EVIDENCE_LIMIT]
+        if evidence_cards:
+            workers = min(len(evidence_cards), _PR_EVIDENCE_WORKERS)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as evidence_pool:
+                evidence_rows = evidence_pool.map(
+                    lambda selected: _with_pr_evidence(
+                        selected[0], selected[1], deadline=evidence_deadline
+                    ),
+                    evidence_cards,
+                )
+                for (repo, _pr, lane, ts_field), (enriched, evidence_error) in zip(
+                    evidence_cards, evidence_rows, strict=True
+                ):
+                    if evidence_error:
+                        errors.append(repo)
+                    target = in_progress if lane == "in_progress" else shipped
+                    target.append(_card(repo, enriched, kind="pr", ts_field=ts_field, now=now))
+
+        for repo, pr, lane, ts_field in selected_cards[_PR_EVIDENCE_LIMIT:]:
+            target = in_progress if lane == "in_progress" else shipped
+            target.append(
+                _card(
+                    repo,
+                    {**pr, "_github_evidence_unavailable": True},
+                    kind="pr",
+                    ts_field=ts_field,
+                    now=now,
+                )
+            )
 
     def _sort(cards: list[dict]) -> list[dict]:
         return sorted(cards, key=lambda c: c.get("timestamp") or "", reverse=True)

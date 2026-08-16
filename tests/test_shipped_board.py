@@ -341,6 +341,90 @@ def test_pr_evidence_batch_caps_work_before_the_client_deadline(monkeypatch):
     assert deferred["github_evidence_unavailable"] is True
 
 
+def test_pr_evidence_budget_is_global_and_keeps_board_order(monkeypatch):
+    repos = ["acme/api", "acme/web"]
+    prs = [
+        {
+            "number": number,
+            "title": f"ship it {number}",
+            "url": f"u{number}",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": False,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": f"senior-dev/ship-it-{number}",
+        }
+        for number in range(1, sb._PR_EVIDENCE_LIMIT + 1)
+    ]
+    viewed: list[tuple[str, int]] = []
+
+    def fake_gh(args, **kwargs):
+        if args[:2] == ["pr", "list"]:
+            return prs
+        if args[:2] == ["pr", "view"]:
+            repo = args[args.index("--repo") + 1]
+            number = int(args[2])
+            viewed.append((repo, number))
+            return {"headRefOid": str(number) * 40}
+        if args[0] == "issue":
+            return []
+        return None
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+
+    cards = sb.build_board(repos, now=NOW)["columns"]["in_progress"]
+
+    assert len(viewed) == sb._PR_EVIDENCE_LIMIT
+    assert set(viewed) == {("acme/api", number) for number in range(1, sb._PR_EVIDENCE_LIMIT + 1)}
+    assert [(card["repo"], card["number"]) for card in cards] == [
+        (repo, number) for repo in repos for number in range(1, sb._PR_EVIDENCE_LIMIT + 1)
+    ]
+    skipped = [card for card in cards if card["repo"] == "acme/web"]
+    assert all(card["github_evidence"] is None for card in skipped)
+    assert all(card["github_evidence_unavailable"] is True for card in skipped)
+
+
+def test_expired_global_evidence_deadline_skips_calls_without_dropping_cards(monkeypatch):
+    prs = [
+        {
+            "number": 1,
+            "title": "ship it",
+            "url": "u1",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": False,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": "senior-dev/ship-it",
+        }
+    ]
+    viewed: list[int] = []
+
+    def fake_gh(args, **kwargs):
+        if args[:2] == ["pr", "list"]:
+            return prs
+        if args[:2] == ["pr", "view"]:
+            viewed.append(int(args[2]))
+            return {"headRefOid": "a" * 40}
+        if args[0] == "issue":
+            return []
+        return None
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+    monkeypatch.setattr(sb, "_PR_EVIDENCE_DEADLINE_SECONDS", 0)
+
+    board = sb.build_board(["acme/api"], now=NOW)
+
+    card = board["columns"]["in_progress"][0]
+    assert viewed == []
+    assert card["github_evidence"] is None
+    assert card["github_evidence_unavailable"] is True
+    assert board["errors"] == []
+
+
 def test_github_evidence_marks_capped_connections_without_guessing_totals():
     item = {
         "changedFiles": 240,
