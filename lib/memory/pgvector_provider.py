@@ -72,6 +72,7 @@ from fleet_brain import (
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
 from memory_tokens import MAX_LITERAL_QUERY_CANDIDATES
+from memory_tokens import dense_candidate_limit as _dense_candidate_limit
 from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
@@ -1087,8 +1088,15 @@ class PgvectorProvider:
                 )
                 dense: list[str] = []
                 if has_query and query_tokens and self._vec_ok:
-                    dense = self._dense_ids(conn, text, codename=codename, repo=repo, now=now)
-                    dense = self._filter_dense_identity_ids(conn, dense, query_tokens)
+                    dense = self._dense_ids(
+                        conn,
+                        text,
+                        codename=codename,
+                        repo=repo,
+                        now=now,
+                        query_tokens=query_tokens,
+                    )
+                    dense = self._filter_dense_identity_ids(conn, dense, query_tokens)[: self.pool]
                 if not lexical and not dense and not has_query:
                     fused_ids = self._recency_ids(
                         conn, codename=codename, repo=repo, limit=cap, now=now
@@ -1205,18 +1213,23 @@ class PgvectorProvider:
         codename: str | None,
         repo: str | None,
         now: datetime,
+        query_tokens: list[str],
     ) -> list[str]:
         if self.embedder is None or not text:
             return []
         vec = self.embedder(text)
         if not vec or len(vec) != int(self.dimensions):
             return []
+        has_required_identities = any(_is_identity_token(token) for token in query_tokens)
+        candidate_limit = (
+            _dense_candidate_limit(self.pool) if has_required_identities else self.pool
+        )
         sql, params = _dense_query(
             _vector_literal(vec),
             table=self._lessons,
             codename=codename,
             repo=repo,
-            pool=self.pool,
+            pool=candidate_limit,
             now=now,
         )
         try:
@@ -1231,8 +1244,8 @@ class PgvectorProvider:
         ids: list[str],
         query_tokens: list[str],
     ) -> list[str]:
-        if not ids:
-            return []
+        if not ids or not any(_is_identity_token(token) for token in query_tokens):
+            return ids
         rows = conn.execute(
             f"SELECT id, lexical_text FROM {self._lessons} WHERE id = ANY(%s)",
             (ids,),

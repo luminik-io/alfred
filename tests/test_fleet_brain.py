@@ -634,9 +634,11 @@ def test_recall_query_requires_contextual_major_version_identity(
         ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
         ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
         ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
     ],
 )
-def test_recall_query_unversioned_runtime_matches_versioned_lesson(
+def test_recall_query_unversioned_technology_matches_versioned_lesson(
     brain: FleetBrain,
     query: str,
     crowding_body: str,

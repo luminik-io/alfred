@@ -67,6 +67,7 @@ from fleet_brain import (
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
 from memory_tokens import MAX_LITERAL_QUERY_CANDIDATES
+from memory_tokens import dense_candidate_limit as _dense_candidate_limit
 from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
@@ -668,8 +669,13 @@ class SqliteHybridProvider:
             )
             dense: list[str] = []
             if has_query and query_tokens and self._dense_active(conn):
-                dense = self._dense_ids(conn, text, codename=codename, repo=repo)
-                dense = self._filter_dense_identity_ids(conn, dense, query_tokens)
+                dense = self._dense_ids(
+                    conn,
+                    text,
+                    codename=codename,
+                    repo=repo,
+                )
+                dense = self._filter_dense_identity_ids(conn, dense, query_tokens)[: self.pool]
             if not lexical and not dense:
                 # An intentionally unfiltered view gets a recency baseline. A
                 # real query miss stays empty so unrelated recent lessons do
@@ -873,23 +879,18 @@ class SqliteHybridProvider:
         want = self.pool
         # The vec0 KNN limit is GLOBAL and cannot filter on scope or validity, so
         # taking the top `want` nearest vectors first and filtering afterwards
-        # would drop in-scope/valid vectors whenever enough out-of-scope or
-        # invalidated vectors rank closer. Grow the KNN window until we have
-        # `want` surviving hits or we have pulled every stored vector (an upper
-        # bound from the lessons count), so the filter can never truncate away a
-        # relevant vector. This runs even unscoped so an invalidated (superseded/
-        # expired) lesson is never recalled through the dense arm.
+        # would drop in-scope, valid, identity-matching vectors whenever enough
+        # other vectors rank closer. Inspect one result-pool-independent bounded
+        # window, then apply every authoritative filter before the pool cap.
+        # This runs even unscoped so an invalidated (superseded/expired) lesson
+        # is never recalled through the dense arm.
         (total,) = conn.execute("SELECT COUNT(*) FROM lessons").fetchone()
         total = max(1, int(total))
-        k = min(total, max(want * 4, want))
-        while True:
-            candidate_ids = self._knn(conn, serialized, limit=k)
-            if not candidate_ids:
-                return []
-            in_scope = self._filter_scope(conn, candidate_ids, codename=codename, repo=repo)
-            if len(in_scope) >= want or k >= total:
-                return in_scope[:want]
-            k = min(total, k * 2)
+        candidate_limit = min(total, _dense_candidate_limit(want))
+        candidate_ids = self._knn(conn, serialized, limit=candidate_limit)
+        if not candidate_ids:
+            return []
+        return self._filter_scope(conn, candidate_ids, codename=codename, repo=repo)
 
     def _filter_dense_identity_ids(
         self,
@@ -897,8 +898,8 @@ class SqliteHybridProvider:
         ids: list[str],
         query_tokens: list[str],
     ) -> list[str]:
-        if not ids:
-            return []
+        if not ids or not any(_is_identity_token(token) for token in query_tokens):
+            return ids
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(
             f"SELECT id, lexical_text FROM lessons WHERE id IN ({placeholders})",

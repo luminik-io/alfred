@@ -705,7 +705,7 @@ def test_lexical_like_identity_regex_uses_canonical_class_boundaries() -> None:
 
     assert sql.count("l.lexical_text ~ %s") == 5
     assert params[:5] == [
-        r"(^|[^A-Za-z0-9])c\+\+([^A-Za-z0-9]|$)",
+        r"(^|[^A-Za-z0-9])c\+\+(?:[0-9]{2,4})?([^A-Za-z0-9]|$)",
         r"(^|[^A-Za-z0-9])node 2($|[^A-Za-z0-9.]|\.$|\.[^A-Za-z0-9])",
         r"(^|[^A-Za-z0-9./])1\.3($|[^A-Za-z0-9/.]|\.$|\.[^A-Za-z0-9])",
         r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
@@ -1088,9 +1088,11 @@ def test_lexical_like_fallback_requires_contextual_major_version_identity(
         ("Node runtime", "node 22 packaging guidance", "node 22 runtime guidance"),
         ("Node.js runtime", "node.js 22 packaging guidance", "node.js 22 runtime guidance"),
         ("NodeJS runtime", "nodejs 22 packaging guidance", "nodejs 22 runtime guidance"),
+        ("C++ compiler", "c++17 linker guidance", "c++17 compiler guidance"),
+        ("C# compiler", "c#17 linker guidance", "c#17 compiler guidance"),
     ],
 )
-def test_lexical_like_fallback_unversioned_runtime_matches_versioned_lesson(
+def test_lexical_like_fallback_unversioned_technology_matches_versioned_lesson(
     query: str,
     crowding_text: str,
     matching_text: str,
@@ -2123,6 +2125,8 @@ class _FakePgConn:
         self.closed = False
         self.lessons: dict[str, dict[str, Any]] = {}
         self.lexical_texts: dict[str, str] = {}
+        self.dense_ids: list[str] = []
+        self.dense_limits: list[int] = []
         self.anchors: list[dict[str, Any]] = []
         self.reuse: dict[str, int] = {}
 
@@ -2145,6 +2149,10 @@ class _FakePgConn:
     def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
         s = " ".join(sql.split())
         p = list(params)
+        if "ORDER BY l.embedding <=> %s::vector" in s:
+            limit = int(p[-1])
+            self.dense_limits.append(limit)
+            return _FakeCursor([(lesson_id,) for lesson_id in self.dense_ids[:limit]])
         if s.startswith("SELECT id, lexical_text FROM lessons WHERE id = ANY"):
             return _FakeCursor([(lesson_id, self.lexical_texts[lesson_id]) for lesson_id in p[0]])
         if s.startswith("SELECT provenance, codename, repo FROM lessons WHERE id ="):
@@ -2220,6 +2228,8 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
     ("query", "wrong_text", "matching_text"),
     [
         ("Fix C++ compiler warnings", "c# compiler warnings", "c++ compiler warnings"),
+        ("Fix C++17 compiler warnings", "c++20 compiler warnings", "c++17 compiler warnings"),
+        ("Fix C#17 compiler warnings", "c#20 compiler warnings", "c#17 compiler warnings"),
         ("Fix C compiler warnings", "r compiler warnings", "c language warnings"),
         ("Fix TLS 1.3 configuration", "tls 1.2 configuration", "tls 1.3 configuration"),
         ("Fix NodeJS 22 runtime", "node.js 20 runtime", "node 22 runtime"),
@@ -2270,6 +2280,62 @@ def test_dense_recall_keeps_semantic_candidates_without_query_identities(
     out = provider.recall(query="gateway fairness", codename="c", repo="r")
 
     assert out == ["semantic"]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_standard", "matching_standard"),
+    [
+        ("Fix C++ compiler warnings", "c#17", "c++17"),
+        ("Fix C# compiler warnings", "c++17", "c#17"),
+    ],
+)
+def test_dense_identity_filter_runs_before_pgvector_result_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_standard: str,
+    matching_standard: str,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    provider.dimensions = 2
+    provider.embedder = lambda _text: [0.1, 0.2]
+    wrong_ids = [f"wrong-{index}" for index in range(49)]
+    fake.dense_ids = [*wrong_ids, "matching"]
+    fake.lexical_texts = {
+        **dict.fromkeys(wrong_ids, f"{wrong_standard} compiler warnings"),
+        "matching": f"{matching_standard} compiler warnings",
+    }
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert out == ["matching"]
+    assert fake.dense_limits == [50]
+
+
+def test_pgvector_dense_identity_free_query_keeps_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    provider.dimensions = 2
+    provider.embedder = lambda _text: [0.1, 0.2]
+    fake.dense_ids = [f"semantic-{index}" for index in range(10)]
+    fake.lexical_texts = dict.fromkeys(fake.dense_ids, "semantic guidance")
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert out == ["semantic-0", "semantic-1"]
+    assert fake.dense_limits == [2]
 
 
 def test_query_miss_does_not_backfill_recent_lessons(monkeypatch: pytest.MonkeyPatch) -> None:

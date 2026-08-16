@@ -18,6 +18,7 @@ import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -322,9 +323,11 @@ def test_default_chain_requires_contextual_major_version_identity(
         ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
         ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
         ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
     ],
 )
-def test_default_chain_unversioned_runtime_query_matches_versioned_lesson(
+def test_default_chain_unversioned_technology_query_matches_versioned_lesson(
     tmp_path: Path,
     query: str,
     crowding_body: str,
@@ -1495,9 +1498,11 @@ def test_like_recall_requires_contextual_major_version_identity(
         ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
         ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
         ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
     ],
 )
-def test_fts_recall_unversioned_runtime_query_matches_versioned_lesson(
+def test_fts_recall_unversioned_technology_query_matches_versioned_lesson(
     provider: SqliteHybridProvider,
     query: str,
     crowding_body: str,
@@ -1519,9 +1524,11 @@ def test_fts_recall_unversioned_runtime_query_matches_versioned_lesson(
         ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
         ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
         ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
     ],
 )
-def test_like_recall_unversioned_runtime_query_matches_versioned_lesson(
+def test_like_recall_unversioned_technology_query_matches_versioned_lesson(
     monkeypatch: pytest.MonkeyPatch,
     query: str,
     crowding_body: str,
@@ -2058,9 +2065,11 @@ def test_node_major_aliases_are_atomic_and_match_each_other() -> None:
         ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
         ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
         ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
     ],
 )
-def test_unversioned_runtime_query_matches_stored_version_companion(
+def test_unversioned_technology_query_matches_stored_version_companion(
     query: str,
     crowding_lesson: str,
     matching_lesson: str,
@@ -2071,18 +2080,39 @@ def test_unversioned_runtime_query_matches_stored_version_companion(
     assert mod._has_meaningful_lexical_overlap(matching_lesson, query_tokens)
 
 
-@pytest.mark.parametrize("runtime", ["Python 3", "Node 22", "Node.js 22", "NodeJS 22"])
-def test_version_identity_companion_does_not_double_count_overlap(runtime: str) -> None:
-    query_tokens = mod._tokenize(f"{runtime} migration")
+@pytest.mark.parametrize(
+    ("versioned", "subject"),
+    [
+        ("Python 3", "migration"),
+        ("Node 22", "migration"),
+        ("Node.js 22", "migration"),
+        ("NodeJS 22", "migration"),
+        ("C++17", "compiler"),
+        ("C#17", "compiler"),
+    ],
+)
+def test_version_identity_companion_does_not_double_count_overlap(
+    versioned: str,
+    subject: str,
+) -> None:
+    query_tokens = mod._tokenize(f"{versioned} {subject}")
 
     assert not mod._has_meaningful_lexical_overlap(
-        f"{runtime} packaging guidance",
+        f"{versioned} packaging guidance",
         query_tokens,
     )
     assert mod._has_meaningful_lexical_overlap(
-        f"{runtime} migration guidance",
+        f"{versioned} {subject} guidance",
         query_tokens,
     )
+
+
+@pytest.mark.parametrize(
+    ("pool", "expected"),
+    [(1, 50), (12, 50), (13, 52), (100, 400), (1_000, 400)],
+)
+def test_dense_candidate_window_is_bounded(pool: int, expected: int) -> None:
+    assert token_mod.dense_candidate_limit(pool) == expected
 
 
 def test_ipv4_is_a_bounded_mandatory_identity() -> None:
@@ -2645,6 +2675,8 @@ def test_dense_requested_but_sqlite_vec_missing_falls_back_to_lexical(
     ("query", "wrong_body", "matching_body"),
     [
         ("Fix C++ compiler warnings", "C# compiler warnings", "C++ compiler warnings"),
+        ("Fix C++17 compiler warnings", "C++20 compiler warnings", "C++17 compiler warnings"),
+        ("Fix C#17 compiler warnings", "C#20 compiler warnings", "C#17 compiler warnings"),
         ("Fix C compiler warnings", "R compiler warnings", "C language warnings"),
         ("Fix TLS 1.3 configuration", "TLS 1.2 configuration", "TLS 1.3 configuration"),
         ("Fix NodeJS 22 runtime", "Node.js 20 runtime", "Node 22 runtime"),
@@ -2693,6 +2725,89 @@ def test_dense_recall_keeps_semantic_candidates_without_query_identities(
     out = provider.recall(query="gateway fairness", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [semantic.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_standard", "matching_standard"),
+    [
+        ("Fix C++ compiler warnings", "C#17", "C++17"),
+        ("Fix C# compiler warnings", "C++17", "C#17"),
+    ],
+)
+def test_dense_identity_filter_runs_before_sqlite_result_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_standard: str,
+    matching_standard: str,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    wrong = [
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"{wrong_standard} compiler warnings {index}",
+        )
+        for index in range(49)
+    ]
+    matching = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"{matching_standard} compiler warnings",
+    )
+    ranked_ids = [*[lesson.id for lesson in wrong], matching.id]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [matching.id]
+    assert knn_limits == [50]
+
+
+def test_sqlite_dense_identity_free_query_keeps_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    semantic = [
+        provider.reflect(codename="c", repo="r", body=f"semantic guidance {index}")
+        for index in range(10)
+    ]
+    ranked_ids = [lesson.id for lesson in semantic]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [semantic[0].id, semantic[1].id]
+    assert knn_limits == [10]
 
 
 # ---------------------------------------------------------------------------

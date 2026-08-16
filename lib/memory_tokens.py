@@ -16,6 +16,11 @@ from ipaddress import AddressValueError, IPv4Address
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _MIN_LANGUAGE_STANDARD_DIGITS = 2
 _MAX_LANGUAGE_STANDARD_DIGITS = 4
+_LANGUAGE_STANDARD_BASE_RE = re.compile(r"(?:c\+\+|c#)", re.IGNORECASE)
+_LANGUAGE_STANDARD_IDENTITY_RE = re.compile(
+    rf"(?:c\+\+|c#)[0-9]{{{_MIN_LANGUAGE_STANDARD_DIGITS},{_MAX_LANGUAGE_STANDARD_DIGITS}}}",
+    re.IGNORECASE,
+)
 _SLASH_IDENTITY_PATTERN = r"(?:HTTP/[0-9]{1,3}(?:\.[0-9]{1,3})?|I/O|A/B)"
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
     rf"(?<![A-Za-z0-9])(?:"
@@ -64,6 +69,7 @@ _LANGUAGE_IDENTITY_VARIANTS = {
 }
 _MAX_INFLECTION_TOKEN_LENGTH = 64
 MAX_LITERAL_QUERY_CANDIDATES = 400
+_MIN_DENSE_QUERY_CANDIDATES = 50
 _IRREGULAR_ENGLISH_INFLECTIONS = {
     "analyses": "analysis",
     "appendices": "appendix",
@@ -162,12 +168,22 @@ def _is_ipv4_identity(token: str) -> bool:
     return True
 
 
-def _contextual_major_base(token: str) -> str | None:
-    """Return the non-identity technology named by a runtime version."""
+def _version_identity_base(token: str) -> str | None:
+    """Return the non-versioned technology named by a version identity."""
 
-    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) is None:
-        return None
-    return "python" if token.startswith("python ") else "node"
+    if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) is not None:
+        return "python" if token.startswith("python ") else "node"
+    match = _LANGUAGE_STANDARD_IDENTITY_RE.fullmatch(token)
+    return match.group(0).rstrip("0123456789") if match is not None else None
+
+
+def dense_candidate_limit(pool: int) -> int:
+    """Return the shared bounded dense candidate window for identity filtering."""
+
+    return min(
+        max(max(1, int(pool)) * 4, _MIN_DENSE_QUERY_CANDIDATES),
+        MAX_LITERAL_QUERY_CANDIDATES,
+    )
 
 
 def _compound_matches(text: str) -> list[re.Match[str]]:
@@ -375,9 +391,9 @@ def meaningful_tokens(
     span are not yielded a second time. A lesson containing only ``HTTP/2``
     therefore contributes one overlap concept, not both ``http/2`` and
     ``http``. Candidate overlap can request one non-identity base technology
-    companion for a contextual major version. Ordinary punctuation is only a
-    spelling separator, so ``cold-start`` yields ``cold`` and ``start`` and can
-    match the spelling ``cold start``.
+    companion for a contextual runtime version or C++/C# standard. Ordinary
+    punctuation is only a spelling separator, so ``cold-start`` yields ``cold``
+    and ``start`` and can match the spelling ``cold start``.
     """
 
     text = lexical_surface(text)
@@ -387,7 +403,7 @@ def meaningful_tokens(
         compound = re.sub(r"\s+", " ", match.group(0))
         yield compound
         if include_version_companions:
-            companion = _contextual_major_base(compound)
+            companion = _version_identity_base(compound)
             if companion is not None:
                 yield companion
 
@@ -498,6 +514,9 @@ def identity_regex_pattern(value: str) -> str:
     value = lexical_surface(value)
     metacharacters = frozenset(r"\.^$|?*+(){}[]")
     literal = "".join(f"\\{char}" if char in metacharacters else char for char in value)
+    if _LANGUAGE_STANDARD_BASE_RE.fullmatch(value):
+        standard = rf"[0-9]{{{_MIN_LANGUAGE_STANDARD_DIGITS},{_MAX_LANGUAGE_STANDARD_DIGITS}}}"
+        return rf"(^|[^A-Za-z0-9]){literal}(?:{standard})?([^A-Za-z0-9]|$)"
     if _is_ipv4_identity(value):
         return (
             rf"(^|[^A-Za-z0-9./:]){literal}"
@@ -561,7 +580,7 @@ def required_identities_match(text: str, query_tokens: list[str]) -> bool:
     if not required:
         return True
     matched: set[str] = set()
-    for token in meaningful_tokens(text):
+    for token in meaningful_tokens(text, include_version_companions=True):
         token = _english_inflection_form(token)
         if token not in required:
             continue
