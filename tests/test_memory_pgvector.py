@@ -670,6 +670,65 @@ def test_lexical_like_fallback_requires_language_compound_identity() -> None:
 
 
 @pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_lexical_like_fallback_canonicalizes_language_identity_contexts(
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    lesson_text = f"{lesson_context.casefold()} warnings guidance"
+    wrong_text = f"{wrong_context.casefold()} warnings guidance"
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            patterns = [
+                value.strip("%")
+                for value in params
+                if isinstance(value, str) and value.startswith("%")
+            ]
+            rows = [
+                (lesson_id, text, _NOW - timedelta(seconds=index))
+                for index, (lesson_id, text) in enumerate(
+                    [("wrong", wrong_text), ("matching", lesson_text)]
+                )
+                if any(pattern in text for pattern in patterns)
+            ]
+            return Cursor(rows)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        f"Fix {query_context} warnings",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
     "query",
     ["Rename column C in GraphQL schema", "Rename variable R in GraphQL schema"],
 )
@@ -1086,6 +1145,8 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("patches", "patch"),
         ("branch", "branches"),
         ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),

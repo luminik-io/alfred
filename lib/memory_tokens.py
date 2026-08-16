@@ -50,6 +50,10 @@ _LANGUAGE_IDENTITY_RE = re.compile(
 )
 _MAX_QUERY_TOKENS = 24
 _MAX_RETRIEVAL_VARIANTS_PER_CONCEPT = 2
+_LANGUAGE_IDENTITY_VARIANTS = {
+    "c language": ("c language", "c compiler"),
+    "r language": ("r language", "r compiler", "r package", "r script"),
+}
 _MAX_INFLECTION_TOKEN_LENGTH = 64
 MAX_LITERAL_QUERY_CANDIDATES = 400
 _IRREGULAR_ENGLISH_INFLECTIONS = {
@@ -57,12 +61,14 @@ _IRREGULAR_ENGLISH_INFLECTIONS = {
     "statuses": "status",
 }
 _AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS = {
+    "aliases": "alias",
     "buses": "bus",
     "caches": "cache",
 }
 _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
     {
         "analysis",
+        "alias",
         "class",
         "css",
         "news",
@@ -156,6 +162,8 @@ def _english_inflection_form(token: str) -> str:
 
     if _CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token) and token.startswith(_NODE_JS_MAJOR_PREFIX):
         return f"node {token.removeprefix(_NODE_JS_MAJOR_PREFIX)}"
+    if _LANGUAGE_IDENTITY_RE.fullmatch(token):
+        return f"{token[0]} language"
     if (
         len(token) < 4
         or len(token) > _MAX_INFLECTION_TOKEN_LENGTH
@@ -182,6 +190,8 @@ def _english_inflection_form(token: str) -> str:
 def _english_plural_form(token: str) -> str:
     """Return one bounded retrieval-only plural spelling for a concept."""
 
+    if token == "alias":
+        return "aliases"
     if token == "bus":
         return "buses"
     if (
@@ -206,6 +216,9 @@ def _english_plural_form(token: str) -> str:
 def _retrieval_variants(raw: str, canonical: str) -> tuple[str, ...]:
     """Return bounded spellings that retrieve one canonical concept."""
 
+    language_variants = _LANGUAGE_IDENTITY_VARIANTS.get(canonical)
+    if language_variants is not None:
+        return language_variants
     variants: list[str] = [canonical]
     for variant in (raw, _english_plural_form(canonical)):
         if variant not in variants:

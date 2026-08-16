@@ -360,6 +360,8 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
         ("patches", "patch"),
         ("branch", "branches"),
         ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -434,6 +436,40 @@ def test_recall_query_requires_language_compound_identity(brain: FleetBrain) -> 
         codename="lucius",
         repo="org/api",
         query="Fix C compiler warnings",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_recall_query_canonicalizes_language_identity_contexts(
+    brain: FleetBrain,
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body=f"{wrong_context} warnings guidance",
+    )
+    matching_body = f"{lesson_context} warnings guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query=f"Fix {query_context} warnings",
     )
 
     assert [lesson.body for lesson in out] == [matching_body]

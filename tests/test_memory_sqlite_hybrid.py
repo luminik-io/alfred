@@ -300,6 +300,45 @@ def test_default_chain_requires_contextual_major_version_identity(
 
 
 @pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_default_chain_canonicalizes_language_identity_contexts(
+    tmp_path: Path,
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=f"{wrong_context} warnings guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body=f"{lesson_context} warnings guidance",
+    )
+
+    out = load_provider(env).recall(
+        query=f"Fix {query_context} warnings",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
     ("query_term", "lesson_term"),
     [
         ("bus", "buses"),
@@ -308,6 +347,8 @@ def test_default_chain_requires_contextual_major_version_identity(
         ("patches", "patch"),
         ("branch", "branches"),
         ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
     ],
 )
 def test_default_chain_preserves_sibilant_inflection_variants(
@@ -697,6 +738,8 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("patches", "patch"),
         ("branch", "branches"),
         ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -904,6 +947,8 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("patches", "patch"),
         ("branch", "branches"),
         ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -957,6 +1002,39 @@ def test_recall_requires_language_compound_identity(
     relevant = provider.reflect(codename="c", repo="r", body="Fix C compiler warnings")
 
     out = provider.recall(query="Fix C compiler warnings", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_sqlite_recall_canonicalizes_language_identity_contexts(
+    provider: SqliteHybridProvider,
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=f"{wrong_context} warnings guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"{lesson_context} warnings guidance",
+    )
+
+    out = provider.recall(
+        query=f"Fix {query_context} warnings",
+        codename="c",
+        repo="r",
+    )
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -1447,6 +1525,7 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("processes", "process"),
         ("watches", "watch"),
         ("boxes", "box"),
+        ("aliases", "alias"),
         ("patches", "patch"),
         ("branches", "branch"),
         ("classes", "class"),
@@ -1473,6 +1552,7 @@ def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
         ("class", "class", "clas"),
         ("CSS", "css", "cs"),
         ("Redis", "redis", "redi"),
+        ("alias", "alias", "alia"),
         ("caches", "cache", "cach"),
     ],
 )
@@ -1705,9 +1785,20 @@ def test_tokenize_does_not_treat_arbitrary_big_o_prose_as_symbolic() -> None:
 
 
 def test_tokenize_requires_language_shaped_context_for_single_letter_languages() -> None:
-    assert mod._tokenize("Fix C compiler warnings") == ["c compiler", "warning"]
-    assert mod._tokenize("R package") == ["r package"]
-    assert mod._tokenize("R script") == ["r script"]
+    assert mod._tokenize("Fix C compiler warnings") == ["c language", "warning"]
+    assert mod._tokenize("C language") == ["c language"]
+    assert mod._tokenize("R compiler") == ["r language"]
+    assert mod._tokenize("R language") == ["r language"]
+    assert mod._tokenize("R package") == ["r language"]
+    assert mod._tokenize("R script") == ["r language"]
+    assert mod._query_token_groups("C compiler") == [
+        ("c language", "c compiler"),
+    ]
+    assert mod._query_token_groups("R package") == [
+        ("r language", "r compiler", "r package", "r script"),
+    ]
+    assert mod._requires_exact_lexical_tokens(["c language", "warning"])
+    assert mod._requires_exact_lexical_tokens(["r language", "warning"])
     assert mod._tokenize("Use R") == []
     assert "c" not in mod._tokenize("Rename column C in GraphQL schema")
     assert "r" not in mod._tokenize("Rename variable R in GraphQL schema")
