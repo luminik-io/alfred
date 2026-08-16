@@ -92,7 +92,7 @@ sequenceDiagram
     git-->>runner: commit count
 ```
 
-`make_worktree` creates a throwaway git worktree under `$ALFRED_HOME/worktrees/eng-senior-dev-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The engine subprocess runs with its `cwd` pinned to that worktree, so it physically cannot touch your canonical checkout or another firing's branch.
+`make_worktree` creates a temporary git worktree under `$ALFRED_HOME/worktrees/eng-senior-dev-<repo>-<issue>-<ts>/`, branched from a fresh `origin/main`. The engine subprocess starts with that worktree as its current directory. This separates normal git changes and branches, but it is not an operating-system permission boundary.
 
 The runner builds the prompt from the issue body plus repo context such as the
 repo's `CLAUDE.md`, inlines it, and calls the configured engine with a hard
@@ -114,14 +114,18 @@ The runner inspects the result and the git state, then takes exactly one exit pa
 | `[LUCIUS-NO-COMMIT]` | Success returned but no commit landed | Inspect `git status`; salvage unstaged changes as a `do-not-review` draft PR, else count as failure |
 | `[SILENT]` | No `agent:implement` issue matched | Exit 0, no Slack post. The non-event is the signal |
 
-Whatever the path, `release_issue` runs so the issue never stays stuck in `agent:in-flight`, and `remove_worktree` cleans up the throwaway directory. Then the process exits and the host goes back to waiting for the next scheduler trigger.
+The runner releases the claimed issue on each handled exit path. Completed and failed runs clean up their temporary worktrees. A partial run can retain its worktree for the next bounded retry. Recovery checks handle state left by an interrupted process.
 
 ## Why this shape holds up unattended
 
-- **Idempotent.** Every firing reads its inputs from scratch. A crash mid-run leaves no half-state to resume; the next firing's `make_worktree` even prunes orphaned worktrees first.
-- **Bounded.** `max_turns` and the firing timeout cap the worst-case spend of any single firing. The schedule caps the worst-case spend of the day.
-- **Observable.** Every exit path prints a sentinel and posts anything that needs attention to Slack. Codex writes per-firing artifacts under `$ALFRED_HOME/state/codex/`; Claude transcript capture is planned, not written by the current runner.
-- **Isolated.** A bad firing trashes its own worktree and nothing else.
+- **Recoverable.** Locks, issue state, and worktree records let the next firing
+  detect and clean up interrupted work.
+- **Bounded.** Turn limits, timeouts, retry limits, and the schedule bound each
+  firing and its retry path.
+- **Observable.** Exit paths record sentinels and post configured alerts. Codex
+  writes per-firing artifacts under `$ALFRED_HOME/state/codex/`.
+- **Separated.** Code-changing and review roles use dedicated git worktrees.
+  This separates branch changes, not filesystem or network permissions.
 
 ## See also
 

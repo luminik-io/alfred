@@ -37,7 +37,9 @@ _scrub_operator_env()
 
 
 @pytest.fixture(autouse=True)
-def isolate_external_operator_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def isolate_external_operator_env(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
     """Tests that need live operator env values set them explicitly."""
 
     for name in _operator_env_names():
@@ -63,3 +65,39 @@ def isolate_external_operator_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALFRED_SLACK_CONVERSE_ENABLED", "0")
     monkeypatch.delenv("ALFRED_SLACK_CONVERSE_ENGINE", raising=False)
     monkeypatch.delenv("ALFRED_COMPOSE_CONVERSE_ENGINE", raising=False)
+
+    raw_adapter_modules = {
+        "test_agent_notifications.py",
+        "test_claude_max_turns_default.py",
+        "test_code_memory_mcp_wiring.py",
+        "test_graphify_mcp_wiring.py",
+        "test_memory_mcp_wiring.py",
+    }
+    if request.node.path.name in raw_adapter_modules:
+        # These modules replace the work subprocess and exercise command,
+        # timeout, and MCP wiring behavior. Give them an explicit ready engine
+        # boundary so clean CI does not depend on installed CLIs or credentials.
+        # Patch the function object imported by the test module itself. Some
+        # isolation tests intentionally reload ``agent_runner``; patching the
+        # latest module in ``sys.modules`` can therefore miss this older, still
+        # valid function object when the full suite runs in collection order.
+        test_agent_runner = request.node.module.agent_runner
+
+        def ready_probe(engine: str):
+            descriptor = test_agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine)
+            return test_agent_runner.EngineProbeResult(
+                descriptor=descriptor,
+                installed=True,
+                protocol_compatible=True,
+                ready=True,
+                state="ready",
+                detail="ready",
+                binary=descriptor.default_binary,
+                version="test",
+            )
+
+        monkeypatch.setitem(
+            test_agent_runner.claude_invoke.__globals__,
+            "_probe_dispatch_engine",
+            ready_probe,
+        )

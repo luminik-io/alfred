@@ -69,7 +69,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
           "ok    claude code              authed",
           "ok    codex                    authed (optional)",
           "ok    launchd                  full fleet loaded",
-          "ok    spend cap                $20/day fleet",
+          "ok    run limits               configured",
           "",
           "$ alfred dry-run senior-dev",
           "alfred dry-run: senior-dev",
@@ -86,8 +86,8 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT YOU END UP WITH"
-        title="A full engineering team scheduled on your machine."
-        lede="The default setup enables the whole local engineering loop. Theme names are visible in Slack and Desktop, while stable role slugs keep the machinery predictable: Drake scopes, Batman coordinates cross-repo work, Lucius builds, Ra's al Ghul reviews, Bane adds coverage, Nightwing fixes high-priority review feedback, Huntress and Gordon watch deploy health, and the reliability jobs keep the system inspectable."
+        title="Planning, implementation, review, test, and operations roles."
+        lede="The default setup enables the local engineering workflow. Theme names appear in Slack and Desktop, while stable role slugs control schedules, labels, worktrees, and configuration."
       />
       <ol class="checks">
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Drake</strong> reads your plans and files small, clear tasks.</li>
@@ -95,7 +95,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Lucius</strong> picks up those tasks and opens pull requests.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--warn">●</span><strong>Ra's al Ghul</strong> reviews pull requests and runs your tests.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Bane</strong> adds focused coverage where changes need tests.</li>
-        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Nightwing</strong> fixes high-priority review comments on agent-authored PRs.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Nightwing</strong> fixes high-priority review comments on PRs opened by implementation roles.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Robin</strong> keeps quick issue triage moving.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Huntress</strong> watches app health when you provide a target URL.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Gordon</strong> watches ECS deploy health when you provide a cluster.</li>

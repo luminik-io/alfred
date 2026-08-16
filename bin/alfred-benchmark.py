@@ -3,8 +3,8 @@
 
 Runs a FIXED task suite's results back out of the telemetry the fleet
 already captures and reports the four metric families an engineering team
-cares about: throughput, quality, reliability, efficiency. Plus a
-subscription-quota cost table (% of plan budget per PR), never $/PR.
+cares about: throughput, quality, reliability, and efficiency. It reports
+observed values without estimating provider plan limits or quota percentages.
 
 It reads three on-disk state trees under ``$ALFRED_STATE_DIR`` (default
 ``$ALFRED_HOME/state``, default ``~/.alfred/state``):
@@ -67,7 +67,6 @@ from benchmark import (  # noqa: E402
     BenchmarkReport,
     BenchmarkTask,
     load_suite,
-    quota_cost_for_report,
     run_report,
 )
 from compression_benchmark import (  # noqa: E402
@@ -172,25 +171,13 @@ def render_report_table(report: BenchmarkReport) -> str:
     lines.append(f"  turns per PR ............. {_fmt_num(e.turns_per_pr)}")
     lines.append("")
 
-    lines.append("Cost as a share of subscription quota (turns per PR / daily plan budget)")
-    header = f"  {'plan':<16} {'daily turns':<12} {'turns/PR':<10} {'% quota/PR'}"
-    lines.append(header)
-    lines.append("  " + "-" * (len(header) - 2))
-    for row in quota_cost_for_report(report):
-        pct = "-" if row.pct_quota_per_pr is None else f"{row.pct_quota_per_pr:.2f}%"
-        tpp = "-" if row.turns_per_pr is None else f"{row.turns_per_pr:.1f}"
-        lines.append(f"  {row.plan:<16} {row.daily_turn_budget:<12,} {tpp:<10} {pct}")
-    lines.append("")
-    lines.append("note: % quota is a sizing estimate from the turn-burn budgets in")
-    lines.append("docs/CLAUDE_CODE.md, not a provider billing guarantee. This is a")
-    lines.append("SELF-benchmark (honest absolutes + before/after), not a 'beats X' claim.")
+    lines.append("note: this SELF-benchmark reports observed values and before/after")
+    lines.append("changes. It does not estimate plan quotas or make a 'beats X' claim.")
     return "\n".join(lines)
 
 
 def render_report_json(report: BenchmarkReport) -> str:
-    payload = report.to_dict()
-    payload["quota_cost"] = [row.to_dict() for row in quota_cost_for_report(report)]
-    return json.dumps(payload, indent=2, default=str)
+    return json.dumps(report.to_dict(), indent=2, default=str)
 
 
 def render_suite_table(suite: tuple[BenchmarkTask, ...]) -> str:

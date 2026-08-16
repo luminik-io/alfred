@@ -96,7 +96,7 @@ export function formatShare(value) {
 
 /**
  * The rolling-window copy, kept as a SECONDARY stat under the cumulative
- * headline. Honest on empty data: never quotes a fabricated 0% share.
+ * headline. Empty data never becomes a fabricated 0% share.
  *
  * @param {number} agentMerged agent-shipped merged PRs in the window
  * @param {number} totalMerged all merged PRs in the window
@@ -112,7 +112,7 @@ function windowCopy(agentMerged, totalMerged, sharePct, days) {
     };
   }
   if (agentMerged <= 0) {
-    const text = `No agent-attributed PRs among ${totalMerged} merged PRs in the last ${days} days.`;
+    const text = `No PRs carrying Alfred provenance labels among ${totalMerged} merged PRs in the last ${days} days.`;
     return { headline: text, sentence: text };
   }
   return {
@@ -130,10 +130,10 @@ function windowCopy(agentMerged, totalMerged, sharePct, days) {
  * rolling window happens to be empty. The rolling window survives as a
  * secondary stat (window_headline / window_sentence).
  *
- * Honesty is preserved: agentTotal is a real count (0 stays 0, never faked
+ * agentTotal is a real count (0 stays 0, never increased
  * upward), the window share_pct is null (never 0) when there are no merged PRs
- * in the window, and an all-zero repo renders a plain "no agent-attributed PRs
- * yet" line rather than a fabricated number. Use noDataSelfProof() for a
+ * in the window, and an all-zero repo renders a plain "no labelled PRs yet"
+ * line rather than a fabricated number. Use noDataSelfProof() for a
  * committed seed so a skipped pre-deploy refresh cannot publish stale traction.
  *
  * @param {object} args
@@ -166,14 +166,15 @@ export function buildSelfProof({
     // undercount presented as exact.
     const noun = agentTotal === 1 && !agentTotalIncomplete ? "PR" : "PRs";
     const count = agentTotalIncomplete ? `${agentTotal}+` : String(agentTotal);
-    sentence = `${count} agent-attributed ${noun} merged so far.`;
-    headline = `Alfred agents have merged ${count} agent-attributed ${noun} so far.`;
+    const verb = noun === "PR" ? "has" : "have";
+    sentence = `${count} ${noun} carrying Alfred provenance labels ${verb} been merged so far.`;
+    headline = sentence;
   } else if (agentTotalIncomplete) {
-    sentence = "Agent-attributed PR count is temporarily unavailable.";
-    headline = "Agent-attributed PR count is temporarily unavailable.";
+    sentence = "Alfred provenance-label count is temporarily unavailable.";
+    headline = "Alfred provenance-label count is temporarily unavailable.";
   } else {
-    sentence = "No agent-attributed PRs merged yet.";
-    headline = "No agent-attributed PRs merged yet.";
+    sentence = "No PRs carrying Alfred provenance labels have been merged yet.";
+    headline = "No PRs carrying Alfred provenance labels have been merged yet.";
   }
 
   return {
@@ -198,8 +199,8 @@ export function buildSelfProof({
 /**
  * A no-data self_proof block for the committed seed. The cumulative count is
  * zero and the window share_pct is null, so the Impact page shows "no
- * agent-attributed PRs yet" rather than a real number if a pre-deploy refresh
- * is ever skipped.
+ * PRs carrying Alfred provenance labels yet" rather than a real number if a
+ * pre-deploy refresh is ever skipped.
  *
  * @param {number} days window size the live build will use
  * @returns {object}
@@ -211,68 +212,4 @@ export function noDataSelfProof(days) {
     mergedWindow: 0,
     windowDays: days,
   });
-}
-
-// The README carries a live self-proof line between these markers. The proof
-// build rewrites the text between them from real data so the documented
-// `npm run proof:update` command actually updates it (not a hand-typed
-// placeholder). The markers themselves are preserved so the next refresh finds
-// them again.
-export const SELF_PROOF_MARKER_OPEN = "<!-- SELF_PROOF -->";
-export const SELF_PROOF_MARKER_CLOSE = "<!-- /SELF_PROOF -->";
-
-/**
- * The README sentence for a self_proof block, honest on empty data.
- *
- * Leads with the CUMULATIVE count ("Alfred agents have merged N agent-attributed
- * PRs in this repo so far") and appends the rolling window as a secondary clause
- * when it carries agent work. An all-zero repo says so plainly, so a
- * refreshed-but-idle repo never advertises a fabricated number.
- *
- * @param {object} selfProof a block from buildSelfProof / noDataSelfProof
- * @returns {string}
- */
-export function readmeSelfProofText(selfProof) {
-  const total = selfProof.agent_shipped_total ?? 0;
-  const incomplete = selfProof.agent_shipped_total_incomplete ?? false;
-  const days = selfProof.window_days;
-  if (total <= 0) {
-    if (incomplete) {
-      return "Agent-attributed PR count for Alfred's own repo is temporarily unavailable";
-    }
-    return "No agent-attributed PRs in Alfred's own repo yet";
-  }
-  const noun = total === 1 && !incomplete ? "PR" : "PRs";
-  const count = incomplete ? `${total}+` : String(total);
-  let text = `Alfred agents have merged ${count} agent-attributed ${noun} in this repo so far`;
-  if ((selfProof.agent_shipped ?? 0) > 0) {
-    text += `, ${selfProof.agent_shipped} in the last ${days} days`;
-  }
-  return text;
-}
-
-/**
- * Rewrite the text between the SELF_PROOF markers in `readme` from real data.
- *
- * Returns the updated README string and whether it changed. The markers are
- * required; if they are absent the README is returned unchanged with
- * updated=false (the caller decides whether that is an error). Idempotent:
- * running twice with the same data yields the same text.
- *
- * @param {string} readme full README contents
- * @param {object} selfProof a block from buildSelfProof / noDataSelfProof
- * @returns {{content: string, updated: boolean, found: boolean}}
- */
-export function updateReadmeSelfProof(readme, selfProof) {
-  const open = SELF_PROOF_MARKER_OPEN;
-  const close = SELF_PROOF_MARKER_CLOSE;
-  const openAt = readme.indexOf(open);
-  const closeAt = readme.indexOf(close);
-  if (openAt === -1 || closeAt === -1 || closeAt < openAt) {
-    return { content: readme, updated: false, found: false };
-  }
-  const before = readme.slice(0, openAt + open.length);
-  const after = readme.slice(closeAt);
-  const next = `${before}${readmeSelfProofText(selfProof)}${after}`;
-  return { content: next, updated: next !== readme, found: true };
 }

@@ -1,218 +1,176 @@
 # Design language
 
-How Alfred Desktop (`clients/desktop`) and the marketing and
-docs site (`site/`) look and feel, so a contributor can add a screen or a page
-that matches what is already there. This is the visual-language reference. For
-Alfred Desktop's product direction, the Slack boundary, the tab-by-tab operator
-tour, and how to build installers, see
-[`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md). This page is the visual complement to
-that one, not a duplicate.
+This guide describes the shipped visual language for Alfred Desktop and the
+public site. Use it when you add or change a surface. For the desktop product
+model and build instructions, see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md). For
+the desktop token contract, see [`THEME_SYSTEM.md`](THEME_SYSTEM.md).
 
-Everything below is pulled from the live token files. If the code and this doc
-ever disagree, the code wins. The token sources are:
+The source files are:
 
-- Desktop app: `clients/desktop/src/index.css` (the shadcn / Tailwind theme that
-  drives most surfaces) and `clients/desktop/src/App.css` (the hand-rolled glass
-  system for the older app-shell surfaces).
-- Site: `site/src/styles/custom.css` (Starlight docs theme),
-  `site/src/styles/marketing.css` (marketing pages), and
+- Desktop import manifest: `clients/desktop/src/index.css`.
+- Desktop appearance and semantic tokens: `clients/desktop/src/styles/tokens.css`.
+- Desktop surface rules: the CSS files in `clients/desktop/src/styles/`.
+- Site rules: `site/src/styles/custom.css`, `site/src/styles/marketing.css`, and
   `site/src/styles/cookie-banner.css`.
 
-## Color system
+If this guide and the source disagree, use the source and update this guide.
 
-Alfred reads as a calm, steel-blue product with a cyan accent and a violet
-spark, on a near-white paper in light and a deep navy in dark. It is not flashy.
-The color carries state (ok, warn, error) far more than decoration.
+## Desktop appearance system
 
-### Desktop app palette
+Alfred Desktop has two independent appearance settings:
 
-The main app theme (`index.css`) is defined in OKLCH so light and dark stay
-perceptually balanced. The load-bearing tokens:
+- `data-theme` selects `signal-edge`, `category-standard`, or `linked-fold`.
+- `.light` or `.dark` selects the mode for that appearance.
 
-| Token | Light | Dark | Role |
-|---|---|---|---|
-| `--background` | `oklch(0.965 0.018 238)` cool near-white | `oklch(0.12 0.028 258)` deep navy | App canvas |
-| `--foreground` | `oklch(0.17 0.035 255)` | `oklch(0.94 0.016 248)` | Body text |
-| `--primary` | `oklch(0.53 0.205 261)` steel violet-blue | `oklch(0.66 0.22 262)` brighter cobalt | Primary action, brand |
-| `--accent` | `oklch(0.68 0.15 188)` cyan | `oklch(0.72 0.16 188)` cyan | Secondary accent, highlights |
-| `--cobalt` | `oklch(0.53 0.205 261)` | `oklch(0.66 0.22 262)` | Deep blue spot |
-| `--chart-3` | `oklch(0.62 0.18 310)` violet | `oklch(0.72 0.18 310)` violet | Third accent in gradients |
-| `--ok` | `oklch(0.65 0.15 154)` green | `oklch(0.72 0.14 154)` | Healthy state |
-| `--warn` | `oklch(0.7 0.17 78)` amber | `oklch(0.78 0.16 78)` | Caution state |
-| `--error` / `--destructive` | `oklch(0.59 0.22 25)` red | `oklch(0.72 0.18 24)` | Failure state |
+`useTheme.ts` stores the appearance in `alfred-theme-name` and the mode in
+`alfred-theme`. Signal Edge in light mode is the default.
 
-Primary buttons and the brand mark use a `primary` to `accent` gradient (the
-blue-to-cyan sweep you see on the send button and the compose welcome mark). The
-agent cards each carry a per-agent accent (`--agent-accent`, defaulting to
-`--primary`) that tints their border, glow, and selection ring, so the roster
-reads as a constellation of distinct agents rather than identical tiles.
+| Appearance | Visual character | State language |
+|---|---|---|
+| **Signal Edge** | Quiet neutral fields and clear liquid-glass layers. | Mint, rose, and violet identify active or uncertain edges. |
+| **The Category Standard** | Dense graphite operations surfaces with compact spacing. | Blue, green, amber, and red use familiar status meanings. |
+| **Linked Fold** | Warm paper, ink, crease lines, and sharper corners. | Gold marks operator decisions and important handoffs. |
 
-A second, older token set lives in `App.css` for the legacy app-shell surfaces.
-It uses a warm amber accent (`--accent: #f7b344` in dark, `#b87518` in light)
-rather than cyan. Both files are imported, with `index.css` loaded last, so the
-shadcn OKLCH theme above is the dominant one for new work. Prefer the
-`index.css` tokens when you add a surface; reach for the `App.css` amber tokens
-only when you are extending an existing `.app-shell` component that already uses
-them.
+Each appearance and mode defines the same `--theme-*` primitive set. The final
+mapping in `tokens.css` exposes stable component tokens such as `--background`,
+`--card`, `--primary`, `--glass`, `--ok`, `--warn`, and `--error`.
 
-### Site palette
+Components must use the stable component tokens. Do not read an appearance
+primitive directly from component CSS. Do not add a raw color to solve a local
+appearance problem.
 
-The site (`custom.css`) keys off a `data-theme` flag and ships both modes:
+### State and workflow edges
 
-| Token | Dark | Light | Role |
+Color must describe state or hierarchy. It must not decorate data.
+
+- Use `--ok`, `--warn`, and `--error` for health states.
+- Use `--primary` for the normal workflow handoff.
+- Use the accent, a dashed line, and a text label for an operator approval edge.
+- Keep a text label, icon, border, or layout change with every color signal.
+
+Signal Edge can use spectral edge colors for active or uncertain transitions.
+The other appearances keep the same meaning with their own palette.
+
+## Site color system
+
+The public site has a separate light and dark palette in `custom.css` and
+`marketing.css`.
+
+| Token | Dark | Light | Purpose |
 |---|---|---|---|
 | `--sl-color-bg` | `#0d1322` | `#f7f9fc` | Page background |
-| `--sl-color-accent` | `#4a78ff` | `#2855c8` | Links, accent |
-| `--alfred-ok` | `#2dd4a7` | `#087a5d` | Healthy |
-| `--alfred-warn` | `#f5a524` | `#8f5600` | Caution |
-| `--alfred-alert` | `#ff5d6c` | `#d92d3c` | Failure |
+| `--sl-color-accent` | `#4a78ff` | `#2855c8` | Links and actions |
+| `--alfred-ok` | `#2dd4a7` | `#087a5d` | Healthy state |
+| `--alfred-warn` | `#f5a524` | `#8f5600` | Caution state |
+| `--alfred-alert` | `#ff5d6c` | `#d92d3c` | Failure state |
 
-Note the deliberate contrast choice in light mode: the link accent darkens from
-`#4a78ff` to `#2855c8`. The code comment is explicit about why ("darkened for AA
-contrast on white. Do NOT use #4a78ff here."). When you pick a color for text or
-an interactive element on a light surface, check it against the background for at
-least AA contrast rather than reusing the brighter dark-mode value.
-
-### Light and dark behavior
-
-- Desktop app: `useTheme.ts` stores the choice in `localStorage` under
-  `alfred-theme`, defaults to dark, and applies it by setting `data-theme` on the
-  document root and toggling a `.dark` class. The `:root` block is the light
-  theme; the `.dark` block overrides it.
-- Site: the Starlight and marketing layouts swap on `data-theme` the same way,
-  with the dark block as `:root` and a `:root[data-theme="light"]` override.
-
-When you add a token, define it in both the light base and the dark override.
-Do not hard-code a hex or OKLCH value in a component; reference a token so both
-themes stay covered.
+The light link color is darker so that it keeps AA contrast on white. Check a
+new text or control color against its actual background in both modes.
 
 ## Typography
 
-Alfred Desktop, marketing site, docs, server/static UI, and generated OG
-image share one Alfred type system. The app and site bundle fonts locally
-through `@fontsource`; the server/static UI serves the same local WOFF files.
-There is no runtime call to a font CDN.
+The desktop imports Instrument Sans, Quicksand, and Fragment Mono locally. The
+appearance selects the heading and body voice:
 
-One display face, one body face, one mono face:
-
-| Use | Family | Where |
+| Appearance | Headings | Body |
 |---|---|---|
-| Display / headings | **Instrument Sans** (variable) | `--font-heading`, `--font-display`, docs headings |
-| Body / UI | **Quicksand** (variable, 400 to 700) | `--font-sans`, `--font-body`, `--sl-font` |
-| Mono / code / labels | **Fragment Mono** | `--font-mono` |
+| Signal Edge | Instrument Sans | Quicksand |
+| The Category Standard | Instrument Sans | Instrument Sans |
+| Linked Fold | Iowan Old Style or the configured serif fallback | Instrument Sans |
 
-This is the operator font directive of 2026-06-18 and it must not be reverted.
-The native client has a guard test
-(`clients/desktop/src/test/directive-guards.test.ts`) that reads `index.css` and
-fails if the client drifts back to Space Grotesk or JetBrains. The site mirrors
-the same choices in `site/src/styles/marketing.css`,
-`site/src/styles/custom.css`, `site/scripts/generate-og.mjs`, and the public
-server/static stylesheet at `lib/server/static/style.css`.
+Fragment Mono is for code, IDs, command previews, timestamps, and logs. Do not
+use it for normal interface text.
 
-The full stacks:
+The public site uses Instrument Sans for headings, Quicksand for body text, and
+Fragment Mono for code and literal machine values. The desktop font guard in
+`clients/desktop/src/test/directive-guards.test.ts` checks the imports and base
+font tokens.
 
-- `--font-display` / `--font-heading`: `"Instrument Sans Variable",
-  ui-sans-serif, system-ui, sans-serif`
-- `--font-body` / `--font-sans`: `"Quicksand Variable", "Instrument Sans
-  Variable", ui-sans-serif, system-ui, sans-serif`
-- `--font-mono`: `"Fragment Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-  Consolas, monospace`
+## Liquid glass and flat work surfaces
 
-How they are used in practice:
+Use liquid-glass material to show elevation. Suitable surfaces include:
 
-- Instrument Sans carries headings, large display numbers, card titles, metric
-  values, and the agent monogram marks. It gives the product its clean, precise
-  headline voice.
-- Quicksand is the default for body copy and most UI text. It is the rounded,
-  friendly base that keeps the dense dashboards readable.
-- Fragment Mono is for code, log lines, agent codenames, timestamps, and small
-  uppercase labels where a fixed width and a technical feel help.
+- persistent application chrome and the sidebar
+- command palettes, dialogs, sheets, and popovers
+- page heroes, inspectors, and overlays
 
-The marketing display sizes are tokenized and scale down on narrow screens:
-`--text-display-xl` is 64px on desktop and steps to 42px then 31px at the small
-breakpoints, so headlines never overflow. Root-page hero copy should usually
-fit in two or three desktop lines.
+The material combines a translucent fill, a thin border, a top highlight, a
+soft shadow, blur, and saturation. Use `--glass`, `--glass-strong`,
+`--glass-highlight`, `--glass-shadow`, `--glass-blur`, and
+`--glass-saturate`. Each appearance supplies its own values.
 
-## Glass and surfaces
+Every glass surface must have readable text and an opaque fallback. The shipped
+helpers use `@supports` to replace glass with `--surface` or `--popover` when
+the browser cannot render `backdrop-filter`.
 
-Alfred leans on layered, slightly translucent panels over a soft gradient
-backdrop, not flat cards on a flat page.
+Do not put every item on glass. Use flat surface tokens for dense work areas:
 
-- The marketing page background is built from stacked gradients plus a soft
-  directional sheen. Do not use square grids, graph-paper patterns, bokeh orbs,
-  or repeating line wallpaper. The operations-room signal comes from proof
-  panels, logs, counters, and fleet status, not from a decorative grid.
-- Panels use the `.alfred-glass` treatment: a translucent `--card` fill, a hair
-  border, an inset top highlight (`inset 0 1px 0 rgba(255,255,255,...)`), a soft
-  drop shadow, and `backdrop-filter: blur(24px) saturate(145%)`. The blur and
-  saturate are also exposed as `--glass-blur` (24px) and `--glass-saturate`
-  (145%) so the roster cards match the panels exactly.
-- Surfaces come in tiers (`--surface`, `--surface-2`, `--surface-3`, `--glass`,
-  `--glass-strong`) so nested panels can step in opacity and read as depth.
-- Corner radius is token-driven. The app base radius is `--radius: 0.5rem` in
-  the shadcn theme (with `sm` / `md` / `lg` / `xl` and larger steps derived from
-  it), `7px` in the App.css system, and `8px` on the site. Reuse the token; do
-  not pick a one-off radius.
+- lifecycle columns
+- repeated cards and lists
+- logs and tables
+- code and evidence panels
 
-When you build a new panel, start from `.alfred-glass` (or the existing
-`.compose-chat-panel` / `.agents-v2` family) rather than a plain `background` and
-`border`, so it sits in the same depth system.
+Use broad linear light fields behind glass. Do not add decorative grids,
+radial blooms, or floating orbs.
+
+## Shape and spacing
+
+Use the radius and spacing tokens for the active appearance. Signal Edge uses
+softer corners. The Category Standard is compact. Linked Fold uses sharper
+fold-like edges.
+
+Avoid nested card stacks. Use one containing surface, clear section spacing,
+and borders for internal grouping.
 
 ## Motion
 
-Motion is small, fast, and purposeful. Nothing bounces or slides far.
+Motion must show a state change or help the user follow an action.
 
-- Hover and selection transitions are short: 120ms on the site, 150 to 160ms on
-  app cards and rows, on an `ease` curve. Agent cards lift 3px on hover
-  (`translateY(-3px)`) and rows nudge 2px sideways.
-- The agent roster rises on mount: each card animates in with a small
-  `translateY(4px)` to `0` over 180ms, staggered by index and capped at the
-  sixth child so a long roster still settles quickly (the `alfred-rise`
-  keyframe).
-- The site uses a gentle `m-pulse` for live-status dots and an `m-reveal`
-  fade-and-rise for sections as they enter the viewport.
+- Keep hover and selection transitions between 120 and 200 milliseconds.
+- Keep movement small. A card can rise by one or two pixels.
+- Limit staggered entry so a long list settles quickly.
+- Do not use motion as the only state signal.
 
-### prefers-reduced-motion
+Every new animation must include a `prefers-reduced-motion` rule. The reduced
+mode removes entry, hover, crossfade, and animated-edge movement. Color, border,
+text, and layout must still show the state.
 
-Every motion path has a reduced-motion guard, and you must add one to anything
-new:
+## Responsive behavior
 
-- In the app, `@media (prefers-reduced-motion: reduce)` neutralizes the card
-  lift, the row slide, and the staggered mount entry (`transform: none;
-  transition: none;` and `animation: none` on the rise). The selection and hover
-  color and border changes still apply, so the affordance survives without
-  movement.
-- On the site, the same query stops the status-dot pulse and turns the
-  `m-reveal` sections fully visible with no transform or transition.
+The desktop must work from a 320-pixel viewport to a wide desktop window.
 
-The rule: motion is an enhancement, never the only signal. If a user prefers
-reduced motion, the interface must still show state through color, border, and
-layout.
+- At narrow widths, multi-column command surfaces become one column.
+- The roster list uses a responsive card grid and opens details in a drawer.
+- The Workflow view reduces its canvas height below 880 pixels and supports a
+  full-window view for a wide pipeline.
+- Settings tabs use a two-column layout below 440 pixels. The full labels stay
+  visible.
+- At 480 pixels and below, interactive controls have a minimum height of 36
+  pixels. Tab-list shells have a minimum height of 42 pixels.
+- Text and controls must wrap or truncate inside their own bounds. A page must
+  not require horizontal scrolling for primary content.
+
+Test each appearance in light and dark mode at phone and desktop widths.
 
 ## Accessibility
 
-- **Contrast.** Pick colors against their real background and target at least AA.
-  The site already encodes this (the `#2855c8` light-mode link accent is the
-  AA-safe version of `#4a78ff`); do the same when you introduce a color.
-- **Visible focus.** Keyboard focus shows a 2px solid accent outline with a 2px
-  offset (`:focus-visible` in `App.css`, `.m-*:focus-visible` on the site).
-  Mouse focus is suppressed via `:focus:not(:focus-visible)`. Do not remove focus
-  outlines; if you restyle focus, keep a clearly visible ring.
-- **Real controls.** Interactive things are real `<button>` / `<a>` elements, not
-  clickable `<div>`s. The agent cards and roster rows are buttons specifically so
-  screen readers announce them as actionable and keyboard users can tab to them.
-  Keep that pattern: if it does something on click, it should be a real control.
-- **Pointer affordance.** Enabled buttons and `[role="button"]` get
-  `cursor: pointer`; disabled buttons read as `wait` and dim to ~0.72 opacity.
+- **Contrast:** Target at least WCAG AA against the rendered background. Glass
+  text must also pass when blur is unavailable.
+- **Focus:** Keep a visible `:focus-visible` ring with sufficient contrast.
+- **Controls:** Use real buttons, links, tabs, and form controls. Do not attach
+  actions to a plain `div`.
+- **Tabs:** Keep the active tab in the roving tab order. Support arrow, Home,
+  and End keys.
+- **Touch:** Keep the phone-width target sizes described above.
+- **Motion:** Preserve all information when reduced motion is active.
+- **State:** Do not use color alone. Add text, shape, position, or an icon.
 
-## Quick checklist for a new surface
+## Checklist for a new desktop surface
 
-1. Use the token colors (`index.css` for the app, `custom.css` /
-   `marketing.css` for the site). Define new tokens in both light and dark.
-2. Use the shared Alfred font roles: Instrument Sans headings, Quicksand body,
-   Fragment Mono code and literal machine values.
-3. Build panels from the glass system and reuse the radius token.
-4. Keep transitions short (120 to 200ms) and add a `prefers-reduced-motion`
-   guard.
-5. Use real buttons and links, keep the visible focus ring, and check contrast
-   against the actual background.
+1. Use the semantic component tokens from `tokens.css`.
+2. Check all three appearances in light and dark mode.
+3. Use glass only for elevated chrome or overlays.
+4. Use flat surfaces for dense data.
+5. Check the layout at 390 pixels and at a wide desktop size.
+6. Check keyboard focus, tab order, control semantics, and reduced motion.
+7. Add or update a guard test when you change the token contract.

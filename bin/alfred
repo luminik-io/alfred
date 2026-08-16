@@ -36,6 +36,9 @@ Subcommands today:
   alfred engine status [agent]
                               Show resolved Claude/Codex engine mode for one
                               agent or the configured LLM runner fleet.
+  alfred engine doctor [agent]
+                              Verify protocol, version, and authentication
+                              readiness for configured engine selections.
   alfred engine set <agent> <claude|codex|hybrid>
                               Persist an engine override in
                               $ALFRED_HOME/state/engines/<agent>.
@@ -67,7 +70,7 @@ Subcommands today:
                               artifacts.
   alfred benchmark            Reproducible self-benchmark from existing
                               telemetry: throughput, quality, reliability,
-                              efficiency, and % of plan quota per PR.
+                              and observed efficiency, including turns per PR.
   alfred logs <codename>      Inspect stream-JSON transcripts for one agent:
                               recent firings, tool-call summary, or a full
                               pretty-printed dump of one firing.
@@ -123,12 +126,12 @@ it that way, with no external dependencies.
 from __future__ import annotations
 
 import argparse
-import ast
 import contextlib
 import hashlib
 import json
 import os
 import platform
+import plistlib
 import re
 import shlex
 import shutil
@@ -199,6 +202,7 @@ OPT_IN_AGENTS = {"architect", "spec-planner"}
 ENGINE_AGENTS = ENGINE_AGENT_CODENAMES
 ENGINE_SCRIPTS = ENGINE_AGENT_SCRIPTS
 NATIVE_DRY_RUN_SCRIPTS = {"senior-dev.py", "hello.py", "echo_summarise.py"}
+_AGENT_CODENAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
 def _safe_expanduser(path: Path) -> Path:
@@ -488,7 +492,7 @@ def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
         # Pad to 6 columns so missing trailing fields don't IndexError.
         cols = cols + [""] * (6 - len(cols))
         label, script, schedule, needs_java, log_stem, role = cols[:6]
-        if not label:
+        if not label or not _codename_from_label(label):
             continue
         out.append(
             {
@@ -531,9 +535,111 @@ def _custom_agent_records() -> list[dict[str, str]]:
     return records
 
 
+def _scheduler_agent_records() -> list[dict[str, str]]:
+    """Discover deployed Python agents when ``agents.conf`` is unavailable."""
+    discovered: list[tuple[str, str]] = []
+    launch_dir = Path(
+        os.environ.get(
+            "ALFRED_LAUNCH_DIR",
+            os.path.expanduser("~/Library/LaunchAgents"),
+        )
+    )
+    if launch_dir.is_dir():
+        for plist in sorted(launch_dir.glob("*.plist")):
+            try:
+                payload = plistlib.loads(plist.read_bytes())
+            except (OSError, plistlib.InvalidFileException):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            label = str(payload.get("Label") or "")
+            args = payload.get("ProgramArguments") or []
+            script = _scheduled_python_script(args)
+            if (
+                label.startswith(("alfred.", "my.fleet."))
+                and _codename_from_label(label)
+                and script
+            ):
+                discovered.append((label, script))
+    else:
+        systemd_dir = Path(
+            os.environ.get(
+                "ALFRED_SYSTEMD_USER_DIR",
+                os.path.expanduser("~/.config/systemd/user"),
+            )
+        )
+        for unit in sorted(systemd_dir.glob("*.service")):
+            label = unit.stem
+            if not label.startswith(("alfred.", "my.fleet.")) or not _codename_from_label(label):
+                continue
+            try:
+                lines = unit.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            script = ""
+            for line in lines:
+                if not line.startswith("ExecStart="):
+                    continue
+                try:
+                    args = shlex.split(line.removeprefix("ExecStart="))
+                except ValueError:
+                    args = line.removeprefix("ExecStart=").split()
+                script = _scheduled_python_script(args)
+                break
+            if script:
+                discovered.append((label, script))
+
+    return [
+        {
+            "label": label,
+            "script": script,
+            "schedule": "",
+            "needs_java": "no",
+            "log_stem": label,
+            "role": "",
+            "disabled": "no",
+        }
+        for label, script in discovered
+    ]
+
+
+def _scheduled_python_script(args: Any) -> str:
+    if not isinstance(args, (list, tuple)) or not args:
+        return ""
+    command = [str(arg) for arg in args]
+    candidate = ""
+    if command[0].endswith(".py"):
+        candidate = command[0]
+    elif Path(command[0]).name == "agent-launch" and len(command) > 1:
+        candidate = command[1]
+    return Path(candidate).name if candidate.endswith(".py") else ""
+
+
+def _configured_agent_records() -> list[dict[str, str]]:
+    """Return the configured roster from its canonical runtime sources."""
+    conf = _agents_conf_path()
+    # The example is useful for development commands, but is not an installed roster.
+    if conf.name == "agents.conf" and conf.is_file():
+        return _parse_agents_conf(conf)
+
+    records = _scheduler_agent_records()
+    by_codename = {
+        _codename_from_label(record["label"]): record
+        for record in records
+        if _codename_from_label(record["label"])
+    }
+    for record in _custom_agent_records():
+        codename = _codename_from_label(record["label"])
+        if codename:
+            by_codename[codename] = record
+    return list(by_codename.values())
+
+
 def _codename_from_label(label: str) -> str:
     """Last dot-segment of a launchd label is the codename."""
-    return label.rsplit(".", 1)[-1] if "." in label else label
+
+    codename = label.rsplit(".", 1)[-1] if "." in label else label
+    return codename if _AGENT_CODENAME_RE.fullmatch(codename) else ""
 
 
 def cmd_agents(_args: argparse.Namespace) -> int:
@@ -1660,12 +1766,19 @@ def _normalize_agent_name(agent: str) -> str:
 
 
 def _engine_state_file(agent: str) -> Path:
-    return agent_runner.STATE_ROOT / "engines" / agent
+    codename = _normalize_agent_name(agent)
+    if not _AGENT_CODENAME_RE.fullmatch(codename):
+        raise ValueError("agent codename must use lowercase letters, digits, and hyphens")
+    root = (agent_runner.STATE_ROOT / "engines").resolve(strict=False)
+    target = (root / codename).resolve(strict=False)
+    if target.parent != root:
+        raise ValueError("engine state file must be a direct child of the engines root")
+    return target
 
 
 def _engine_agent_codenames() -> tuple[str, ...]:
     seen = list(ENGINE_AGENTS)
-    for record in _parse_agents_conf(_agents_conf_path()):
+    for record in _configured_agent_records():
         if Path(record["script"]).name not in ENGINE_SCRIPTS:
             continue
         codename = _codename_from_label(record["label"])
@@ -1684,6 +1797,8 @@ def _engine_default(agent: str) -> str:
 
 
 def _engine_behavior(mode: str) -> str:
+    if mode == agent_runner.DISABLED_ENGINE:
+        return "Disabled: invalid engine configuration"
     resolved = agent_runner.normalize_engine(mode)
     if resolved == "claude":
         return "Claude Code only"
@@ -1699,6 +1814,145 @@ def _require_engine_agent(agent: str) -> str:
         supported = ", ".join(supported_agents)
         raise ValueError(f"unsupported engine-aware agent '{normalized}'. Supported: {supported}")
     return normalized
+
+
+_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
+
+
+def _configured_engine_selections() -> dict[str, tuple[str, ...]]:
+    """Group enabled configured agents by their resolved engine mode."""
+    grouped: dict[str, list[str]] = {}
+    for record in _configured_agent_records():
+        if record["disabled"] == "yes" or Path(record["script"]).name not in ENGINE_SCRIPTS:
+            continue
+        codename = _codename_from_label(record["label"])
+        if not codename:
+            continue
+        if not agent_runner.is_agent_enabled(
+            codename,
+            default=_default_enabled(codename, record["script"]),
+        ):
+            continue
+        mode = agent_runner.agent_engine(codename, default=_engine_default(codename))
+        grouped.setdefault(mode, []).append(codename)
+    return {mode: tuple(sorted(set(agents))) for mode, agents in sorted(grouped.items())}
+
+
+def _engine_probe_detail(readiness: Any) -> str:
+    if "unsupported_version" not in readiness.failures:
+        return readiness.detail
+    minimum = readiness.descriptor.minimum_version
+    minimum_text = ".".join(str(part) for part in minimum) if minimum else "a supported release"
+    installed = readiness.version or "unknown"
+    display_name = readiness.descriptor.display_name
+    return (
+        f"Installed version: {installed}. Minimum supported version: {minimum_text}. "
+        f"Upgrade {display_name}, then rerun `alfred engine doctor`."
+    )
+
+
+def _engine_mode_readiness(
+    mode: str,
+    probes: dict[str, Any],
+) -> tuple[bool, str, str]:
+    """Evaluate one mode with the same fallback boundary as scheduled dispatch."""
+    if mode == agent_runner.DISABLED_ENGINE:
+        return False, "invalid_configuration", "Choose claude, codex, or hybrid."
+
+    def probe(engine: str):
+        if engine not in probes:
+            probe_options: dict[str, Any] = {"use_cache": False}
+            if engine == "claude":
+                probe_env = dict(os.environ)
+                selected_profile = _current_claude_dir()
+                if selected_profile is None:
+                    probes[engine] = None
+                    return None
+                if selected_profile:
+                    probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
+                else:
+                    probe_env.pop("CLAUDE_CONFIG_DIR", None)
+                probe_options["environ"] = probe_env
+            probes[engine] = agent_runner.probe_engine(
+                agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor(engine),
+                **probe_options,
+            )
+        return probes[engine]
+
+    if mode != "hybrid":
+        readiness = probe(mode)
+        if readiness is None:
+            return (
+                False,
+                "profile_lookup_failed",
+                "Could not read the scheduler-selected Claude profile. Retry the command.",
+            )
+        return readiness.ready, readiness.state, _engine_probe_detail(readiness)
+
+    claude = probe("claude")
+    if claude is None:
+        return (
+            False,
+            "profile_lookup_failed",
+            "Could not read the scheduler-selected Claude profile. Retry the command.",
+        )
+    if claude.ready:
+        return True, "ready", "Claude Code is compatible and signed in."
+    if claude.state not in _ENGINE_FALLBACK_STATES:
+        return False, claude.state, _engine_probe_detail(claude)
+
+    codex = probe("codex")
+    if codex.ready:
+        return (
+            True,
+            "ready_via_codex",
+            (
+                f"Claude Code: {_engine_probe_detail(claude)} "
+                "Codex fallback is compatible and signed in."
+            ),
+        )
+    return (
+        False,
+        f"claude_{claude.state}_codex_{codex.state}",
+        (
+            f"Claude Code: {_engine_probe_detail(claude)} "
+            f"Codex fallback: {_engine_probe_detail(codex)}"
+        ),
+    )
+
+
+def _run_engine_doctor(*, agent: str | None = None, dev: bool = False) -> int:
+    if agent:
+        try:
+            codename = _require_engine_agent(agent)
+        except ValueError as exc:
+            print(f"alfred engine doctor: {exc}", file=sys.stderr)
+            return 2
+        mode = agent_runner.agent_engine(codename, default=_engine_default(codename))
+        selections = {mode: (codename,)}
+    else:
+        selections = _configured_engine_selections()
+
+    print("doctor: checking configured engine readiness")
+    if not selections:
+        print("  no enabled engine-aware agents configured")
+        return 0
+
+    probes: dict[str, Any] = {}
+    failures = 0
+    for mode, agents in selections.items():
+        ready, state, detail = _engine_mode_readiness(mode, probes)
+        marker = "OK" if ready else ("WARN" if dev else "FAIL")
+        agent_list = ", ".join(agents)
+        print(f"  {mode:<8} [{agent_list}] {marker} ({state})")
+        print(f"           {detail}")
+        if not ready:
+            failures += 1
+
+    if failures and dev:
+        print("doctor: --dev mode, engine readiness gaps above were not counted as failures.")
+        return 0
+    return 1 if failures else 0
 
 
 def cmd_engine_status(args: argparse.Namespace) -> int:
@@ -1726,6 +1980,10 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
     for row in rows:
         print(fmt.format(*row))
     return 0
+
+
+def cmd_engine_doctor(args: argparse.Namespace) -> int:
+    return _run_engine_doctor(agent=args.agent, dev=getattr(args, "dev", False))
 
 
 def cmd_engine_set(args: argparse.Namespace) -> int:
@@ -1835,36 +2093,30 @@ def _print_engine_roster() -> None:
 
 
 def _codex_status() -> int:
-    binary = agent_runner.CODEX_BIN
-    binary_path = Path(binary)
-    resolved = str(binary_path) if binary_path.is_absolute() and binary_path.exists() else None
-    if not resolved and not binary_path.is_absolute():
-        resolved = shutil.which(binary)
-    if not resolved:
-        print(f"codex: not found on PATH ({binary})", file=sys.stderr)
+    probe_env = dict(os.environ)
+    probe_env["CODEX_BIN"] = agent_runner.CODEX_BIN
+    readiness = agent_runner.probe_engine(
+        agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor("codex"),
+        environ=probe_env,
+        use_cache=False,
+    )
+    if not readiness.installed:
+        print(f"codex: not found on PATH ({agent_runner.CODEX_BIN})", file=sys.stderr)
         print(
             "Set CODEX_BIN in $ALFRED_HOME/.env or install/sign in to Codex CLI.", file=sys.stderr
         )
         return 1
 
-    print(f"codex binary: {resolved}")
-    result = subprocess.run(
-        [resolved, "--version"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    version = (result.stdout or result.stderr).strip()
-    if version:
-        print(f"codex version: {version}")
-    else:
-        print(f"codex version: unavailable (exit {result.returncode})")
+    print(f"codex binary: {readiness.binary}")
+    print(f"codex version: {readiness.version or 'unavailable'}")
+    print(f"codex readiness: {readiness.state}")
+    if not readiness.ready:
+        print(f"codex: {readiness.detail}", file=sys.stderr)
     print("")
     _print_engine_roster()
     print("")
     print("Probe with: alfred codex probe")
-    return 0 if result.returncode == 0 else result.returncode
+    return 0 if readiness.ready else 1
 
 
 def _probe_codex() -> int:
@@ -3423,45 +3675,26 @@ def _scheduler_command(cmd: list[str], *, timeout: float) -> subprocess.Complete
         return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=f"{stderr}{detail}\n")
 
 
-def _decode_systemd_env_value(value: str) -> str:
-    try:
-        if value.startswith("$'") and value.endswith("'"):
-            return str(ast.literal_eval("'" + value[2:-1] + "'"))
-        if value.startswith(("'", '"')):
-            parts = shlex.split(value)
-            return parts[0] if parts else ""
-    except Exception:
-        return value
-    return value
+def _current_claude_dir() -> str | None:
+    lookup = scheduler.manager_environment_lookup("CLAUDE_CONFIG_DIR")
+    if lookup.available and lookup.value:
+        return lookup.value
+    if lookup.available or not lookup.supported:
+        return _read_env_values(_runtime_env_path()).get("CLAUDE_CONFIG_DIR", "").strip()
+    return None
 
 
-def _current_claude_dir() -> str:
-    if scheduler.SCHEDULER == "launchd":
-        if not shutil.which("launchctl"):
-            return os.environ.get("CLAUDE_CONFIG_DIR", "")
-        result = _launchctl(["getenv", "CLAUDE_CONFIG_DIR"])
-        if result.returncode != 0:
-            return ""
-        return result.stdout.strip()
-    if scheduler.SCHEDULER == "systemd":
-        result = _systemctl_user(["show-environment"])
-        if result.returncode != 0:
-            return os.environ.get("CLAUDE_CONFIG_DIR", "")
-        for line in result.stdout.splitlines():
-            key, _, value = line.partition("=")
-            if key == "CLAUDE_CONFIG_DIR":
-                return _decode_systemd_env_value(value)
-        return ""
-    return os.environ.get("CLAUDE_CONFIG_DIR", "")
-
-
-def _current_claude_label() -> str:
-    value = _current_claude_dir()
+def _claude_dir_label(value: str) -> str:
     if not value or value == str(PRIMARY_CLAUDE_DIR):
         return "primary (~/.claude)"
     if value == str(SECONDARY_CLAUDE_DIR):
         return "secondary (~/.claude-secondary)"
     return f"custom ({value})"
+
+
+def _current_claude_label() -> str:
+    value = _current_claude_dir()
+    return "unavailable (scheduler query failed)" if value is None else _claude_dir_label(value)
 
 
 def _claude_auth_mtime(path: Path) -> str:
@@ -3484,7 +3717,14 @@ def _count_scheduled_agents() -> int | None:
 
 
 def _claude_status() -> int:
-    print(f"Current routing for scheduled agents: {_current_claude_label()}")
+    current = _current_claude_dir()
+    if current is None:
+        print(
+            "alfred claude: could not read the scheduler-selected profile; retry the command.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Current routing for scheduled agents: {_claude_dir_label(current)}")
     print("")
     print("Auth dir state:")
     for label, directory in (
@@ -3505,6 +3745,16 @@ def _claude_status() -> int:
     print("Switch with: alfred claude {primary|secondary|swap}")
     print("Verify real API auth with: alfred claude probe")
     return 0
+
+
+def _claude_readiness_status() -> int:
+    """Report Claude readiness for the scheduler-selected profile."""
+
+    ready, state, detail = _engine_mode_readiness("claude", {})
+    print(f"claude readiness: {state}")
+    if not ready:
+        print(f"claude: {detail}", file=sys.stderr)
+    return 0 if ready else 1
 
 
 def _set_claude_dir(path: Path, label: str) -> int:
@@ -3542,16 +3792,29 @@ def _set_claude_dir(path: Path, label: str) -> int:
 
 
 def _swap_claude_dir() -> int:
-    if _current_claude_dir() == str(SECONDARY_CLAUDE_DIR):
+    current = _current_claude_dir()
+    if current is None:
+        print(
+            "alfred claude: could not read the scheduler-selected profile; swap was not applied.",
+            file=sys.stderr,
+        )
+        return 1
+    if current == str(SECONDARY_CLAUDE_DIR):
         return _set_claude_dir(PRIMARY_CLAUDE_DIR, "primary")
     return _set_claude_dir(SECONDARY_CLAUDE_DIR, "secondary")
 
 
 def _probe_claude_auth() -> int:
-    print(f"Probing Claude Code API auth for {_current_claude_label()}")
+    current = _current_claude_dir()
+    if current is None:
+        print(
+            "alfred claude: could not read the scheduler-selected profile; auth was not probed.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Probing Claude Code API auth for {_claude_dir_label(current)}")
     print("This sends one tiny non-interactive Claude request when auth is healthy.")
     env = os.environ.copy()
-    current = _current_claude_dir()
     if current:
         env["CLAUDE_CONFIG_DIR"] = current
     cmd = [
@@ -3680,7 +3943,7 @@ def cmd_architect_setup(args: argparse.Namespace) -> int:
 def cmd_auth(args: argparse.Namespace) -> int:
     command = args.auth_command
     if command in ("status", ""):
-        claude_rc = _claude_status()
+        claude_rc = _claude_readiness_status()
         print("")
         codex_rc = _codex_status()
         return 0 if claude_rc == 0 and codex_rc == 0 else 1
@@ -3947,6 +4210,13 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_engine_status = engine_sub.add_parser("status", help="show resolved engine state")
     p_engine_status.add_argument("agent", nargs="?")
     p_engine_status.set_defaults(func=cmd_engine_status)
+    p_engine_doctor = engine_sub.add_parser(
+        "doctor",
+        help="verify selected engine protocol, version, and authentication readiness",
+    )
+    p_engine_doctor.add_argument("agent", nargs="?")
+    p_engine_doctor.add_argument("--dev", action="store_true", help=argparse.SUPPRESS)
+    p_engine_doctor.set_defaults(func=cmd_engine_doctor)
     p_engine_set = engine_sub.add_parser("set", help="set one agent's engine")
     p_engine_set.add_argument("agent")
     p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid"])

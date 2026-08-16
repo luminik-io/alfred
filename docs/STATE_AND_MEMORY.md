@@ -126,9 +126,9 @@ summarized with `alfred brain governor`. The governor classifies local setup
 problems, provider limits, auth failures, timeouts, and agent-quality loops,
 then returns a read-only action list for you and the dashboard.
 
-The default provider chain is `sqlite,fleet`: the embedded SQLite hybrid store
-gives zero-daemon lexical recall (no Redis or Ollama), with FleetBrain behind
-it. Dense semantic retrieval is optional. Set
+The default provider chain is `sqlite,fleet`: embedded SQLite gives zero-daemon
+lexical recall through FTS5/BM25, with a `LIKE` fallback and FleetBrain behind
+it. Dense semantic recall is an optional arm. Set
 `ALFRED_MEMORY_PROVIDERS=redis,fleet` to opt into Redis Agent Memory
 instead, `ALFRED_MEMORY_PROVIDERS=null` to disable runtime recall and
 reflection, or `ALFRED_MEMORY_PROVIDERS=sqlite,fleet,gbrain` to add a read-only
@@ -173,13 +173,15 @@ the memory provider chain, with embedded SQLite first by default.
 
 ## Privacy model
 
-Everything in this tree is local to your machine. Nothing in Alfred transmits state files, transcripts, lessons, or spend ledgers off-host. The only outbound channels are:
+Alfred stores run state, transcripts, lessons, and local ledgers under
+`$ALFRED_HOME`. The selected harness sends prompt context to its model provider.
+Alfred can also contact GitHub, optional Slack, telemetry when enabled, and
+package or battery download endpoints. Harnesses, skills, MCP servers, and
+project commands can add other destinations.
 
-- The configured engine (`claude -p` or `codex exec`), which sends the prompt you compose to Anthropic or OpenAI on your existing CLI auth.
-- The GitHub CLI (`gh`), which talks to GitHub on your existing `gh auth login` token.
-- The Slack incoming webhook, when configured.
-
-If you delete `$ALFRED_HOME/`, you delete every byte Alfred remembers about your fleet. Treat the directory the way you treat your shell history: it is operator data, not fleet data, and never leaves the host unless you put it somewhere yourself.
+Deleting `$ALFRED_HOME/` removes Alfred's local state. It does not remove data
+already sent to an external provider or service. See the
+[threat model](./THREAT_MODEL.md) and [telemetry contract](./TELEMETRY.md).
 
 ## See also
 

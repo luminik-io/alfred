@@ -46,13 +46,65 @@ test("approving a plan sends an authenticated mutation and refreshes the queue",
   const api = await installAlfredApi(page);
 
   await page.goto("/");
-  await expect(page.getByText("Add browser protocol coverage")).toBeVisible();
+  await expect(
+    page.getByText("Make the memory benchmark use the shipped provider chain"),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).click();
 
-  await expect(page.getByText("Add browser protocol coverage")).toHaveCount(0);
+  await expect(
+    page.getByText("Make the memory benchmark use the shipped provider chain"),
+  ).toHaveCount(0);
   const request = api.find("POST", "/api/plans/42-plan/decision");
   expect(request?.headers["x-alfred-token"]).toBe(CONTRACT_TOKEN);
   expect(request?.body).toEqual({ decision: "approve" });
+});
+
+test("compact Work windows open the inspector as a sheet", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 900, height: 800 });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Work", exact: true }).click();
+  await page
+    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .click();
+
+  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Work item inspector" })).toHaveCount(0);
+});
+
+test("narrow Settings keeps every section label readable", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/?tab=settings");
+  const tablist = page.getByRole("tablist", { name: "Settings sections" });
+  await expect(tablist).toBeVisible();
+  const tabs = tablist.getByRole("tab");
+  await expect(tabs).toHaveCount(4);
+
+  const metrics = await tabs.evaluateAll((items) =>
+    items.map((item) => {
+      const label = item.querySelector("span");
+      return {
+        label: label?.textContent?.trim(),
+        labelWidth: label?.clientWidth ?? 0,
+        labelScrollWidth: label?.scrollWidth ?? 0,
+        tabHeight: item.getBoundingClientRect().height,
+      };
+    }),
+  );
+
+  expect(metrics.map(({ label }) => label)).toEqual([
+    "Runtime",
+    "Appearance",
+    "Collaborators",
+    "Diagnostics",
+  ]);
+  expect(metrics.every(({ labelWidth, labelScrollWidth }) => labelWidth >= labelScrollWidth)).toBe(
+    true,
+  );
+  expect(metrics.every(({ tabHeight }) => tabHeight >= 36)).toBe(true);
 });
 
 test("primary navigation loads code, models, settings, and returns to Inbox", async ({ page }) => {

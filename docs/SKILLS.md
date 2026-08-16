@@ -109,7 +109,7 @@ Yes, with one caveat you must know. The fleet invokes `claude -p` **without**
 session does. Under `--permission-mode bypassPermissions` (how firings run), the
 `Skill` tool is permitted, so a matching skill can auto-activate.
 
-The honest caveat: auto-activation is a model decision, not a guarantee, and
+Auto-activation is a model decision, not a guarantee, and
 `--bare` (which skips all skill, hook, and MCP discovery) is slated to become the
 `-p` default in a future Claude Code release. So the reliable, future-proof way
 to get a skill into a headless run is to **name it in the agent's prompt**. Two
@@ -292,9 +292,11 @@ and license-reviewed (see `skills/NOTICE.md`). Reference-install packs require
 release, while gstack clones upstream `main` because its skills are versioned
 and upgraded by its own `./setup` and `gstack-upgrade` flow.
 
-The fleet's IAM-per-agent and per-firing-worktree isolation limit blast radius:
-a compromised skill in one worktree cannot reach the operator's home or a second
-Claude account. Mitigation, not prevention.
+Per-agent IAM limits the AWS permissions available to a role. Separate
+worktrees reduce accidental branch overlap. They do not stop a compromised
+skill from using the files, credentials, or network access available to the
+local Alfred user. Use a dedicated operating-system account, virtual machine,
+or container when that access is too broad.
 
 ## Skills NOT recommended for an autonomous fleet
 

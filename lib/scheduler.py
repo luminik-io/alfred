@@ -22,9 +22,14 @@ that way.
 
 from __future__ import annotations
 
+import ast
 import os
 import platform
+import shlex
+import shutil
 import subprocess
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -53,8 +58,84 @@ def _uid() -> int:
     return os.getuid()
 
 
-def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=15)
+def _run(cmd: list[str], *, timeout: float = 15) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=timeout)
+
+
+def _decode_manager_environment_value(value: str) -> str:
+    try:
+        if value.startswith("$'") and value.endswith("'"):
+            return str(ast.literal_eval("'" + value[2:-1] + "'"))
+        if value.startswith(("'", '"')):
+            parts = shlex.split(value)
+            return parts[0] if parts else ""
+    except (SyntaxError, ValueError):
+        return value
+    return value
+
+
+@dataclass(frozen=True)
+class ManagerEnvironmentLookup:
+    """One scheduler lookup with absence kept distinct from query failure."""
+
+    value: str = ""
+    available: bool = False
+    supported: bool = True
+
+
+def manager_environment_lookup(
+    name: str,
+    *,
+    timeout: float = 15,
+    run: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> ManagerEnvironmentLookup:
+    """Read one manager value without collapsing absence into query failure."""
+
+    execute = run or _run
+    try:
+        if SCHEDULER == "launchd":
+            if which("launchctl") is None:
+                return ManagerEnvironmentLookup()
+            result = execute(["launchctl", "getenv", name], timeout=timeout)
+            if result.returncode != 0:
+                return ManagerEnvironmentLookup()
+            return ManagerEnvironmentLookup(value=result.stdout.strip(), available=True)
+        if SCHEDULER == "systemd":
+            result = execute(["systemctl", "--user", "show-environment"], timeout=timeout)
+            if result.returncode != 0:
+                return ManagerEnvironmentLookup()
+            for line in result.stdout.splitlines():
+                key, _, value = line.partition("=")
+                if key == name:
+                    return ManagerEnvironmentLookup(
+                        value=_decode_manager_environment_value(value),
+                        available=True,
+                    )
+            return ManagerEnvironmentLookup(available=True)
+    except (OSError, subprocess.SubprocessError):
+        return ManagerEnvironmentLookup()
+    return ManagerEnvironmentLookup(supported=False)
+
+
+def manager_environment_value(
+    name: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+    timeout: float = 15,
+    run: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str:
+    """Read one value from the user scheduler environment."""
+
+    env = environ if environ is not None else os.environ
+    lookup = manager_environment_lookup(
+        name,
+        timeout=timeout,
+        run=run,
+        which=which,
+    )
+    return lookup.value if lookup.available else env.get(name, "")
 
 
 # --------------------------------------------------------------------------

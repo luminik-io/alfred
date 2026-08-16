@@ -244,7 +244,7 @@ shipped.
 
 ## When NOT to use a monorepo with Alfred
 
-Honest tradeoffs, written by someone who has run Alfred against both shapes:
+Tradeoffs observed while running Alfred against both shapes:
 
 - **Very large monorepos (>5 GB or >200k tracked files).** Worktree creation
   starts to dominate firing wall-clock, and `agent-cleanup` has to delete

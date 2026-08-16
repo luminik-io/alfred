@@ -40,6 +40,9 @@ Sent once a day:
 - lifetime issues with an `agent:*` label that reached closed state
 - lifetime changed-file count
 - lifetime changed-line count when the local brain has line counts
+- optional `stale_fields` names when a count could not be refreshed
+- optional `last_30_days` counts for PRs, issues, files, and lines, plus the
+  window length
 
 No repo names, branch names, PR titles, issue titles, code, logs, prompts,
 people, hostnames, or billing data are sent.

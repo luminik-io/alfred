@@ -33,7 +33,7 @@ Know these values:
 | Value | Example | Notes |
 |---|---|---|
 | GitHub org/user | `my-org` | Must match the owner of the repo Alfred will operate on. |
-| Repos | `my-api,my-web` or `my-org/my-api,my-org/my-web` | Use one repo for a one-repo product, or a comma-separated list for a multi-repo product. Start with the smallest honest scope you want agents to operate on. |
+| Repos | `my-api,my-web` or `my-org/my-api,my-org/my-web` | Use one repo for a one-repo product, or a comma-separated list for a multi-repo product. Start with the smallest scope you want agents to operate on. |
 | Specs repo | `my-specs` | Optional. Keep it checked out for context; do not assign write-capable agents to it unless you want them editing specs. |
 | Operator name | `Jane Builder` | Used in generated prompts and config. |
 | Operator email | `jane@example.com` | Used in generated prompts and config. |
@@ -68,7 +68,7 @@ Rules:
 - Do not enable every discovered repo. Configure only the repos listed in REPOS.
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
-- Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
+- Keep `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` unset. Use the Claude Code and Codex CLI login flows.
 - Use the full engineering fleet: `planner` (Drake), `architect` (Batman),
   `senior-dev` (Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane),
   `fixer` (Nightwing), `triage` (Robin), `e2e-runner` (Huntress),
@@ -314,8 +314,8 @@ Expected:
 
 - `alfred agents` lists the full engineering fleet, including gated agents and
   the memory harvest / auto-promote jobs.
-- `alfred auth status` shows Claude Code account routing and Codex status if
-  Codex is installed.
+- `alfred auth status` checks scheduler-selected Claude Code readiness and
+  Codex readiness.
 - `alfred doctor` reports the configured agents as pass, or names the exact missing
   binary/auth/env var before any agent burns model turns.
 
@@ -334,7 +334,7 @@ Expected:
 
 ## Adding Slack, AWS, or More Repos Later
 
-Start with the smallest honest repo set. Once the full fleet passes doctor:
+Start with the smallest repository set. Once the full fleet passes doctor:
 
 - Add Slack: [`SLACK_SETUP.md`](SLACK_SETUP.md)
 - Add AWS IAM-per-agent: [`AWS_SETUP.md`](AWS_SETUP.md)

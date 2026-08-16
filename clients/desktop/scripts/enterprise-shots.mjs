@@ -32,7 +32,8 @@ const SANITIZE = () => {
       } else if (child.nodeType === 1) {
         for (const attr of ["title", "href", "aria-label"]) {
           const v = child.getAttribute && child.getAttribute(attr);
-          if (v && /luminik|\/Users\//.test(v)) child.setAttribute(attr, rewrite(v));
+          if (v && /luminik|\/Users\//.test(v))
+            child.setAttribute(attr, rewrite(v));
         }
         walk(child);
       }
@@ -48,37 +49,63 @@ const SURFACES = [
   { id: "inbox", q: "tab=inbox", wait: ".command-center" },
   { id: "ask", q: "tab=ask", wait: ".ask" },
   { id: "work", q: "tab=work", wait: ".board-page" },
-  { id: "agents-roster", q: "tab=agents", wait: "[aria-label='Agents'], .agents-deck", rosterView: "list" },
-  { id: "agents-graph", q: "tab=agents", wait: ".workflow-graph", graph: true, rosterView: "workflow" },
+  {
+    id: "agents-roster",
+    q: "tab=agents",
+    wait: "[aria-label='Agents'], .agents-deck",
+    rosterView: "list",
+  },
+  {
+    id: "agents-graph",
+    q: "tab=agents",
+    wait: ".workflow-graph",
+    graph: true,
+    rosterView: "workflow",
+  },
 ];
-const WIDTHS = [{ tag: "desktop", w: 1440 }, { tag: "mobile", w: 390 }];
-const THEMES = ["dark", "light"];
+const WIDTHS = [
+  { tag: "desktop", w: 1440 },
+  { tag: "mobile", w: 390 },
+];
+const THEME_NAMES = ["signal-edge", "category-standard", "linked-fold"];
+const MODES = ["dark", "light"];
 
-async function shoot(browser, { surface, width, theme }) {
+async function shoot(browser, { surface, width, themeName, mode }) {
   const ctx = await browser.newContext({
     viewport: { width: width.w, height: 900 },
-    colorScheme: theme,
+    colorScheme: mode,
     deviceScaleFactor: 1,
   });
   const p = await ctx.newPage();
-  await p.addInitScript((seed) => {
-    try {
-      localStorage.setItem("alfred-theme-name", "mineral");
-      localStorage.setItem("alfred-theme", seed.theme);
-      localStorage.setItem("alfred.rosterView", seed.rosterView);
-    } catch {}
-  }, { theme, rosterView: surface.rosterView || "workflow" });
-  await p.goto(`${BASE}/?${surface.q}`, { waitUntil: "domcontentloaded", timeout: 20000 });
+  await p.addInitScript(
+    (seed) => {
+      try {
+        localStorage.setItem("alfred-theme-name", seed.themeName);
+        localStorage.setItem("alfred-theme", seed.mode);
+        localStorage.setItem("alfred.rosterView", seed.rosterView);
+      } catch {}
+    },
+    { themeName, mode, rosterView: surface.rosterView || "workflow" },
+  );
+  await p.goto(`${BASE}/?${surface.q}`, {
+    waitUntil: "domcontentloaded",
+    timeout: 20000,
+  });
   await p.waitForTimeout(1600);
-  try { await p.waitForSelector(surface.wait, { timeout: 5000, state: "attached" }); } catch {}
+  try {
+    await p.waitForSelector(surface.wait, { timeout: 5000, state: "attached" });
+  } catch {}
   await p.waitForTimeout(surface.graph ? 1400 : 400);
   await p.evaluate(SANITIZE);
   await p.waitForTimeout(150);
-  const name = `${surface.id}_${width.tag}_${theme}.png`;
+  const name = `${surface.id}_${width.tag}_${themeName}_${mode}.png`;
   if (surface.graph && width.tag === "desktop") {
     const el = await p.$(".workflow-graph");
-    if (el) { await el.scrollIntoViewIfNeeded(); await p.waitForTimeout(500); await el.screenshot({ path: join(OUT, name) }); }
-    else await p.screenshot({ path: join(OUT, name) });
+    if (el) {
+      await el.scrollIntoViewIfNeeded();
+      await p.waitForTimeout(500);
+      await el.screenshot({ path: join(OUT, name) });
+    } else await p.screenshot({ path: join(OUT, name) });
   } else {
     await p.screenshot({ path: join(OUT, name), fullPage: false });
   }
@@ -91,14 +118,22 @@ async function run() {
   const browser = await chromium.launch({ args: ["--disable-gpu"] });
   const done = [];
   try {
-    for (const theme of THEMES)
-      for (const width of WIDTHS)
-        for (const surface of SURFACES) {
-          if (surface.graph && width.tag === "mobile") continue; // graph is desktop-first
-          done.push(await shoot(browser, { surface, width, theme }));
-        }
-  } finally { await browser.close().catch(() => {}); }
+    for (const themeName of THEME_NAMES)
+      for (const mode of MODES)
+        for (const width of WIDTHS)
+          for (const surface of SURFACES) {
+            if (surface.graph && width.tag === "mobile") continue; // graph is desktop-first
+            done.push(
+              await shoot(browser, { surface, width, themeName, mode }),
+            );
+          }
+  } finally {
+    await browser.close().catch(() => {});
+  }
   console.log(`captured ${done.length} frames -> ${OUT}`);
   for (const d of done) console.log("  " + d);
 }
-run().catch((e) => { console.error(e); process.exit(1); });
+run().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

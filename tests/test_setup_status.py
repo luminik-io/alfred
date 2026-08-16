@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
 import subprocess
 import sys
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +21,12 @@ sys.path.insert(0, str(ROOT / "lib"))
 from server import setup as setup_mod  # noqa: E402
 
 
+def _scope_cache_dir(cache_root: Path, *repos: Path) -> Path:
+    canonical = sorted({str(repo.resolve()) for repo in repos})
+    material = "".join(f"{path}\n" for path in canonical).encode("utf-8")
+    return cache_root / "scopes" / hashlib.sha256(material).hexdigest()
+
+
 def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     # Setup-status tests model a clean host unless a case explicitly installs
     # a fake binary. Binary discovery prepends standard package-manager paths,
@@ -27,15 +36,496 @@ def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octocat", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+        lambda **_kwargs: [
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/usr/local/bin/codex",
+            }
+        ],
     )
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
     monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+
+def test_bootstrap_status_shares_one_deadline_across_slow_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Barrier(2)
+    deadlines: dict[str, float | None] = {}
+
+    def github_probe(*, deadline: float | None = None) -> dict[str, object]:
+        deadlines["github"] = deadline
+        started.wait(timeout=5)
+        return {"ok": True, "account": "octocat", "detail": "Signed in."}
+
+    def engine_probe(*, deadline: float | None = None) -> list[dict[str, object]]:
+        deadlines["engines"] = deadline
+        started.wait(timeout=5)
+        return []
+
+    def repo_probe(
+        _repos: list[str],
+        _env: dict[str, str],
+        *,
+        deadline: float | None = None,
+    ) -> list[dict[str, object]]:
+        deadlines["repos"] = deadline
+        return []
+
+    monkeypatch.setattr(setup_mod, "gh_auth_status", github_probe)
+    monkeypatch.setattr(setup_mod, "engine_clis", engine_probe)
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "setup_board_repos", lambda _env: [])
+    monkeypatch.setattr(setup_mod, "_setup_queue_repos_for_status", lambda _env: set())
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", repo_probe)
+    monkeypatch.setattr(setup_mod, "code_memory_status", lambda _env: {})
+    monkeypatch.setattr(setup_mod, "_code_memory_coverage", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "capability_status", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "install_inventory", lambda **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "first_run_readiness_status", lambda **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+    before = time.monotonic()
+    setup_mod.bootstrap_status()
+
+    assert deadlines["github"] == deadlines["engines"] == deadlines["repos"]
+    assert deadlines["github"] is not None
+    assert before < deadlines["github"] <= before + 10.5
+
+
+def test_default_hybrid_route_blocks_on_claude_auth_even_when_codex_is_ready() -> None:
+    ready, detail = setup_mod._engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ]
+    )
+
+    assert ready is False
+    assert "Claude Code blocks the default hybrid route" in detail
+
+
+def test_bootstrap_status_blocks_when_claude_auth_stops_default_hybrid_route(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert "blocks the default hybrid route" in checks["engine_clis"]["detail"]
+
+
+def test_default_hybrid_route_uses_codex_when_claude_is_missing() -> None:
+    ready, detail = setup_mod._engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": False,
+                "ready": False,
+                "state": "missing",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ]
+    )
+
+    assert ready is True
+    assert detail == "Ready via Codex fallback."
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, "hybrid"),
+        ("", "hybrid"),
+        ("  ", "hybrid"),
+        ("removed-engine", "disabled"),
+        (" CODEX ", "codex"),
+    ],
+)
+def test_configured_setup_engine_mode_preserves_hybrid_default(
+    raw: str | None,
+    expected: str,
+) -> None:
+    env = {} if raw is None else {"ALFRED_ENGINE": raw}
+
+    assert setup_mod._configured_engine_mode(env) == expected
+
+
+def test_bootstrap_status_blocks_invalid_fleet_engine_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "removed-engine")
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert checks["engine_clis"]["detail"] == (
+        "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
+    )
+    assert checks["engine_clis"]["action"] == (
+        "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+    )
+
+
+def test_bootstrap_status_requires_claude_when_fleet_mode_is_claude(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "claude")
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": False,
+                "ready": False,
+                "state": "missing",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert "configured Claude Code route" in checks["engine_clis"]["detail"]
+
+
+def test_bootstrap_status_uses_ready_codex_when_fleet_mode_is_codex(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "codex")
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is True
+    assert checks["engine_clis"]["ready"] is True
+    assert checks["engine_clis"]["detail"] == "Ready via configured Codex route."
+
+
+def test_engine_inventory_uses_scheduler_selected_claude_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def inventory(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            value="/profiles/secondary",
+            available=True,
+        ),
+    )
+    monkeypatch.setattr(setup_mod.runtime_facade, "engine_inventory", inventory)
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/secondary"
+
+
+def test_engine_inventory_fails_closed_when_scheduler_profile_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+                "failures": [],
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+                "failures": [],
+            },
+        ],
+    )
+
+    engines = setup_mod.engine_clis(deadline=time.monotonic() + 5)
+    by_name = {engine["name"]: engine for engine in engines}
+
+    assert by_name["claude"]["ready"] is False
+    assert by_name["claude"]["state"] == "probe_failed"
+    assert by_name["claude"]["failures"] == ["profile_lookup_failed"]
+    assert by_name["codex"]["ready"] is True
+
+
+def test_engine_inventory_keeps_static_profile_after_deadline_on_unsupported_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {"PATH": "/usr/bin", "CLAUDE_CONFIG_DIR": "/profiles/static"},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_env_file_value",
+        lambda *_args, **_kwargs: "/profiles/static",
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_supported",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("an expired deadline must not start a scheduler command")
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: (
+            captured.update(kwargs)
+            or [
+                {
+                    "name": "claude",
+                    "display_name": "Claude Code",
+                    "installed": True,
+                    "ready": True,
+                    "state": "ready",
+                    "failures": [],
+                }
+            ]
+        ),
+    )
+
+    engines = setup_mod.engine_clis(deadline=time.monotonic() - 1)
+
+    assert engines[0]["ready"] is True
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/static"
+
+
+def test_engine_inventory_keeps_static_claude_profile_without_manager_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    (runtime_home / ".env").write_text(
+        "CLAUDE_CONFIG_DIR=/profiles/static\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/profiles/shell-only",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            available=True
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/static"
+
+
+def test_engine_inventory_excludes_shell_only_claude_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/profiles/shell-only",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            available=True
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert "CLAUDE_CONFIG_DIR" not in captured["environ"]
+
+
+def test_engine_inventory_can_probe_the_current_process_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    (runtime_home / ".env").write_text(
+        "CLAUDE_CONFIG_DIR=/profiles/static\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/profiles/conversation-process")
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("process-profile probes must not query the scheduler")
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(
+        deadline=time.monotonic() + 5,
+        environment="process",
+    )
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/conversation-process"
 
 
 def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -52,6 +542,40 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("ARCHITECT_AUTO_EXECUTE", raising=False)
     monkeypatch.delenv("ARCHITECT_PARENT_REPO", raising=False)
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+
+def test_bootstrap_rejects_detected_candidate_engine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "opencode",
+                "display_name": "OpenCode",
+                "installed": True,
+                "protocol_compatible": True,
+                "ready": False,
+                "dispatchable": False,
+                "state": "needs_validation",
+                "detail": "OpenCode still needs a deep permission probe.",
+                "path": "/usr/local/bin/opencode",
+                "version": "opencode 2.0.0",
+                "capabilities": ["text"],
+                "failures": ["deep_probe_required"],
+            }
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert checks["engine_clis"]["detail"] == "Detected but not ready: OpenCode."
 
 
 def _git_repo_with_origin(path: Path, slug: str) -> None:
@@ -117,6 +641,22 @@ def test_bootstrap_status_reports_code_memory_defaults(
     assert code_memory["repo"] == "DeusData/codebase-memory-mcp"
     assert code_memory["index_dir"] == str(tmp_path / ".alfred" / "state" / "code-memory")
     assert code_memory["index_present"] is False
+    assert code_memory["repos"] == {
+        "configured": [],
+        "configured_existing": [],
+        "discovered": [],
+        "selected": [],
+        "source": "unconfigured",
+        "count": 0,
+    }
+    capability = next(
+        item for item in payload["capability_plane"]["capabilities"] if item["key"] == "code_graph"
+    )
+    assert capability["state"] == "needs_scope"
+    assert capability["install_hint"] == (
+        "Set ALFRED_CODE_MEMORY_REPOS or ALFRED_CODE_MAP_REPOS, then run "
+        "`alfred code-memory index`."
+    )
     assert payload["code_memory_coverage"] == {
         "ready": False,
         "covered": [],
@@ -334,12 +874,14 @@ def test_bootstrap_status_reports_configured_code_memory(
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     index_dir = tmp_path / "index"
-    graph_dir = index_dir / ".cache" / "codebase-memory-mcp"
+    workspace = tmp_path / "workspace"
+    api = workspace / "api"
+    web = workspace / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    graph_dir = _scope_cache_dir(index_dir / ".cache" / "codebase-memory-mcp", api, web)
     graph_dir.mkdir(parents=True)
     (graph_dir / "graph.db").write_text("ok", encoding="utf-8")
-    workspace = tmp_path / "workspace"
-    (workspace / "api" / ".git").mkdir(parents=True)
-    (workspace / "web" / ".git").mkdir(parents=True)
 
     monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
@@ -364,9 +906,43 @@ def test_bootstrap_status_reports_configured_code_memory(
         "selected": ["api", "web"],
         "source": "configured",
         "count": 2,
-        "limit": 25,
     }
     assert code_memory["detail"] == "Code-memory binary and index are present."
+
+
+def test_bootstrap_status_rejects_stale_configured_code_memory_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    index_dir = tmp_path / "index"
+    graph_dir = index_dir / ".cache" / "codebase-memory-mcp"
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.db").write_text("stale", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "removed-repo")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+
+    payload = setup_mod.bootstrap_status()
+
+    code_memory = payload["code_memory"]
+    assert code_memory["repos"]["source"] == "configured-missing"
+    assert code_memory["repos"]["selected"] == []
+    assert code_memory["detail"] == (
+        "Configured code-memory repositories do not resolve to git checkouts."
+    )
+    capability = next(
+        item for item in payload["capability_plane"]["capabilities"] if item["key"] == "code_graph"
+    )
+    assert capability["state"] == "needs_scope"
 
 
 def test_bootstrap_status_ignores_legacy_index_dir_database(
@@ -380,14 +956,21 @@ def test_bootstrap_status_ignores_legacy_index_dir_database(
     index_dir = tmp_path / "index"
     index_dir.mkdir()
     (index_dir / "legacy.db").write_text("stale", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    (workspace / "api" / ".git").mkdir(parents=True)
 
     monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
 
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
     assert code_memory["index_dir"] == str(index_dir)
-    assert code_memory["graph_dir"] == str(index_dir / ".cache" / "codebase-memory-mcp")
+    assert code_memory["graph_dir"] == str(
+        _scope_cache_dir(index_dir / ".cache" / "codebase-memory-mcp", workspace / "api")
+    )
     assert code_memory["index_present"] is False
     assert (
         code_memory["detail"]
@@ -405,13 +988,19 @@ def test_bootstrap_status_checks_code_memory_home_cache_for_index(
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     index_dir = tmp_path / "legacy-index"
     code_home = tmp_path / "code-memory-home"
-    graph_dir = code_home / ".cache" / "codebase-memory-mcp"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    graph_dir = _scope_cache_dir(code_home / ".cache" / "codebase-memory-mcp", repo)
     graph_dir.mkdir(parents=True)
     (graph_dir / "graph.db").write_text("ok", encoding="utf-8")
 
     monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", str(code_home))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
 
     payload = setup_mod.bootstrap_status()
 
@@ -434,21 +1023,247 @@ def test_bootstrap_status_checks_upstream_cbm_cache_dir_for_index(
     index_dir = tmp_path / "legacy-index"
     code_home = tmp_path / "code-memory-home"
     cbm_cache = tmp_path / "upstream-cache"
-    cbm_cache.mkdir(parents=True)
-    (cbm_cache / "graph.db").write_text("ok", encoding="utf-8")
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    graph_dir = _scope_cache_dir(cbm_cache, repo)
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.db").write_text("ok", encoding="utf-8")
 
     monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", str(code_home))
     monkeypatch.setenv("CBM_CACHE_DIR", str(cbm_cache))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
 
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
     assert code_memory["index_dir"] == str(index_dir)
     assert code_memory["index_home"] == str(code_home)
-    assert code_memory["graph_dir"] == str(cbm_cache)
+    assert code_memory["graph_dir"] == str(graph_dir)
     assert code_memory["index_present"] is True
     assert code_memory["detail"] == "Code-memory binary and index are present."
+
+
+def test_bootstrap_status_does_not_reuse_graph_from_wider_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    api = workspace / "api"
+    web = workspace / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    old_graph_dir = _scope_cache_dir(cache_root, api, web)
+    old_graph_dir.mkdir(parents=True)
+    (old_graph_dir / "graph.db").write_text("old wider graph", encoding="utf-8")
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("CBM_CACHE_DIR", str(cache_root))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["graph_dir"] == str(_scope_cache_dir(cache_root, api))
+    assert code_memory["graph_dir"] != str(old_graph_dir)
+    assert code_memory["index_present"] is False
+    assert "run an index" in code_memory["detail"]
+
+
+def test_launcher_and_setup_status_agree_on_scope_cache_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    api = workspace / "api"
+    web = workspace / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "ALFRED_HOME": str(tmp_path / ".alfred"),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "web,api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": str(workspace),
+        "WORKSPACE_SUBDIR": "",
+    }
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    doctor = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert doctor.returncode == 0, doctor.stderr
+    assert f"cache-dir:   {code_memory['graph_dir']}" in doctor.stderr
+    assert code_memory["graph_dir"] == str(_scope_cache_dir(cache_root, api, web))
+
+
+@pytest.mark.parametrize(
+    ("relative_setting", "relative_value", "cache_suffix"),
+    [
+        ("CBM_CACHE_DIR", "relative-cache", Path("relative-cache")),
+        (
+            "ALFRED_CODE_MEMORY_HOME",
+            "relative-home",
+            Path("relative-home/.cache/codebase-memory-mcp"),
+        ),
+        (
+            "ALFRED_CODE_MEMORY_INDEX_DIR",
+            "relative-index",
+            Path("relative-index/.cache/codebase-memory-mcp"),
+        ),
+    ],
+)
+def test_launcher_and_setup_resolve_relative_cache_roots_from_runtime_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    relative_setting: str,
+    relative_value: str,
+    cache_suffix: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    runtime = tmp_path / ".alfred"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    launcher_cwd = tmp_path / "launcher-cwd"
+    launcher_cwd.mkdir()
+    env = {
+        **os.environ,
+        "HOME": str(tmp_path / "home"),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "WORKSPACE_ROOT": str(workspace),
+        "WORKSPACE_SUBDIR": "",
+        relative_setting: relative_value,
+    }
+    if relative_setting != "CBM_CACHE_DIR":
+        env.pop("CBM_CACHE_DIR", None)
+    if relative_setting != "ALFRED_CODE_MEMORY_HOME":
+        env.pop("ALFRED_CODE_MEMORY_HOME", None)
+    if relative_setting != "ALFRED_CODE_MEMORY_INDEX_DIR":
+        env.pop("ALFRED_CODE_MEMORY_INDEX_DIR", None)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    if "CBM_CACHE_DIR" not in env:
+        monkeypatch.delenv("CBM_CACHE_DIR", raising=False)
+    if "ALFRED_CODE_MEMORY_HOME" not in env:
+        monkeypatch.delenv("ALFRED_CODE_MEMORY_HOME", raising=False)
+    if "ALFRED_CODE_MEMORY_INDEX_DIR" not in env:
+        monkeypatch.delenv("ALFRED_CODE_MEMORY_INDEX_DIR", raising=False)
+
+    doctor = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        cwd=launcher_cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+    expected = _scope_cache_dir(runtime / cache_suffix, repo)
+
+    assert doctor.returncode == 0, doctor.stderr
+    assert f"cache-dir:   {expected}" in doctor.stderr
+    assert code_memory["graph_dir"] == str(expected)
+
+
+@pytest.mark.parametrize(
+    ("tilde_setting", "cache_suffix"),
+    [
+        ("CBM_CACHE_DIR", Path("cache")),
+        (
+            "ALFRED_CODE_MEMORY_HOME",
+            Path("memory/.cache/codebase-memory-mcp"),
+        ),
+        (
+            "ALFRED_CODE_MEMORY_INDEX_DIR",
+            Path("index/.cache/codebase-memory-mcp"),
+        ),
+    ],
+)
+def test_launcher_and_setup_resolve_tilde_cache_roots_without_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tilde_setting: str,
+    cache_suffix: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    runtime = tmp_path / ".alfred"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    launcher_cwd = tmp_path / "launcher-cwd"
+    launcher_cwd.mkdir()
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "WORKSPACE_ROOT": str(workspace),
+        "WORKSPACE_SUBDIR": "",
+        tilde_setting: f"~/{cache_suffix.parts[0]}",
+    }
+    monkeypatch.delenv("HOME", raising=False)
+    for key in (
+        "CBM_CACHE_DIR",
+        "ALFRED_CODE_MEMORY_HOME",
+        "ALFRED_CODE_MEMORY_INDEX_DIR",
+    ):
+        if key not in env:
+            monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    doctor = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        cwd=launcher_cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+    expected = _scope_cache_dir(runtime / cache_suffix, repo)
+
+    assert doctor.returncode == 0, doctor.stderr
+    assert "unbound variable" not in doctor.stderr
+    assert f"cache-dir:   {expected}" in doctor.stderr
+    assert code_memory["graph_dir"] == str(expected)
 
 
 def test_bootstrap_status_ignores_empty_code_memory_cache_scaffolding(
@@ -460,11 +1275,17 @@ def test_bootstrap_status_ignores_empty_code_memory_cache_scaffolding(
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     code_home = tmp_path / "code-memory-home"
-    graph_dir = code_home / ".cache" / "codebase-memory-mcp"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    graph_dir = _scope_cache_dir(code_home / ".cache" / "codebase-memory-mcp", repo)
     graph_dir.mkdir(parents=True)
 
     monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", str(code_home))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
 
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
@@ -518,20 +1339,50 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
-    monkeypatch.setenv("CLAUDE_BIN", "/env/claude")
-    monkeypatch.setenv("CODEX_BIN", "/env/codex")
+    claude_bin = tmp_path / "env-claude"
+    codex_bin = tmp_path / "env-codex"
+    for binary in (claude_bin, codex_bin):
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(0o755)
+    monkeypatch.setenv("CLAUDE_BIN", str(claude_bin))
+    monkeypatch.setenv("CODEX_BIN", str(codex_bin))
     monkeypatch.setenv("GH_ORG", "env-org")
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
 
     launcher_env = setup_mod._code_memory_launcher_env()
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert launcher_env["CLAUDE_BIN"] == "/env/claude"
-    assert launcher_env["CODEX_BIN"] == "/env/codex"
+    assert launcher_env["CLAUDE_BIN"] == str(claude_bin)
+    assert launcher_env["CODEX_BIN"] == str(codex_bin)
     assert launcher_env["GH_ORG"] == "env-org"
-    assert engines["claude"]["path"] == "/env/claude"
-    assert engines["codex"]["path"] == "/env/codex"
+    assert engines["claude"]["path"] == str(claude_bin)
+    assert engines["codex"]["path"] == str(codex_bin)
     assert setup_mod._repo_list_owners() == ["env-org"]
+
+
+def test_engine_inventory_does_not_execute_candidate_harnesses_during_setup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    marker = tmp_path / "candidate-called"
+    opencode = tmp_path / "opencode"
+    opencode.write_text(
+        f"#!/bin/sh\nprintf called >> {marker}\n",
+        encoding="utf-8",
+    )
+    opencode.chmod(0o755)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("CLAUDE_BIN", str(tmp_path / "missing-claude"))
+    monkeypatch.setenv("CODEX_BIN", str(tmp_path / "missing-codex"))
+    monkeypatch.setenv("OPENCODE_BIN", str(opencode))
+
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert marker.exists() is False
+    assert engines["opencode"]["installed"] is True
+    assert engines["opencode"]["state"] == "needs_validation"
+    assert engines["opencode"]["protocol_compatible"] is False
 
 
 def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
@@ -555,27 +1406,37 @@ def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
     (runtime / ".env").write_text(
         "\n".join(
             [
-                "CODEX_BIN=/runtime/codex",
+                f"CODEX_BIN={tmp_path / 'runtime-codex'}",
                 "GH_ORG=runtime-org",
             ]
         ),
         encoding="utf-8",
     )
+    runtime_codex = tmp_path / "runtime-codex"
+    runtime_codex.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_codex.chmod(0o755)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("CLAUDE_BIN", raising=False)
     monkeypatch.delenv("CODEX_BIN", raising=False)
     monkeypatch.delenv("GH_BIN", raising=False)
     monkeypatch.delenv("GH_ORG", raising=False)
-    monkeypatch.setattr(setup_mod.shutil, "which", lambda *args, **kwargs: None)
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: [
+            {"name": "claude", "path": None},
+            {"name": "codex", "path": kwargs["environ"]["CODEX_BIN"]},
+        ],
+    )
 
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert setup_mod._setup_config_value("CODEX_BIN") == "/runtime/codex"
+    assert setup_mod._setup_config_value("CODEX_BIN") == str(runtime_codex)
     assert setup_mod._setup_config_value("CLAUDE_BIN") == ""
     assert setup_mod._gh_bin() == "gh"
-    assert engines["codex"]["path"] == "/runtime/codex"
+    assert engines["codex"]["path"] == str(runtime_codex)
     assert engines["claude"]["path"] is None
     assert setup_mod._repo_list_owners() == ["runtime-org"]
 
@@ -776,10 +1637,17 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     launcher_home = tmp_path / "launcher-runtime"
     active_cache = active_home / "bin" / "codebase-memory-mcp"
     active_index = active_home / "state" / "code-memory"
-    active_graph = active_index / ".cache" / "codebase-memory-mcp"
     launcher_cache = launcher_home / "bin" / "codebase-memory-mcp"
     launcher_index = launcher_home / "state" / "code-memory"
-    launcher_graph = launcher_index / ".cache" / "codebase-memory-mcp"
+    workspace = tmp_path / "workspace"
+    active_repo = workspace / "active" / "api"
+    launcher_repo = workspace / "launcher" / "api"
+    (active_repo / ".git").mkdir(parents=True)
+    (launcher_repo / ".git").mkdir(parents=True)
+    active_graph = _scope_cache_dir(active_index / ".cache" / "codebase-memory-mcp", active_repo)
+    launcher_graph = _scope_cache_dir(
+        launcher_index / ".cache" / "codebase-memory-mcp", launcher_repo
+    )
     home.mkdir()
     active_cache.parent.mkdir(parents=True)
     active_graph.mkdir(parents=True)
@@ -803,7 +1671,8 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(active_home))
-    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
@@ -830,7 +1699,10 @@ def test_bootstrap_status_expands_tilde_home_for_code_memory(
     alfred_home = home / "runtime"
     cache_bin = alfred_home / "bin" / "codebase-memory-mcp"
     index_dir = alfred_home / "state" / "code-memory"
-    graph_dir = index_dir / ".cache" / "codebase-memory-mcp"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    graph_dir = _scope_cache_dir(index_dir / ".cache" / "codebase-memory-mcp", repo)
     cache_bin.parent.mkdir(parents=True)
     graph_dir.mkdir(parents=True)
     cache_bin.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -839,6 +1711,9 @@ def test_bootstrap_status_expands_tilde_home_for_code_memory(
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", "~/runtime")
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
 
@@ -899,10 +1774,14 @@ def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch.delenv("ALFRED_CODE_MEMORY_AUTOFETCH", raising=False)
     alfred_home = tmp_path / ".alfred"
     alfred_home.mkdir()
+    workspace = tmp_path / "workspace"
+    (workspace / "api" / ".git").mkdir(parents=True)
     (alfred_home / ".env").write_text(
-        "ALFRED_CODE_MEMORY_AUTOFETCH=False\n",
+        "ALFRED_CODE_MEMORY_AUTOFETCH=False\nALFRED_CODE_MEMORY_REPOS=api\n",
         encoding="utf-8",
     )
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
 
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
@@ -910,7 +1789,7 @@ def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     assert "autofetch is disabled" in code_memory["detail"]
 
 
-def test_bootstrap_status_falls_back_after_stale_code_memory_override(
+def test_bootstrap_status_fails_closed_after_stale_code_memory_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
@@ -924,11 +1803,112 @@ def test_bootstrap_status_falls_back_after_stale_code_memory_override(
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
     assert code_memory["binary"] == {
-        "resolved": True,
-        "path": str(cache_bin),
-        "source": "cache",
+        "resolved": False,
+        "path": None,
+        "source": "env",
         "configured": str(tmp_path / "removed-binary"),
     }
+
+
+def test_code_memory_status_ignores_ambient_path_binary(tmp_path: Path) -> None:
+    path_dir = tmp_path / "path-bin"
+    path_dir.mkdir()
+    ambient_bin = path_dir / "codebase-memory-mcp"
+    ambient_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    ambient_bin.chmod(ambient_bin.stat().st_mode | stat.S_IXUSR)
+
+    code_memory = setup_mod.code_memory_status(
+        {
+            "HOME": str(tmp_path),
+            "ALFRED_HOME": str(tmp_path / ".alfred"),
+            "PATH": str(path_dir),
+            "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        }
+    )
+
+    assert code_memory["binary"] == {
+        "resolved": False,
+        "path": None,
+        "source": "none",
+        "configured": None,
+    }
+
+
+@pytest.mark.parametrize("use_home", [True, False])
+def test_launcher_status_and_battery_agree_on_explicit_tilde_binary(
+    tmp_path: Path,
+    use_home: bool,
+) -> None:
+    alfred_home = tmp_path / "runtime"
+    home = tmp_path / "home"
+    expansion_root = home if use_home else alfred_home
+    binary = expansion_root / "bin" / "custom-memory"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\nprintf 'custom-memory 1.0\\n'\n", encoding="utf-8")
+    binary.chmod(0o755)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_CODE_MEMORY_BIN": "~/bin/custom-memory",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+    }
+    if use_home:
+        env["HOME"] = str(home)
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert f"binary:  {binary}" in launcher.stderr
+    assert code_memory["binary"] == {
+        "resolved": True,
+        "path": str(binary),
+        "source": "env",
+        "configured": "~/bin/custom-memory",
+    }
+    assert setup_mod.batteries._code_memory_binary(env) is True
+
+
+def test_launcher_status_and_battery_reject_missing_explicit_tilde_binary(
+    tmp_path: Path,
+) -> None:
+    alfred_home = tmp_path / "runtime"
+    cache = alfred_home / "bin" / "codebase-memory-mcp"
+    cache.parent.mkdir(parents=True)
+    cache.write_text("#!/bin/sh\nprintf 'cache 1.0\\n'\n", encoding="utf-8")
+    cache.chmod(0o755)
+    missing = alfred_home / "bin" / "custom-memory"
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(alfred_home),
+        "ALFRED_CODE_MEMORY_BIN": "~/bin/custom-memory",
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+    }
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert f"explicit binary is not executable: {missing}" in launcher.stderr
+    assert "binary:  NOT RESOLVED" in launcher.stderr
+    assert str(cache) not in launcher.stderr
+    assert code_memory["binary"] == {
+        "resolved": False,
+        "path": None,
+        "source": "env",
+        "configured": "~/bin/custom-memory",
+    }
+    assert setup_mod.batteries._code_memory_binary(env) is False
 
 
 def test_bootstrap_status_respects_code_memory_disable(
@@ -941,12 +1921,6 @@ def test_bootstrap_status_respects_code_memory_disable(
     monkeypatch.setenv("ALFRED_CODE_MEMORY_MCP", "0")
     monkeypatch.setenv("ALFRED_CODE_MEMORY_AUTOFETCH", "0")
     monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api, web")
-    monkeypatch.setattr(
-        setup_mod,
-        "_discover_code_memory_repos",
-        lambda _env: pytest.fail("disabled code memory must not crawl workspace repos"),
-    )
-
     payload = setup_mod.bootstrap_status()
     code_memory = payload["code_memory"]
     first_run_by_key = {check["key"]: check for check in payload["first_run"]["checks"]}
@@ -961,7 +1935,6 @@ def test_bootstrap_status_respects_code_memory_disable(
         "selected": ["api", "web"],
         "source": "configured",
         "count": 2,
-        "limit": 25,
     }
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
     assert capability_by_key["code_graph"]["install_hint"] == (
@@ -993,7 +1966,7 @@ def test_capability_plane_reports_missing_optional_layers(
     by_key = {item["key"]: item for item in payload["capabilities"]}
 
     assert payload["summary"] == {"ready": 1, "actionable": 2, "disabled": 0, "total": 3}
-    assert by_key["code_graph"]["state"] == "installable"
+    assert by_key["code_graph"]["state"] == "needs_scope"
     assert by_key["context_compression"]["state"] == "ready"
     assert by_key["context_compression"]["enabled"] is True
     assert by_key["context_compression"]["detected"]["env_key"] == "ALFRED_CONTEXT_GOVERNOR"
@@ -1106,6 +2079,7 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
         "enabled": False,
         "binary": {"resolved": True},
         "index_present": True,
+        "repos": {"configured": ["api"], "selected": ["api"]},
         "detail": "Code memory is ready.",
     }
     payload = setup_mod.capability_status(
@@ -1121,6 +2095,62 @@ def test_ready_code_memory_wins_while_graphify_is_not_usable(
     assert code_graph["detail"] == (
         "Code-memory fallback is ready while Graphify is not installed."
     )
+
+
+def test_graphify_fallback_inspects_explicit_code_memory_scope_while_mcp_stays_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    repo.joinpath(".git").mkdir(parents=True)
+    binary = runtime / "bin" / "codebase-memory-mcp"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+    cache_root = tmp_path / "cache"
+    graph_dir = _scope_cache_dir(cache_root, repo)
+    graph_dir.mkdir(parents=True)
+    graph_dir.joinpath("graph.db").write_text("ready", encoding="utf-8")
+    env = {
+        "HOME": str(tmp_path / "home"),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_MCP": "0",
+        "ALFRED_GRAPHIFY_MCP": "1",
+        "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": str(workspace),
+        "WORKSPACE_SUBDIR": "",
+    }
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {
+                    "id": "graphify",
+                    "configured": True,
+                    "enabled": False,
+                    "installed": False,
+                }
+            ]
+        },
+    )
+
+    code_memory = setup_mod.code_memory_status(env)
+    capability_plane = setup_mod.capability_status(code_memory, launcher_env=env)
+    code_graph = next(
+        item for item in capability_plane["capabilities"] if item["key"] == "code_graph"
+    )
+
+    assert code_memory["enabled"] is False
+    assert code_memory["repos"]["selected"] == ["api"]
+    assert code_memory["graph_dir"] == str(graph_dir)
+    assert code_memory["index_present"] is True
+    assert code_graph["state"] == "ready"
+    assert code_graph["source"]["source"] == "DeusData/codebase-memory-mcp"
 
 
 def test_relative_graph_is_not_probed_against_setup_server_cwd(
@@ -1174,7 +2204,7 @@ def test_capability_plane_reports_builtin_context_governor_with_headroom_detecte
         "repo": "DeusData/codebase-memory-mcp",
         "index_dir": str(tmp_path / "index"),
         "index_present": True,
-        "repos": {"configured": ["api"], "count": 1},
+        "repos": {"configured": ["api"], "selected": ["api"], "count": 1},
         "detail": "Code-memory binary and index are present.",
     }
 
@@ -1455,12 +2485,20 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octocat", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+        lambda **_kwargs: [
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/usr/local/bin/codex",
+            }
+        ],
     )
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -1509,8 +2547,8 @@ def test_bootstrap_status_survives_tilde_code_memory_paths_without_home(
     payload = setup_mod.bootstrap_status()
 
     code_memory = payload["code_memory"]
-    assert code_memory["index_home"] == "~/code-memory-home"
-    assert code_memory["graph_dir"] == "~/code-memory-cache"
+    assert code_memory["index_home"] == str(runtime / "code-memory-home")
+    assert code_memory["graph_dir"] == str(runtime / "code-memory-cache" / "scopes" / "unavailable")
     assert code_memory["repos"]["configured"] == ["api"]
     assert code_memory["repos"]["source"] == "configured-missing"
     assert payload["capability_plane"]["summary"]["total"] == 3
@@ -1530,7 +2568,17 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     )
     gh_bin.chmod(0o755)
     codex_bin = tmp_path / "codex"
-    codex_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    codex_bin.write_text(
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'codex-cli 1.2.3\n' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox' ;;
+  'login status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
     codex_bin.chmod(0o755)
 
     monkeypatch.delenv("HOME", raising=False)
@@ -1565,7 +2613,7 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     assert payload["ready"] is True
 
 
-def test_bootstrap_status_auto_discovers_code_memory_repos(
+def test_bootstrap_status_does_not_discover_code_memory_repos_without_scope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
@@ -1588,73 +2636,11 @@ def test_bootstrap_status_auto_discovers_code_memory_repos(
     assert code_memory["repos"] == {
         "configured": [],
         "configured_existing": [],
-        "discovered": ["worktree", "product/api", "tools/alfred-os"],
-        "selected": ["worktree", "product/api", "tools/alfred-os"],
-        "source": "auto",
-        "count": 3,
-        "limit": 25,
+        "discovered": [],
+        "selected": [],
+        "source": "unconfigured",
+        "count": 0,
     }
-
-
-def test_bootstrap_status_follows_symlinked_code_memory_repos(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _stub_common(monkeypatch)
-    _isolate_launcher_env(monkeypatch, tmp_path)
-    workspace = tmp_path / "workspace"
-    actual = tmp_path / "actual"
-    (workspace / "real" / ".git").mkdir(parents=True)
-    (actual / "api" / ".git").mkdir(parents=True)
-    (workspace / "api").symlink_to(actual / "api", target_is_directory=True)
-    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
-    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
-
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
-
-    assert code_memory["repos"]["selected"] == ["api", "real"]
-    assert code_memory["repos"]["discovered"] == ["api", "real"]
-
-
-def test_bootstrap_status_follows_symlinked_code_memory_workspace_root(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _stub_common(monkeypatch)
-    _isolate_launcher_env(monkeypatch, tmp_path)
-    actual = tmp_path / "actual-workspace"
-    workspace = tmp_path / "workspace-link"
-    (actual / "api" / ".git").mkdir(parents=True)
-    workspace.symlink_to(actual, target_is_directory=True)
-    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
-    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
-
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
-
-    assert code_memory["repos"]["selected"] == ["api"]
-    assert code_memory["repos"]["discovered"] == ["api"]
-
-
-def test_bootstrap_status_defaults_code_memory_to_product_subdir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _stub_common(monkeypatch)
-    _isolate_launcher_env(monkeypatch, tmp_path)
-    workspace = tmp_path / "workspace"
-    (workspace / "product" / "api" / ".git").mkdir(parents=True)
-    (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
-    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
-    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
-    monkeypatch.delenv("ALFRED_WORKSPACE_SUBDIR", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
-
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
-
-    assert code_memory["repos"]["selected"] == ["api"]
-    assert code_memory["repos"]["source"] == "auto"
 
 
 def test_bootstrap_status_prefers_existing_configured_code_memory_repos(
@@ -1680,7 +2666,6 @@ def test_bootstrap_status_prefers_existing_configured_code_memory_repos(
         "selected": ["web", "myrepo", "api"],
         "source": "configured",
         "count": 3,
-        "limit": 25,
     }
 
 
@@ -1710,8 +2695,143 @@ def test_bootstrap_status_uses_repo_local_map_for_configured_code_memory_repos(
         "selected": ["acme-site", "acme-backend"],
         "source": "configured",
         "count": 2,
-        "limit": 25,
     }
+
+
+def test_setup_expands_tilde_workspace_and_repo_map_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    home = tmp_path / "home"
+    workspace_repo = home / "workspace" / "api"
+    mapped_repo = home / "repos" / "web"
+    workspace_repo.joinpath(".git").mkdir(parents=True)
+    mapped_repo.joinpath(".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    monkeypatch.setenv("WORKSPACE_ROOT", "~/workspace")
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", "web=~/repos/web")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api,web")
+    monkeypatch.setenv("CBM_CACHE_DIR", str(cache_root))
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"]["configured_existing"] == ["api", "web"]
+    assert code_memory["graph_dir"] == str(
+        _scope_cache_dir(cache_root, workspace_repo, mapped_repo)
+    )
+
+
+def test_launcher_and_setup_use_runtime_home_for_mapped_tilde_without_home(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    repo = runtime / "repos" / "api"
+    repo.joinpath(".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    binary.chmod(0o755)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "ALFRED_REPO_LOCAL_MAP": "api=~/repos/api",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": str(tmp_path / "unused-workspace"),
+        "WORKSPACE_SUBDIR": "",
+    }
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+    expected = _scope_cache_dir(cache_root, repo)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert launcher.stdout.strip() == str(expected)
+    assert code_memory["repos"]["configured_existing"] == ["api"]
+    assert code_memory["graph_dir"] == str(expected)
+
+
+def test_launcher_and_setup_use_runtime_home_for_tilde_workspace_without_home(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    repo = runtime / "workspace" / "api"
+    repo.joinpath(".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    binary.chmod(0o755)
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(binary),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+        "ALFRED_CODE_MEMORY_REPOS": "api",
+        "ALFRED_CODE_MAP_REPOS": "",
+        "CBM_CACHE_DIR": str(cache_root),
+        "WORKSPACE_ROOT": "~/workspace",
+        "WORKSPACE_SUBDIR": "",
+    }
+
+    launcher = subprocess.run(
+        ["bash", str(ROOT / "bin" / "code-memory-mcp"), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    code_memory = setup_mod.code_memory_status(env)
+    expected = _scope_cache_dir(cache_root, repo)
+
+    assert launcher.returncode == 0, launcher.stderr
+    assert launcher.stdout.strip() == str(expected)
+    assert code_memory["repos"]["configured_existing"] == ["api"]
+    assert code_memory["graph_dir"] == str(expected)
+
+
+@pytest.mark.parametrize(
+    ("env", "expected_base"),
+    [
+        ({"HOME": "/configured/home", "ALFRED_HOME": "/runtime"}, Path("/configured/home")),
+        ({"ALFRED_HOME": "/runtime"}, Path("/runtime")),
+        ({}, Path.home()),
+    ],
+)
+def test_mapped_tilde_home_precedence(
+    env: dict[str, str],
+    expected_base: Path,
+) -> None:
+    path = setup_mod._code_memory_configured_repo_path(
+        env,
+        "api",
+        {"api": "~/repos/api"},
+    )
+
+    assert path == expected_base / "repos" / "api"
+
+
+def test_mapped_tilde_does_not_use_platform_fallback_when_home_is_configured() -> None:
+    path = setup_mod._code_memory_configured_repo_path(
+        {
+            "HOME": "~",
+            "ALFRED_HOME": "/runtime",
+            "WORKSPACE_ROOT": "/workspace",
+            "WORKSPACE_SUBDIR": "",
+        },
+        "api",
+        {"api": "~/repos/api"},
+    )
+
+    assert path == Path("/workspace/~/repos/api")
 
 
 def test_bootstrap_status_uses_full_slug_repo_local_map_for_bare_code_memory_repo(
@@ -1735,7 +2855,6 @@ def test_bootstrap_status_uses_full_slug_repo_local_map_for_bare_code_memory_rep
         "selected": ["backend"],
         "source": "configured",
         "count": 1,
-        "limit": 25,
     }
 
 
@@ -1775,7 +2894,6 @@ def test_bootstrap_status_does_not_auto_discover_when_configured_code_memory_rep
         "selected": [],
         "source": "configured-missing",
         "count": 0,
-        "limit": 25,
     }
 
 
@@ -1800,45 +2918,4 @@ def test_bootstrap_status_does_not_auto_discover_when_configured_code_memory_dir
         "selected": [],
         "source": "configured-missing",
         "count": 0,
-        "limit": 25,
     }
-
-
-def test_bootstrap_status_discovers_top_level_repos_before_nested_repos(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _stub_common(monkeypatch)
-    _isolate_launcher_env(monkeypatch, tmp_path)
-    workspace = tmp_path / "workspace"
-    (workspace / "alpha" / "extra" / ".git").mkdir(parents=True)
-    (workspace / "beta" / ".git").mkdir(parents=True)
-    (workspace / "gamma" / ".git").mkdir(parents=True)
-    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
-    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
-    monkeypatch.setenv("ALFRED_CODE_MEMORY_DISCOVERY_LIMIT", "2")
-
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
-
-    assert code_memory["repos"]["selected"] == ["beta", "gamma"]
-
-
-def test_bootstrap_status_uses_workspace_subdir_fallback_for_code_memory(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _stub_common(monkeypatch)
-    _isolate_launcher_env(monkeypatch, tmp_path)
-    workspace = tmp_path / "workspace"
-    (workspace / "product" / "api" / ".git").mkdir(parents=True)
-    (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
-    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
-    monkeypatch.setenv("WORKSPACE_SUBDIR", "product")
-    monkeypatch.delenv("ALFRED_WORKSPACE_SUBDIR", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
-    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
-
-    code_memory = setup_mod.bootstrap_status()["code_memory"]
-
-    assert code_memory["repos"]["selected"] == ["api"]
-    assert code_memory["repos"]["source"] == "auto"

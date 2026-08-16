@@ -34,23 +34,21 @@ export const GET: APIRoute = async ({ site }) => {
   const url = (id: string) =>
     new URL(`${import.meta.env.BASE_URL}${id}/`.replace(/\/{2,}/g, "/"), origin).href;
 
-  const root = docs.find((d) => d.id === "");
-	  const summary =
-	    root?.data.description ??
-    "Autonomous coding agents that keep development moving while you are away. Claude Code and Codex agents run by launchd or systemd on a Mac or Linux box you choose.";
+  const root = docs.find((d) => d.id === "docs");
+  const summary =
+    root?.data.description ??
+    "Run a supervised fleet of Claude Code and Codex agents on your own machine.";
 
   const out: string[] = [
     "# Alfred: full documentation",
     "",
     `> ${summary}`,
     "",
-    "Alfred is the open-source local runtime for autonomous coding agents that",
-    "turn Slack requests, rough plans, specs, and GitHub issues into PRs while you are away. The host scheduler",
-    "(launchd on macOS, systemd on Linux) fires",
-    "each agent; the harness wraps every firing in a lock, preflight, spend",
-    "cap, and an isolated git worktree.",
-    "You give Alfred goals, repos, and approval rules instead of",
-    "sitting in front of Claude or Codex and prompting every step.",
+    "Alfred is the open-source coordination and supervision layer around Claude Code and Codex.",
+    "The host scheduler starts short-lived roles. Each run gets a lock, preflight checks,",
+    "limits, and an isolated git worktree. GitHub stores shared work state, and Alfred keeps",
+    "local events, reviewed lessons, and reliability data.",
+    "Operators configure repositories, roles, schedules, approval rules, and merge policy.",
     "",
     `Source: https://github.com/luminik-io/alfred`,
     `Roadmap: https://github.com/luminik-io/alfred/blob/main/ROADMAP.md`,

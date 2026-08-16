@@ -1,14 +1,12 @@
 # Benchmarks
 
-A reproducible way to answer one honest question: **is your fleet getting
-better or worse at shipping code, and what does it cost against your
-subscription quota?**
+A reproducible way to answer one measured question: **is your fleet getting
+better or worse at shipping code, and how efficiently does it use each
+turn?**
 
 This is a **self-benchmark**. It measures your install against its own
-past runs (before/after) and reports honest absolute numbers. It is
-explicitly **not** a competitive "Alfred beats tool X" claim. There is no
-leaderboard here, and every number is read back out of telemetry the fleet
-already captured, not fabricated.
+past runs (before/after) and reports absolute values from captured telemetry.
+It is not a competitive "Alfred beats tool X" claim, and it has no leaderboard.
 
 The harness is two pieces:
 
@@ -54,8 +52,8 @@ Telemetry sources, in one place:
 Reads are tolerant: a missing file, a torn JSONL tail, an unparseable
 timestamp, or a firing with no PR is skipped, never raised. Every rate has
 an explicit, non-fabricated denominator and degrades to `0.0` (or `-` for
-a missing time) when there is nothing to divide by, so an empty run reports
-honest zeros, never a guess.
+a missing time) when there is nothing to divide by. An empty run reports
+explicit zeros instead of estimates.
 
 **Reserved codenames.** Auto-discovery (when you do not pass `--codename`)
 walks the top level of the state dir and treats `transcripts`, `codex`,
@@ -129,51 +127,6 @@ alfred benchmark report --label after --json > bench-after.json
 Run against any state tree with `--state-dir`, so you can snapshot a run's
 `state/` directory and benchmark it later, offline.
 
-## Cost as a share of your subscription quota
-
-Subscription-backed Claude Code does not bill per token. It draws from the
-same usage pool your terminal sessions consume (see
-[`CLAUDE_CODE.md`](CLAUDE_CODE.md), "Cost vs token-API mental model"). So
-the honest cost unit is **not** dollars per PR. It is **what fraction of
-your plan's daily budget one PR consumes**.
-
-The harness frames cost as `turns per PR / daily plan turn budget`. The
-plan budgets reuse the empirical turn-burn numbers from
-[`CLAUDE_CODE.md`](CLAUDE_CODE.md): a typical small-issue firing burns
-30-80 turns, a multi-file refactor 150+, and a continuous single-codename
-cadence averages 2000-3500 turns/day, which is roughly a Pro day.
-
-| Plan | Daily turn budget (sizing estimate) | Notes |
-|---|---|---|
-| Claude Pro | ~2,000 | one operator, occasional agent runs |
-| Claude Max 5x | ~10,000 | continuous fleet, a few codenames |
-| Claude Max 20x | ~40,000 | continuous fleet, many codenames |
-| Codex Pro | ~4,000 | independent reviewer / fallback engine |
-
-Worked example: a run that averages **60 turns per PR**:
-
-| Plan | Daily turns | Turns/PR | % quota per PR |
-|---|---|---|---|
-| Claude Pro | 2,000 | 60 | **3.00%** |
-| Claude Max 5x | 10,000 | 60 | **0.60%** |
-| Claude Max 20x | 40,000 | 60 | **0.15%** |
-| Codex Pro | 4,000 | 60 | **1.50%** |
-
-Read that as: on Pro, one PR at this efficiency costs about 3% of a day's
-budget, so the plan sustains roughly 30 such PRs a day before the cap
-trips; on Max 20x, the same PR is 0.15%.
-
-These budgets are **sizing estimates, not provider billing guarantees** -
-Anthropic and OpenAI own the real reset behaviour and may change it. They
-are config-overridable per plan:
-
-```
-ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_MAX_5X=12000 alfred benchmark report
-```
-
-(`ALFRED_BENCHMARK_TURN_BUDGET_<PLAN>` upper-cased; a non-numeric or
-non-positive value is ignored so a typo can't zero a budget.)
-
 ## Results template
 
 Copy this into a PR description or a tracking doc when you record a run.
@@ -210,15 +163,10 @@ Efficiency
   cache hit rate:        <%>
   turns:                 <n>
   turns per PR:          <n>
-
-Cost (subscription quota)
-  Claude Pro:            <%> quota / PR
-  Claude Max 5x:         <%> quota / PR
-  Claude Max 20x:        <%> quota / PR
 ```
 
 Keep the before/after pair together so the delta is legible. Do not turn it
-into a "beats X" claim; the value is the honest trend on your own install.
+into a "beats X" claim. The measured trend applies to your install.
 
 ## Memory A/B: the repeated-mistake-rate
 
@@ -301,7 +249,7 @@ the N it was measured over and the per-task breakdown behind it.
 
 ### Caveats (read before quoting a number)
 
-- **Marker fidelity is the honest limit.** The mistake/success verdict is a
+- **Marker fidelity is a limitation.** The mistake/success verdict is a
   regex match against solver output. A marker that is too loose or too tight
   mis-scores a task. Markers live in `tasks.json`; audit them for your fixture.
 - **The benchmark uses lexical SQLite recall.** It exercises the zero-daemon
@@ -386,7 +334,7 @@ Memory A/B run                     (REAL result: engine:claude, built-in fixture
     add-docstring (control) off=no   on=no
 ```
 
-How to read it honestly:
+How to interpret this result:
 
 - **The headline moved by +50 pts on this run.** The isolated memory-OFF arm
   repeated two of four known mistakes (`tz-naive-datetime` and
@@ -405,7 +353,7 @@ How to read it honestly:
 - **N = 4 is tiny by design.** Do not extrapolate a 4-task delta either way. This
   fixture proves the harness produces a real, reproducible engine number; the
   [harder fixture below](#harder-fixture-result-engineclaude-n10) is the
-  headline-grade run. Marker fidelity is the honest limit
+  headline-grade run. Marker fidelity is the limiting factor
   (see caveats): a task counts as solved only on a literal success-marker match,
   so a correct-but-differently-spelled fix reads as "not solved", not "mistake".
 
@@ -464,7 +412,7 @@ Memory A/B run                     (REAL result: engine:claude, harder fixture)
     add-type-hint (control) off=no   on=no
 ```
 
-How to read it honestly:
+How to interpret this result:
 
 - **The headline is +80 pts over N=10.** Without memory the engine reached for
   the obvious default on eight of ten tasks (`ValueError`, `logging.getLogger`,
@@ -528,7 +476,7 @@ Memory A/B run                     (OFFLINE FIXTURE result: stub solver, no engi
     add-docstring (control) off=no   on=no
 ```
 
-How to read it honestly:
+How to interpret this result:
 
 - The **+100 pt** delta is the ceiling the stub is built to show: the fixture
   lesson signal always reaches the prompt on the ON arm and never on the OFF
@@ -568,7 +516,7 @@ alfred benchmark compression --json > compression-before.json
 alfred benchmark compression --fixture ./my-payloads
 ```
 
-### What it measures, honestly
+### What it measures and how it labels estimates
 
 - **Same payloads, both engines.** The built-in arm runs
   `tool_compactor.compact_output` on each payload; the headroom arm runs the
@@ -576,7 +524,7 @@ alfred benchmark compression --fixture ./my-payloads
   reduction uses `tiktoken` (cl100k_base) when installed and otherwise a
   deterministic `chars/4` estimate - and the report **labels which estimator
   produced the number**, so an estimate is never presented as truth.
-- **headroom is optional, and honestly reported.** When headroom is not
+- **headroom is optional, and absence is explicit.** When headroom is not
   installed in the environment running the benchmark, its arm is marked
   `not-run` - never zero, never a fabricated ratio. The built-in arm still
   reports its real numbers. Only an engine that actually ran is scored.
@@ -609,20 +557,20 @@ this doc does not quote a headroom number the harness has not measured here.
 
 `alfred benchmark report --json` already emits the exact shape a desktop
 "Metrics" tab would render: the four families, the per-firing observations,
-and the quota-cost rows under a single `quota_cost` key. The desktop app's
-`alfred serve` API (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)) can shell
-this command and render the JSON without any new aggregation logic. Wiring
-that endpoint and the tab is a **follow-up**; the harness already produces
-the contract it would consume, so no schema work is blocked on it.
+and their observed efficiency values. The desktop app's `alfred serve` API
+(see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)) can shell this command and
+render the JSON without any new aggregation logic. Wiring that endpoint and
+the tab is a **follow-up**; the harness already produces the contract it
+would consume, so no schema work is blocked on it.
 
 ## Testing the harness itself
 
 The reader is covered by `tests/test_benchmark.py`. The model is fully
 mocked there: the tests build a synthetic `state/` tree (spend ledger +
 event logs + transcripts with `message.usage` blocks) under a temp dir and
-assert the four families and the quota framing. **No LLM is called, no real
-disk outside the temp dir is touched, and no quota is burned.** Run them
-with the rest of the suite:
+assert the four families and observed turns per PR. **No LLM is called, no
+real disk outside the temp dir is touched, and no subscription usage is
+consumed.** Run them with the rest of the suite:
 
 ```
 uv run pytest tests/test_benchmark.py

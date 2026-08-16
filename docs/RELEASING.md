@@ -11,21 +11,24 @@ built and what artifacts it produces, see
 The release body is the `Highlights` block from `CHANGELOG.md`. From v0.5.0 on,
 that block tells the reader Alfred Desktop can be downloaded. The signed and
 notarized macOS `.dmg` / `.app.zip`, plus Linux `.AppImage` / `.deb` assets, are
-produced and attached by a separate desktop workflow that runs against the tag,
-not by `release.yml`. `release.yml` only creates the release and prints the
-source tarball checksum for the Homebrew formula.
+produced in the trusted signing environment and attached to the tagged draft.
+`release.yml` creates the draft and prints the source tarball checksum for the
+Homebrew formula.
 
 So the release is created as a **draft**. A draft is not public and is not the
-latest release. That keeps the download claim honest: nobody can read
+latest release. This prevents the release page from offering a desktop
+download before the files exist. Nobody can read
 "download the desktop app" on a published release page until the assets are
 attached. A human attaches the assets and presses Publish.
 
 ## Flow for a version (vX.Y.Z)
 
-1. **Bump `VERSION` and `CHANGELOG.md`** in a prep PR (this is what the v0.5.0
-   prep PR does). `VERSION` holds the number with no leading `v`. The changelog
-   has a dated section for that version, and the `Next` section holds only
-   future work. Land the prep PR on `main`.
+1. **Prepare the release in a signed PR.** Set the same version, without a
+   leading `v`, in `VERSION`, `pyproject.toml`, `site/package.json`,
+   `clients/desktop/package.json`, and `clients/desktop/src-tauri/Cargo.toml`.
+   Regenerate both npm lockfiles and the Cargo lockfile. Move the shipped
+   changelog entries into a dated version section and leave only future work in
+   `Unreleased`. Land the PR on `main`.
 
 2. **Tag from the release commit.** From `main` at the merged prep commit:
 
@@ -43,8 +46,8 @@ attached. A human attaches the assets and presses Publish.
 
    At this point the release exists but is not public and has no desktop assets.
 
-4. **Run the desktop release workflow against the tag.** This is the separate
-   packaging pipeline. It builds the signed and notarized macOS `.dmg` /
+4. **Build the desktop packages against the tag.** The trusted signing
+   environment builds the signed and notarized macOS `.dmg` /
    `.app.zip` and the Linux `.AppImage` / `.deb` from the tagged source and uploads them to the draft
    release created in step 3. The desktop bundle version is already aligned to
    the release in the prep step (`clients/desktop/package.json` and
@@ -72,7 +75,7 @@ attached. A human attaches the assets and presses Publish.
    page. The page points at the latest release's stable asset names, so no site
    code change is needed when those names are present.
 
-## Order that keeps the claim honest
+## Required order
 
 The single rule: the release stays a draft until the desktop assets are attached.
 Steps 3 and 4 produce the release and the assets; step 5 is the human gate that

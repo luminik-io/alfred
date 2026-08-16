@@ -24,6 +24,7 @@ import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
+from server import setup as setup_mod  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
 
 
@@ -2761,8 +2762,20 @@ def test_converse_grounding_includes_live_engine_inventory(monkeypatch) -> None:
         setup_mod,
         "engine_clis",
         lambda: [
-            {"name": "claude", "installed": True, "path": "/bin/claude"},
-            {"name": "codex", "installed": True, "path": "/bin/codex"},
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": True,
+                "path": "/bin/claude",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/bin/codex",
+            },
         ],
     )
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reader=None)))
@@ -2772,7 +2785,7 @@ def test_converse_grounding_includes_live_engine_inventory(monkeypatch) -> None:
         conversation_engine="hybrid",
     )
 
-    assert "Installed and available to Alfred: Claude Code, Codex." in grounding
+    assert "Compatible, signed in, and available to Alfred: Claude Code, Codex." in grounding
     assert "hybrid (Claude Code first, Codex fallback)" in grounding
 
 
@@ -3248,6 +3261,37 @@ def test_require_mutation_token_dependency_is_shared_gate(
         denied = client.post(path, json=payload, headers={"origin": "http://testserver"})
         assert denied.status_code == 403, path
         assert denied.json() == {"error": "forbidden"}, path
+
+
+def test_setup_status_requires_launch_token_before_running_probes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    calls = 0
+
+    def fake_bootstrap_status() -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {"ready": False, "engines": []}
+
+    monkeypatch.setattr(setup_mod, "bootstrap_status", fake_bootstrap_status)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    denied = client.get(
+        "/api/setup/status",
+        headers={"origin": "http://testserver"},
+    )
+
+    assert denied.status_code == 403
+    assert denied.json() == {"error": "forbidden"}
+    assert calls == 0
+
+    allowed = client.get("/api/setup/status", headers=_auth_headers(state))
+
+    assert allowed.status_code == 200
+    assert allowed.json() == {"ready": False, "engines": []}
+    assert calls == 1
 
 
 def test_authorized_mutation_fails_closed_without_token_file(

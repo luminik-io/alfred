@@ -1,8 +1,9 @@
 # Batteries
 
 Alfred includes local memory, context compaction, structural reads, blast-radius checks, and
-codebase memory. The desktop installer fetches and verifies the pinned codebase-memory binary;
-the other included tools need no setup. Advanced integrations are available when you need a
+codebase memory. After you configure a valid repository scope, Alfred can fetch and verify the
+pinned codebase-memory binary. It performs no binary or cache work while scope is empty. The
+other included tools need no setup. Advanced integrations are available when you need a
 different graph engine, semantic recall, or an external memory store. Manage configurable tools
 in desktop onboarding or with `alfred batteries`; an explicit disable is written to
 `$ALFRED_HOME/.env` and always wins. For memory back ends specifically, see
@@ -22,7 +23,7 @@ alfred batteries disable <id>  # turn it back off
 | **Tool-output compactor** (Context / compression) | `tool-compactor` | A built-in compactor that trims verbose command, test, and log output before it is stored. | Keeps noisy tool output from filling the context window, so more of each run's budget goes to real work. Nothing to install. | Built in, no setup |
 | **Skeleton and delta reads** (Code understanding) | `skeleton-reads` | A local code index that lets the agent read a file's outline, and only what changed since last time. | The agent gets its bearings in a file from a compact outline instead of re-reading the whole thing, which saves tokens and time. Built in, no external index. | Built in, no setup |
 | **Blast radius** (Code understanding) | `blast-radius` | A local impact check that flags what else a change might touch, from Alfred's own code map. | Before an edit, the agent can see roughly what depends on the code it is about to change, so it is less likely to break something out of sight. Advisory, and built in. | Built in, no setup |
-| **Codebase memory (MCP)** (Code understanding) | `code-memory-mcp` | A standalone MIT binary (codebase-memory-mcp) that indexes your repos into a code graph the agent queries over MCP. | Lets the agent ask where a symbol is, who calls it, and what a change would affect, instead of grepping and re-reading. | Fetched and checksum-verified by the desktop installer or on first CLI use. Set `ALFRED_CODE_MEMORY_MCP=0` to disable it. |
+| **Codebase memory (MCP)** (Code understanding) | `code-memory-mcp` | A standalone MIT binary (codebase-memory-mcp) that indexes your repos into a code graph the agent queries over MCP. | Lets the agent ask where a symbol is, who calls it, and what a change would affect, instead of grepping and re-reading. | Set an explicit repository scope. Alfred then fetches and verifies the pinned binary, or uses the executable path you configured. Set `ALFRED_CODE_MEMORY_MCP=0` to disable it. |
 
 ## Advanced integrations
 
@@ -37,6 +38,6 @@ alfred batteries disable <id>  # turn it back off
 ## Notes
 
 - The default memory store is the built-in embedded SQLite keyword store plus the local FleetBrain relational ledger, so recall works with no daemon. Dense vector recall is off until you enable `dense-embeddings` and install its optional dependency.
-- **Codebase memory (`code-memory-mcp`)** is included by default. Desktop setup fetches and verifies it; CLI runs fetch it on first use. Turn it off with `ALFRED_CODE_MEMORY_MCP=0`.
+- **Codebase memory (`code-memory-mcp`)** is included by default. Set `ALFRED_CODE_MEMORY_REPOS` or `ALFRED_CODE_MAP_REPOS` before use. A resolved scope enables pinned binary fetch and its isolated cache. Alfred never selects repositories from the workspace on its own. Turn it off with `ALFRED_CODE_MEMORY_MCP=0`.
 - `redis-ams` and `pgvector` are alternative memory back ends for larger or heavily concurrent installs; they are mutually exclusive as the primary store and layer in front of the built-in SQLite chain. `pgvector` needs both the `alfred-os[pgvector]` Python extra and a Postgres you run.
 - Everything here is derived from the battery manifest in `lib/batteries.py`, the single source of truth shared by the CLI and the desktop picker.

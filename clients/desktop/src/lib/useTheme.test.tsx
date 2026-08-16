@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useTheme } from "./useTheme";
+import { THEME_META, THEME_NAMES, useTheme } from "./useTheme";
 
 describe("useTheme", () => {
   beforeEach(() => {
@@ -10,30 +10,41 @@ describe("useTheme", () => {
     delete document.documentElement.dataset.theme;
   });
 
-  it("ignores removed palette identifiers and starts with Mineral", async () => {
-    localStorage.setItem("alfred-theme-name", "alfred");
+  it("rejects legacy palette identifiers and starts with Signal Edge light", async () => {
+    localStorage.setItem("alfred-theme-name", "mineral");
 
     const { result } = renderHook(() => useTheme());
 
-    expect(result.current.themeName).toBe("mineral");
+    expect(result.current.themeName).toBe("signal-edge");
+    expect(result.current.mode).toBe("light");
     await waitFor(() => {
-      expect(document.documentElement.dataset.theme).toBe("mineral");
+      expect(document.documentElement.dataset.theme).toBe("signal-edge");
+      expect(document.documentElement).toHaveClass("light");
     });
   });
 
-  it("applies and persists Carbon independently from the mode", async () => {
+  it("exposes only the three approved themes in ranked order", () => {
+    expect(THEME_NAMES).toEqual([
+      "signal-edge",
+      "category-standard",
+      "linked-fold",
+    ]);
+    expect(Object.keys(THEME_META)).toEqual(THEME_NAMES);
+  });
+
+  it("applies and persists Linked Fold independently from the mode", async () => {
     const { result } = renderHook(() => useTheme());
 
     act(() => {
-      result.current.setThemeName("carbon");
-      result.current.setMode("light");
+      result.current.setThemeName("linked-fold");
+      result.current.setMode("dark");
     });
 
     await waitFor(() => {
-      expect(document.documentElement.dataset.theme).toBe("carbon");
-      expect(document.documentElement).toHaveClass("light");
+      expect(document.documentElement.dataset.theme).toBe("linked-fold");
+      expect(document.documentElement).toHaveClass("dark");
     });
-    expect(localStorage.getItem("alfred-theme-name")).toBe("carbon");
-    expect(localStorage.getItem("alfred-theme")).toBe("light");
+    expect(localStorage.getItem("alfred-theme-name")).toBe("linked-fold");
+    expect(localStorage.getItem("alfred-theme")).toBe("dark");
   });
 });

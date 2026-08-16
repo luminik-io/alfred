@@ -135,9 +135,10 @@ version. Outputs land under `src-tauri/target/release/bundle/`:
 | macOS 11+ on Apple silicon | `.dmg`, `.app` | `bundle/dmg/`, `bundle/macos/` |
 | Linux | `.AppImage`, `.deb` | `bundle/appimage/`, `bundle/deb/` |
 
-You can only build a platform's installers on that platform: build the macOS
-artifacts on macOS and the Linux artifacts on Linux. The
-[release workflow](#releases) does both on the matching CI runners.
+Build each platform's installers on that platform: macOS artifacts on macOS and
+Linux artifacts on Linux. Repository CI compiles the desktop client without
+bundling installers. Release packages come from the trusted packaging
+environment described below.
 
 Linux builds need the WebKitGTK and native dialog system libraries
 (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
@@ -174,8 +175,8 @@ attached to that draft release.
   `git tag v0.5.0 && git push origin v0.5.0`. The public workflow creates or
   updates a **draft** GitHub Release and prints the source tarball checksum for
   the Homebrew formula.
-- **Attach desktop assets:** run the desktop release pipeline for the
-  same tag and confirm `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
+- **Attach desktop assets:** build from the same tag in the trusted packaging
+  environment. Confirm `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
   `Alfred.deb` are present on the draft before publishing it.
 - **Dry run:** trigger the public release workflow manually
   (`workflow_dispatch`) to update release notes or recompute the source tarball

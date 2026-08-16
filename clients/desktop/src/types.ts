@@ -286,10 +286,7 @@ export type DeleteCustomAgentResponse = {
 export type AgentModelProvider = "claude" | "codex";
 
 export type AgentModelSource =
-  | "agent-environment"
-  | "fleet-environment"
-  | "state"
-  | "provider-default";
+  "agent-environment" | "fleet-environment" | "state" | "provider-default";
 
 export type AgentModelSelection = {
   resolved: string | null;
@@ -370,6 +367,19 @@ export type ShippedCard = {
   is_draft: boolean;
   labels: string[];
   agent_evidence?: string[];
+  github_evidence?: {
+    head_sha: string | null;
+    review_state: string | null;
+    checks: Array<{ name: string; status: string }>;
+    check_count_incomplete?: boolean;
+    changed_files: string[];
+    changed_file_count: number;
+    changed_file_count_incomplete: boolean;
+    commit_count: number;
+    commit_count_incomplete: boolean;
+    latest_reviews: Array<{ author: string; state: string }>;
+  } | null;
+  github_evidence_unavailable?: boolean;
   demo?: boolean;
 };
 
@@ -379,6 +389,7 @@ export type ShippedBoard = {
   generated_at?: string;
   lookback_days: number;
   repos: string[];
+  sample?: boolean;
   columns: {
     queued: ShippedCard[];
     in_progress: ShippedCard[];
@@ -708,8 +719,17 @@ export type SetupGithub = {
 
 export type SetupEngine = {
   name: string;
+  display_name: string;
   installed: boolean;
+  protocol_compatible: boolean;
+  ready: boolean;
+  dispatchable: boolean;
+  state: string;
+  detail: string;
   path: string | null;
+  version: string | null;
+  capabilities: string[];
+  failures: string[];
 };
 
 export type SetupCodeMemory = {
@@ -718,21 +738,20 @@ export type SetupCodeMemory = {
   binary: {
     resolved: boolean;
     path: string | null;
-    source: "env" | "path" | "cache" | "none" | string;
+    source: "env" | "cache" | "none";
     configured: string | null;
   };
   version_pin: string;
   repo: string;
   index_dir: string;
   index_present: boolean;
-  repos?: {
+  repos: {
     configured: string[];
-    configured_existing?: string[];
-    discovered?: string[];
-    selected?: string[];
-    source?: "configured" | "auto" | "auto-fallback" | string;
+    configured_existing: string[];
+    discovered: string[];
+    selected: string[];
+    source: "configured" | "configured-missing" | "unconfigured" | "disabled";
     count: number;
-    limit?: number;
   };
   detail: string;
 };
@@ -742,7 +761,14 @@ export type SetupCapability = {
   title: string;
   category: string;
   recommended: boolean;
-  state: "ready" | "needs_index" | "installable" | "available" | "missing" | "disabled" | string;
+  state:
+    | "ready"
+    | "needs_index"
+    | "installable"
+    | "available"
+    | "missing"
+    | "disabled"
+    | string;
   installed: boolean;
   enabled: boolean;
   detail: string;
@@ -908,7 +934,12 @@ export type SetupRepoCheckout = SetupRepoCheckoutInput & {
   github_remote_repo: string | null;
   identity_matches: boolean;
   ready: boolean;
-  reason: "missing" | "not_git_repo" | "missing_github_remote" | "remote_mismatch" | null;
+  reason:
+    | "missing"
+    | "not_git_repo"
+    | "missing_github_remote"
+    | "remote_mismatch"
+    | null;
 };
 
 export type SetupReposResponse = {

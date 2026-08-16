@@ -51,7 +51,7 @@ def _asset(tmp_path: Path) -> Path:
 
 def _launcher_env(tmp_path: Path, **updates: str) -> dict[str, str]:
     home = tmp_path / "home"
-    home.mkdir()
+    home.mkdir(exist_ok=True)
     env = {
         "HOME": str(home),
         # Keep host-installed code-memory binaries from changing launcher
@@ -61,6 +61,12 @@ def _launcher_env(tmp_path: Path, **updates: str) -> dict[str, str]:
     }
     env.update(updates)
     return env
+
+
+def _scope_cache_dir(cache_root: Path, *repos: Path) -> Path:
+    canonical = sorted({str(repo.resolve()) for repo in repos})
+    material = "".join(f"{path}\n" for path in canonical).encode("utf-8")
+    return cache_root / "scopes" / hashlib.sha256(material).hexdigest()
 
 
 def test_env_example_code_memory_pin_matches_launcher_default() -> None:
@@ -154,7 +160,7 @@ def test_fetch_timeout_knobs_are_derived_after_env_files_load() -> None:
     assert load_pos < connect_timeout_pos
 
 
-def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) -> None:
+def test_scope_repos_is_empty_when_unconfigured(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "product" / "api" / ".git").mkdir(parents=True)
     (workspace / "product" / "api" / "packages" / "nested" / ".git").mkdir(parents=True)
@@ -179,72 +185,102 @@ def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) 
     )
 
     assert res.returncode == 0, res.stderr
-    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["worktree", "product/api", "tools/alfred-os"]
+    assert res.stdout == ""
 
 
-def test_scope_repos_defaults_to_product_subdir(tmp_path: Path) -> None:
+def test_doctor_reports_unconfigured_scope_without_discovery(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "product" / "api" / ".git").mkdir(parents=True)
     (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
     env = _launcher_env(
         tmp_path,
         WORKSPACE_ROOT=str(workspace),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
         ALFRED_CODE_MEMORY_REPOS="",
         ALFRED_CODE_MAP_REPOS="",
     )
 
     res = subprocess.run(
-        ["bash", str(SCRIPT), "__scope-repos"],
+        ["bash", str(SCRIPT), "doctor"],
         capture_output=True,
         text=True,
         env=env,
     )
 
     assert res.returncode == 0, res.stderr
-    repos = [
-        Path(line).relative_to(workspace / "product").as_posix() for line in res.stdout.splitlines()
-    ]
-    assert repos == ["api"]
+    assert res.stdout == ""
+    assert "repos:       not configured" in res.stderr
+    assert "api" not in res.stderr
 
 
-def test_scope_repos_follows_symlinked_workspace_root(tmp_path: Path) -> None:
-    actual = tmp_path / "actual-workspace"
-    workspace = tmp_path / "workspace-link"
-    (actual / "api" / ".git").mkdir(parents=True)
-    workspace.symlink_to(actual, target_is_directory=True)
-    env = _launcher_env(
-        tmp_path,
-        WORKSPACE_ROOT=str(workspace),
-        WORKSPACE_SUBDIR="",
-        ALFRED_CODE_MEMORY_REPOS="",
-        ALFRED_CODE_MAP_REPOS="",
-    )
-
-    res = subprocess.run(
-        ["bash", str(SCRIPT), "__scope-repos"],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-    assert res.returncode == 0, res.stderr
-    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["api"]
-
-
-def test_scope_repos_follows_symlinked_repo_dirs(tmp_path: Path) -> None:
+def test_serve_is_a_clean_noop_when_scope_is_unconfigured(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
-    actual = tmp_path / "actual"
-    (workspace / "real" / ".git").mkdir(parents=True)
-    (actual / "api" / ".git").mkdir(parents=True)
-    (workspace / "api").symlink_to(actual / "api", target_is_directory=True)
+    (workspace / "api" / ".git").mkdir(parents=True)
+    log = tmp_path / "serve.log"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text('#!/bin/sh\nprintf "ran\\n" > "$CODE_MEMORY_TEST_LOG"\n')
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        CODE_MEMORY_TEST_LOG=str(log),
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+        ALFRED_CODE_MEMORY_REPOS="",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "serve"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert "repository scope is not configured" in res.stderr
+    assert not log.exists()
+
+
+@pytest.mark.parametrize("action", ["index", "refresh"])
+def test_index_actions_fail_before_binary_resolution_when_scope_is_unconfigured(
+    tmp_path: Path, action: str
+) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "api" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(tmp_path / "missing-code-memory"),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+        ALFRED_CODE_MEMORY_REPOS="",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), action],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode != 0
+    assert "repository scope is not configured" in res.stderr
+    assert "binary unavailable" not in res.stderr
+
+
+def test_scope_repos_falls_back_to_code_map_scope(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
     env = _launcher_env(
         tmp_path,
         WORKSPACE_ROOT=str(workspace),
         WORKSPACE_SUBDIR="",
         ALFRED_CODE_MEMORY_REPOS="",
-        ALFRED_CODE_MAP_REPOS="",
+        ALFRED_CODE_MAP_REPOS="api",
     )
 
     res = subprocess.run(
@@ -255,8 +291,7 @@ def test_scope_repos_follows_symlinked_repo_dirs(tmp_path: Path) -> None:
     )
 
     assert res.returncode == 0, res.stderr
-    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["api", "real"]
+    assert res.stdout.strip() == str(repo)
 
 
 def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
@@ -690,58 +725,6 @@ def test_doctor_reports_stale_configured_scope_without_auto_discovery(tmp_path: 
     assert "auto-discovered" not in res.stderr
 
 
-def test_scope_repos_discovers_top_level_repos_before_nested_repos(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspace"
-    (workspace / "alpha" / "extra" / ".git").mkdir(parents=True)
-    (workspace / "beta" / ".git").mkdir(parents=True)
-    (workspace / "gamma" / ".git").mkdir(parents=True)
-    env = _launcher_env(
-        tmp_path,
-        WORKSPACE_ROOT=str(workspace),
-        WORKSPACE_SUBDIR="",
-        ALFRED_CODE_MEMORY_REPOS="",
-        ALFRED_CODE_MAP_REPOS="",
-        ALFRED_CODE_MEMORY_DISCOVERY_LIMIT="2",
-    )
-
-    res = subprocess.run(
-        ["bash", str(SCRIPT), "__scope-repos"],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-    assert res.returncode == 0, res.stderr
-    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["beta", "gamma"]
-
-
-def test_scope_repos_uses_workspace_subdir_fallback(tmp_path: Path) -> None:
-    workspace = tmp_path / "workspace"
-    (workspace / "product" / "api" / ".git").mkdir(parents=True)
-    (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
-    env = _launcher_env(
-        tmp_path,
-        WORKSPACE_ROOT=str(workspace),
-        WORKSPACE_SUBDIR="product",
-        ALFRED_CODE_MEMORY_REPOS="",
-        ALFRED_CODE_MAP_REPOS="",
-    )
-
-    res = subprocess.run(
-        ["bash", str(SCRIPT), "__scope-repos"],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-
-    assert res.returncode == 0, res.stderr
-    repos = [
-        Path(line).relative_to(workspace / "product").as_posix() for line in res.stdout.splitlines()
-    ]
-    assert repos == ["api"]
-
-
 def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     repo = workspace / "api"
@@ -781,10 +764,148 @@ def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
     text = log.read_text(encoding="utf-8")
     assert f"HOME={code_home}" in text
-    assert f"CBM_CACHE_DIR={cbm_cache}" in text
+    assert f"CBM_CACHE_DIR={_scope_cache_dir(cbm_cache, repo)}" in text
     assert "ARG1=cli" in text
     assert "ARG2=index_repository" in text
     assert f'"repo_path":"{repo}"' in text
+
+
+def test_scope_cache_dir_is_order_independent_and_changes_with_exact_scope(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    api = workspace / "api"
+    web = workspace / "web"
+    (api / ".git").mkdir(parents=True)
+    (web / ".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    fake_bin.chmod(0o755)
+
+    def index(scope: str) -> list[str]:
+        env = _launcher_env(
+            tmp_path,
+            ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+            ALFRED_CODE_MEMORY_AUTOFETCH="0",
+            ALFRED_CODE_MEMORY_REPOS=scope,
+            ALFRED_CODE_MAP_REPOS="",
+            CBM_CACHE_DIR=str(cache_root),
+            WORKSPACE_ROOT=str(workspace),
+            WORKSPACE_SUBDIR="",
+        )
+        result = subprocess.run(
+            ["bash", str(SCRIPT), "index"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.splitlines()
+
+    api_only = set(index("api"))
+    api_web = set(index("api,web"))
+    web_api = set(index("web,api"))
+
+    assert api_only == {str(_scope_cache_dir(cache_root, api))}
+    assert api_web == {str(_scope_cache_dir(cache_root, api, web))}
+    assert web_api == api_web
+    assert api_only != api_web
+
+
+def test_launcher_expands_tilde_workspace_root_for_scope_and_cache(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    repo = home / "workspace" / "api"
+    (repo / ".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        CBM_CACHE_DIR=str(cache_root),
+        WORKSPACE_ROOT="~/workspace",
+        WORKSPACE_SUBDIR="",
+    )
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(_scope_cache_dir(cache_root, repo))
+
+
+def test_launcher_expands_tilde_repo_map_path_for_scope_and_cache(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    repo = home / "repos" / "api"
+    (repo / ".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        ALFRED_REPO_LOCAL_MAP="api=~/repos/api",
+        CBM_CACHE_DIR=str(cache_root),
+        WORKSPACE_ROOT=str(tmp_path / "unused-workspace"),
+        WORKSPACE_SUBDIR="",
+    )
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(_scope_cache_dir(cache_root, repo))
+
+
+def test_serve_exports_the_exact_scope_cache_dir(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    cache_root = tmp_path / "cache-root"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text('#!/bin/sh\nprintf "%s\\n" "$CBM_CACHE_DIR"\n', encoding="utf-8")
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        CBM_CACHE_DIR=str(cache_root),
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "serve"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == str(_scope_cache_dir(cache_root, repo))
 
 
 def test_index_fails_when_no_repository_is_in_scope(tmp_path: Path) -> None:
@@ -811,7 +932,37 @@ def test_index_fails_when_no_repository_is_in_scope(tmp_path: Path) -> None:
     )
 
     assert res.returncode != 0
-    assert "no in-scope repos found" in res.stderr
+    assert "no configured repositories resolve to git checkouts" in res.stderr
+
+
+@pytest.mark.parametrize("command", ["index", "refresh"])
+def test_index_actions_reject_stale_scope_before_binary_resolution(
+    tmp_path: Path, command: str
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    missing_binary = tmp_path / "missing-code-memory"
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(missing_binary),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="removed-repo",
+        ALFRED_CODE_MAP_REPOS="",
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), command],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode != 0
+    assert "no configured repositories resolve to git checkouts" in res.stderr
+    assert "explicit binary is not executable" not in res.stderr
+    assert "binary unavailable" not in res.stderr
 
 
 def test_index_fails_when_binary_is_unavailable(tmp_path: Path) -> None:
@@ -881,8 +1032,13 @@ def test_serve_runs_upstream_stdio_server_with_code_memory_home(tmp_path: Path) 
         ALFRED_CODE_MEMORY_BIN=str(fake_bin),
         ALFRED_CODE_MEMORY_AUTOFETCH="0",
         ALFRED_CODE_MEMORY_HOME=str(code_home),
+        ALFRED_CODE_MEMORY_REPOS="api",
+        WORKSPACE_ROOT=str(tmp_path),
+        WORKSPACE_SUBDIR="",
         CODE_MEMORY_TEST_LOG=str(log),
     )
+
+    (tmp_path / "api" / ".git").mkdir(parents=True)
 
     res = subprocess.run(
         ["bash", str(SCRIPT), "serve", "--probe"],
@@ -895,6 +1051,39 @@ def test_serve_runs_upstream_stdio_server_with_code_memory_home(tmp_path: Path) 
     text = log.read_text(encoding="utf-8")
     assert f"HOME={code_home}" in text
     assert "ARGS=--probe" in text
+
+
+def test_serve_with_stale_configured_scope_is_a_no_op(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    log = tmp_path / "serve.log"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text(
+        '#!/bin/sh\nprintf "executed\\n" >> "$CODE_MEMORY_TEST_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="removed-repo",
+        ALFRED_CODE_MAP_REPOS="",
+        CODE_MEMORY_TEST_LOG=str(log),
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "serve"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert "no configured repositories resolve to git checkouts" in res.stderr
+    assert not log.exists()
 
 
 def test_process_code_memory_binary_overrides_runtime_env_file(tmp_path: Path) -> None:
@@ -929,6 +1118,59 @@ def test_process_code_memory_binary_overrides_runtime_env_file(tmp_path: Path) -
     assert res.returncode == 0, res.stderr
     assert f"binary:  {process_bin}" in res.stderr
     assert str(file_bin) not in res.stderr
+
+
+def test_launcher_ignores_ambient_path_binary(tmp_path: Path) -> None:
+    path_dir = tmp_path / "path-bin"
+    path_dir.mkdir()
+    ambient_bin = path_dir / "codebase-memory-mcp"
+    ambient_bin.write_text("#!/bin/sh\necho ambient\n", encoding="utf-8")
+    ambient_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        PATH=f"{path_dir}:{os.environ.get('PATH', '')}",
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert "binary:  NOT RESOLVED" in res.stderr
+    assert str(ambient_bin) not in res.stderr
+
+
+def test_launcher_invalid_explicit_binary_fails_closed_without_cache_fallback(
+    tmp_path: Path,
+) -> None:
+    alfred_home = tmp_path / "alfred"
+    cache_bin = alfred_home / "bin" / "codebase-memory-mcp"
+    cache_bin.parent.mkdir(parents=True)
+    cache_bin.write_text("#!/bin/sh\necho cache\n", encoding="utf-8")
+    cache_bin.chmod(0o755)
+    missing = tmp_path / "missing-code-memory"
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_HOME=str(alfred_home),
+        ALFRED_CODE_MEMORY_BIN=str(missing),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"explicit binary is not executable: {missing}" in res.stderr
+    assert "binary:  NOT RESOLVED" in res.stderr
+    assert str(cache_bin) not in res.stderr
 
 
 def test_launcher_uses_default_runtime_env_when_home_is_unset(tmp_path: Path) -> None:
@@ -1067,7 +1309,7 @@ def test_launcher_ignores_stale_rc_code_memory_when_process_home_is_active(
 
     assert res.returncode == 0, res.stderr
     assert f"index-dir:   {runtime_b}/state/code-memory" in res.stderr
-    assert "repos:       auto-discovered:" in res.stderr
+    assert "repos:       not configured" in res.stderr
     assert "org/stale" not in res.stderr
 
 

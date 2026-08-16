@@ -413,13 +413,6 @@ _VARS: tuple[ConfigVar, ...] = (
         "engine",
         "Per-request timeout in seconds for LLM helper calls.",
     ),
-    V(
-        "ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_MAX_5X",
-        "int",
-        None,
-        "engine",
-        "Per-plan turn budget override for the claude-max-5x benchmark tier.",
-    ),
     # ---- memory: providers, ranking, extraction, consolidation ----
     V(
         "ALFRED_MEMORY_PROVIDERS",
@@ -847,7 +840,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "bool",
         "1",
         "memory",
-        "Expose the code-memory MCP server (on by default when the binary is installed; set 0 to disable).",
+        "Expose the code-memory MCP server when its binary and repository scope are ready; set 0 to disable.",
         operator=True,
     ),
     V(
@@ -863,7 +856,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "path",
         None,
         "memory",
-        "Path override for the code-memory binary.",
+        "Trusted executable path override; bypasses Alfred's pinned download verification. An invalid path blocks fallback.",
         operator=True,
     ),
     V(
@@ -879,7 +872,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "list",
         None,
         "memory",
-        "Comma-separated repos the code-memory index covers.",
+        "Comma-separated repos the code-memory index covers. Required unless ALFRED_CODE_MAP_REPOS is set.",
         operator=True,
     ),
     V(
@@ -895,7 +888,15 @@ _VARS: tuple[ConfigVar, ...] = (
         "path",
         None,
         "memory",
-        "Home directory for the code-memory tool.",
+        "Home directory for the code-memory tool and its default graph-cache root.",
+    ),
+    V(
+        "CBM_CACHE_DIR",
+        "path",
+        None,
+        "memory",
+        "Root for scope-isolated code-memory graph caches.",
+        operator=True,
     ),
     V(
         "ALFRED_CODE_MEMORY_VERSION",
@@ -904,13 +905,6 @@ _VARS: tuple[ConfigVar, ...] = (
         "memory",
         "Pinned code-memory tool version.",
         operator=True,
-    ),
-    V(
-        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT",
-        "int",
-        None,
-        "memory",
-        "Max files the code-memory discovery pass scans.",
     ),
     V(
         "ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S",
@@ -2563,7 +2557,6 @@ _VARS: tuple[ConfigVar, ...] = (
 # --------------------------------------------------------------------------
 NON_VAR_TOKENS: dict[str, str] = {
     # Dynamic-prefix families (the concrete key is built at runtime).
-    "ALFRED_BENCHMARK_TURN_BUDGET_": "prefix for per-tier benchmark turn budgets",
     "ALFRED_CODE_MEMORY_SHA256_": "prefix for per-tag code-memory checksums",
     "ALFRED_SHIPPED_SUMMARY_": "infix for ALFRED_SHIPPED_SUMMARY_<PERIOD>_REPOS",
     # Doc/wildcard artifacts (appear only in comments/docstrings as *_*).

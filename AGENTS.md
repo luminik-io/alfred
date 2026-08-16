@@ -6,32 +6,32 @@ first; this file is the short version those agents need.
 
 ## What this repo is
 
-Alfred is the open-source runtime for a team of autonomous engineering agents
-on Claude Code and Codex. The OS scheduler (launchd on macOS, systemd on Linux)
-runs each agent; `lib/agent_runner/` wraps every run in a lock, preflight, spend
-cap, and an isolated git worktree. Agents are one Python file per role under
-`bin/`, named by role slug. Themes supply the human display names, with the
-default Batman theme showing the Gotham cast in the UI and Slack. `examples/`
-holds the reference agents the tutorial builds.
+Alfred is the open-source coordination and supervision layer for local coding
+agents. It invokes Claude Code and Codex through authenticated local CLIs. The
+OS scheduler (`launchd` on macOS or `systemd --user` on Linux) starts each role.
+`lib/agent_runner/` gives runs shared locks, preflight checks, and limits.
+Roles that change or review code use isolated git worktrees. Stable role slugs
+control runtime identity. Optional
+roster themes change display names only. `examples/` contains tutorial agents.
 
 Users inspect and steer the team through the Alfred CLI (`bin/alfred`), the
 optional `alfred serve` JSON API, the optional Tauri desktop client under
 `clients/desktop`, and Slack. The desktop client carries a Claude and Codex
 subscription usage rail (backed by the live `GET /api/usage` endpoint, read from
 local CLI state with no billing API; the same data is available from
-`alfred usage`) and a cinematic agent roster. Any issue carrying the approval
-gate label (`agent:plan-pending-approval`) is held from autonomous pickup until
+`alfred usage`) and an agent roster. Any issue carrying the approval
+gate label (`agent:plan-pending-approval`) is held from scheduled pickup until
 the configured approver clears it; runs emit step-level events so the run
 timeline shows real progress.
 
 ## Design boundaries (do not cross without a discussion)
 
-- **Single-person install.** One person, one host, one config. Not multi-tenant,
-  not a hosted SaaS.
+- **Single-host install.** One operator or small team, one trusted host, one
+  config. Not multi-tenant and not a hosted SaaS.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop.
 - **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex`.
-- **Lean on the platform.** Adopt Anthropic-native capabilities rather than
-  re-implement them.
+- **Use harness capabilities.** Prefer supported Claude Code and Codex
+  capabilities over duplicate implementations.
 
 Scope-broadening changes get declined. If a change touches these boundaries,
 open a discussion before writing code. See [`ROADMAP.md`](ROADMAP.md).

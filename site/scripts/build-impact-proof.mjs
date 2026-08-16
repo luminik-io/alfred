@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -7,7 +7,6 @@ import {
   buildSelfProof,
   isAgentShipped,
   labelNames,
-  updateReadmeSelfProof,
 } from "./lib/self-proof.mjs";
 
 const REPO = "luminik-io/alfred";
@@ -16,10 +15,6 @@ const OUT = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../src/data/impact-proof.json",
 );
-// The repo README carries a live self-proof line between SELF_PROOF markers.
-// This build rewrites it from the same data it writes to the JSON, so the
-// documented `npm run proof:update` command actually refreshes the README.
-const README = resolve(dirname(fileURLToPath(import.meta.url)), "../../README.md");
 const AGENT_BRANCH_PREFIXES = csvEnv(
   "ALFRED_IMPACT_AGENT_BRANCH_PREFIXES",
   [
@@ -135,8 +130,8 @@ const summary = {
 // Self-proof stat. The HEADLINE is CUMULATIVE (all-time agent-attributed merged
 // PRs); the rolling 30-day window is kept as a secondary stat. Surfaced as a
 // first-class, re-quotable field so the Impact page and README render "N
-// agent-attributed PRs merged so far" without re-deriving it. Honest on empty
-// data: the cumulative count is a real count and the window share_pct is null
+// agent-attributed PRs merged so far" without re-deriving it. With empty data,
+// the cumulative count is a real count and the window share_pct is null
 // (not 0) when there are no merged PRs in the window.
 const selfProof = buildSelfProof({
   agentTotal: cumulative.count,
@@ -193,35 +188,6 @@ console.log(
     `${summary.prs_merged} in the last ${DAYS} days, ` +
     `${summary.repo_activity.prs_merged} total public PRs in window.`,
 );
-
-// Refresh the README self-proof line from the same data. This is what makes
-// the documented refresh command honest: the marker text is generated, not
-// hand-typed. A missing README or missing markers is a non-fatal warning so a
-// docs-only edit cannot break the JSON/site refresh.
-refreshReadmeSelfProof();
-
-function refreshReadmeSelfProof() {
-  let readme;
-  try {
-    readme = readFileSync(README, "utf8");
-  } catch (error) {
-    console.warn(`Skipped README self-proof refresh: ${error.message}`);
-    return;
-  }
-  const { content, updated, found } = updateReadmeSelfProof(readme, selfProof);
-  if (!found) {
-    console.warn(
-      `Skipped README self-proof refresh: SELF_PROOF markers not found in ${README}`,
-    );
-    return;
-  }
-  if (updated) {
-    writeFileSync(README, content);
-    console.log(`Updated README self-proof line in ${README}.`);
-  } else {
-    console.log("README self-proof line already current.");
-  }
-}
 
 async function searchGitHub(query) {
   const out = [];

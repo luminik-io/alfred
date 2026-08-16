@@ -4,8 +4,12 @@ Use this before tagging a public Alfred release.
 
 ## Preflight
 
-- Confirm `VERSION` has the intended version without a leading `v`.
-- Confirm `CHANGELOG.md` has a section for that version and the `Next` section only contains future work.
+- Confirm every release version field has the intended version without a
+  leading `v`: `VERSION`, `pyproject.toml`, `site/package.json`,
+  `clients/desktop/package.json`, and `clients/desktop/src-tauri/Cargo.toml`.
+  Regenerate the npm and Cargo lockfiles after the change.
+- Confirm `CHANGELOG.md` has a dated section for that version and its
+  `Unreleased` section contains only future work.
 - Confirm GitHub Pages is set to workflow publishing, not branch/root publishing:
 
   ```sh
@@ -31,14 +35,15 @@ Use this before tagging a public Alfred release.
 
 `bash bin/scrub-check.sh` must pass before tagging. It scans tracked and untracked worktree files, excluding generated dependency trees and lockfiles, for:
 
-- Host-private paths or identifiers from local development machines or earlier private systems.
+- Host-specific paths or identifiers from local development machines.
 - Real-looking Slack webhook URLs, Slack bot or app tokens, and AWS access key IDs.
 
 Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.slack.com/services/T.../B.../...`.
 
 ## Tag And Release
 
-1. Commit the version, changelog, and docs updates.
+1. Land the signed release-preparation PR with the aligned version fields,
+   changelog, lockfiles, and docs updates.
 2. Tag from the release commit:
 
    ```sh
@@ -47,12 +52,12 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
    ```
 
 3. Watch the `Release` workflow. It verifies `VERSION`, extracts notes from `CHANGELOG.md`, creates the GitHub Release as a **draft**, and prints the source tarball sha256 for Homebrew. The draft is not public yet, by design.
-4. Run the desktop release workflow against the tag so the signed and notarized
-   macOS assets plus Linux `.AppImage` / `.deb` assets attach to the draft release. The release body
-   claims a desktop download, so the assets must be attached before anyone can
-   read that claim. The download page expects these stable asset names on the
-   release: `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
-   `Alfred.deb`.
+4. Build the desktop packages from the tag in the trusted packaging
+   environment. Sign, notarize, and staple the macOS build. Upload the macOS
+   assets and Linux `.AppImage` / `.deb` assets to the draft release. The
+   release body claims a desktop download, so the assets must exist before
+   publication. The download page expects these stable names: `Alfred.dmg`,
+   `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
 5. Open the draft release, confirm the body and the attached assets, then press Publish. Publishing marks it as the latest release.
 6. Update `Formula/alfred-os.rb` with the printed sha256 before publishing the tap update.
 7. Re-run the `Site` workflow and verify the live docs page:
@@ -65,4 +70,4 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 8. Smoke-test the published install path from a fresh directory.
 
 The full tag-to-publish flow, and why the draft gate keeps the download claim
-honest, is in [`RELEASING.md`](RELEASING.md).
+accurate, is in [`RELEASING.md`](RELEASING.md).

@@ -78,9 +78,9 @@ import MetricRow from "../components/marketing/MetricRow.astro";
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="WHAT IT COSTS TO RUN"
-        title="Hardware you probably already own."
-        lede="Alfred is happy on a Mac mini, an old MacBook plugged into a dock, or a small Linux box. None of these are required to be new."
+        eyebrow="HOST REQUIREMENTS"
+        title="A supported Mac or Linux host you control."
+        lede="The host runs the scheduler, authenticated harness CLIs, project tools, and local Alfred state. Size it for the repositories and builds you plan to run."
       />
       <div class="cards">
         <article class="m-card">
@@ -89,7 +89,7 @@ import MetricRow from "../components/marketing/MetricRow.astro";
         </article>
         <article class="m-card">
           <h3 class="m-h3">Slack (optional)</h3>
-          <p>One incoming webhook for the Slack channel where Alfred posts firing reports. Slack's free tier is fine.</p>
+          <p>Use an incoming webhook for reports, or add the bot and Socket Mode permissions required by the planning features you enable.</p>
         </article>
         <article class="m-card">
           <h3 class="m-h3">AWS for secrets (optional)</h3>

@@ -36,8 +36,7 @@ ALFRED_COMPRESSION_ENGINE=off       # disable compaction entirely (raw passthrou
 An unset or unrecognized value falls back to `builtin`, so a typo can never
 silently disable compaction or route through an engine that is not there.
 
-With the engine unset or `builtin`, behaviour is **byte-identical to today** -
-this is a backward-compatible addition.
+With the engine unset or set to `builtin`, Alfred uses the built-in compactor.
 
 ## How the headroom path behaves
 
@@ -195,4 +194,4 @@ alfred benchmark compression --json     # machine-readable
 ```
 
 See [BENCHMARKS.md](BENCHMARKS.md#compression-builtin-453-vs-headroom) for what
-it measures and how it reports honestly when headroom is not installed.
+it measures and how it reports when Headroom is not installed.

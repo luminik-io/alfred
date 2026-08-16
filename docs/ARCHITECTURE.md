@@ -96,7 +96,7 @@ flowchart TD
 
 The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE`, then `ALFRED_ENGINE`, then `$ALFRED_HOME/state/engines/<agent>`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is one of `claude`, `codex`, or `codex-fallback`.
 
-Hybrid means Claude first, same-engine retry for transient failures, honest surfacing for fatal failures, and Codex only on a capability gap (`FailureClass.CAPABILITY`). Codex does not expose Claude's allow-list, max-turn, or resume-session semantics, so `codex_invoke` rejects those kwargs rather than implying they were enforced; its default posture is a read-only sandbox with no approval prompts.
+Hybrid means Claude first, same-engine retry for transient failures, immediate surfacing for fatal failures, and Codex only on a capability gap (`FailureClass.CAPABILITY`). Codex does not expose Claude's allow-list, max-turn, or resume-session semantics, so `codex_invoke` rejects those kwargs rather than implying they were enforced; its default posture is a read-only sandbox with no approval prompts.
 
 ## Distributed locking
 
@@ -333,7 +333,7 @@ flowchart TD
 
 - **Desktop bundles.** `clients/desktop/src-tauri/tauri.conf.json` builds `.app` and `.dmg` on macOS 11+ Apple silicon, plus `.AppImage` and `.deb` on Linux. CI builds the client with `--no-bundle` to prove the binary compiles without requiring code signing or packaging. Public releases start as drafts; signed macOS assets and Linux packages are attached before publish (see [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md)).
 - **Tag-triggered release.** `.github/workflows/release.yml` runs on a `v*.*.*` tag (or `workflow_dispatch`). It verifies the tag matches the `VERSION` file, extracts the matching `CHANGELOG.md` section as release notes, creates or edits the GitHub Release, and prints the source-tarball `sha256` for the Homebrew formula (`Formula/alfred-os.rb`).
-- **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs the free gitleaks binary (no org license needed) on every push and PR to `main`, scanning full history with `.gitleaks.toml`. The same scan runs on the internal repo, so nothing with a leaked secret reaches a release.
+- **Secret-scan gate.** `.github/workflows/gitleaks.yml` runs gitleaks on every push and PR to `main`, scanning full history with `.gitleaks.toml` so a detected secret blocks the public release path.
 
 ## Where to go next
 

@@ -201,6 +201,8 @@ def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.
             "GH_ORG",
             "OPERATOR_NAME",
             "WORKSPACE_ROOT",
+            "CLAUDE_BIN",
+            "CODEX_BIN",
         }:
             full_env.pop(key, None)
     full_env.update(env_extra or {})
@@ -386,6 +388,21 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     assert "auth/limit/budget" not in res.stdout
 
 
+def test_cli_engine_status_explains_invalid_configuration(tmp_path):
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "ALFRED_ENGINE": "removed-engine",
+    }
+
+    result = _run_cli("engine", "status", "architect", env_extra=env)
+
+    assert result.returncode == 0, result.stderr
+    assert "architect engine: disabled" in result.stdout
+    assert "Disabled: invalid engine configuration" in result.stdout
+    assert "Traceback" not in result.stderr
+
+
 def test_cli_model_set_status_and_clear(tmp_path):
     alfred = tmp_path / "alfred"
     env = {
@@ -502,7 +519,17 @@ def test_cli_codex_status_reports_binary_and_engines(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     codex = fake_bin / "codex"
-    codex.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo codex-test; exit 0; fi\n')
+    codex.write_text(
+        "#!/bin/sh\n"
+        'case "${1:-} ${2:-}" in\n'
+        '  "--version ") echo codex-test ;;\n'
+        '  "exec --help") echo "--output-last-message --sandbox --cd '
+        "--skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir "
+        '--dangerously-bypass-approvals-and-sandbox" ;;\n'
+        '  "login status") echo "signed in" ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n"
+    )
     codex.chmod(0o755)
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred"),
@@ -514,6 +541,7 @@ def test_cli_codex_status_reports_binary_and_engines(tmp_path):
 
     assert res.returncode == 0, res.stderr
     assert "codex version: codex-test" in res.stdout
+    assert "codex readiness: ready" in res.stdout
     assert "engine senior-dev:" in res.stdout
     assert "Probe with: alfred codex probe" in res.stdout
 
@@ -531,9 +559,38 @@ def test_cli_codex_status_fails_when_binary_missing(tmp_path):
     assert "codex: not found" in res.stderr
 
 
+def test_cli_codex_status_fails_when_cli_is_signed_out(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    codex = fake_bin / "codex"
+    codex.write_text(
+        "#!/bin/sh\n"
+        'case "${1:-} ${2:-}" in\n'
+        '  "--version ") echo codex-test ;;\n'
+        '  "exec --help") echo "--output-last-message --sandbox --cd '
+        "--skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir "
+        '--dangerously-bypass-approvals-and-sandbox" ;;\n'
+        '  "login status") exit 1 ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n"
+    )
+    codex.chmod(0o755)
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+    }
+
+    res = _run_cli("codex", "status", env_extra=env)
+
+    assert res.returncode == 1
+    assert "codex readiness: auth_required" in res.stdout
+    assert "not signed in" in res.stderr
+
+
 def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):
     cli = _load_cli_module()
-    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    monkeypatch.setattr(cli.scheduler._load(), "SCHEDULER", "systemd")
     target = tmp_path / "claude-secondary"
 
     def fake_run(cmd, **_kwargs):
@@ -552,7 +609,7 @@ def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):
 
 def test_claude_routing_decodes_systemd_escaped_environment(monkeypatch, tmp_path):
     cli = _load_cli_module()
-    monkeypatch.setattr(cli.scheduler, "SCHEDULER", "systemd")
+    monkeypatch.setattr(cli.scheduler._load(), "SCHEDULER", "systemd")
     target = tmp_path / "home with spaces" / ".claude-secondary"
 
     def fake_run(cmd, **_kwargs):
@@ -567,6 +624,53 @@ def test_claude_routing_decodes_systemd_escaped_environment(monkeypatch, tmp_pat
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
     assert cli._current_claude_dir() == str(target)
+
+
+def test_claude_routing_keeps_static_profile_without_manager_override(monkeypatch, tmp_path):
+    cli = _load_cli_module()
+    scheduler_module = cli.scheduler._load()
+    captured: dict[str, object] = {}
+
+    def manager_lookup(name, **kwargs):
+        captured["name"] = name
+        captured.update(kwargs)
+        return scheduler_module.ManagerEnvironmentLookup(available=True)
+
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/profiles/shell-only")
+    monkeypatch.setattr(scheduler_module, "manager_environment_lookup", manager_lookup)
+    monkeypatch.setattr(
+        cli,
+        "_read_env_values",
+        lambda _path: {"CLAUDE_CONFIG_DIR": "/profiles/static"},
+    )
+
+    assert cli._current_claude_dir() == "/profiles/static"
+    assert captured["name"] == "CLAUDE_CONFIG_DIR"
+
+
+def test_claude_swap_fails_closed_when_manager_lookup_fails(monkeypatch, capsys):
+    cli = _load_cli_module()
+    scheduler_module = cli.scheduler._load()
+    applied: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "manager_environment_lookup",
+        lambda _name: scheduler_module.ManagerEnvironmentLookup(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "_read_env_values",
+        lambda _path: {"CLAUDE_CONFIG_DIR": str(cli.SECONDARY_CLAUDE_DIR)},
+    )
+    monkeypatch.setattr(
+        cli,
+        "_set_claude_dir",
+        lambda path, label: applied.append((path, label)) or 0,
+    )
+
+    assert cli._swap_claude_dir() == 1
+    assert applied == []
+    assert "swap was not applied" in capsys.readouterr().err
 
 
 def test_claude_primary_sets_systemd_environment(monkeypatch, tmp_path):
@@ -606,7 +710,7 @@ def test_cli_auth_status_propagates_codex_status_failure(tmp_path):
     res = _run_cli("auth", "status", env_extra=env)
 
     assert res.returncode == 1
-    assert "Current routing for scheduled agents" in res.stdout
+    assert "claude readiness: missing" in res.stdout
     assert "codex: not found" in res.stderr
 
 
