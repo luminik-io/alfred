@@ -299,8 +299,18 @@ def test_default_chain_requires_contextual_major_version_identity(
     assert [item.id for item in out] == [relevant.id]
 
 
-@pytest.mark.parametrize(("query_term", "lesson_term"), [("bus", "buses"), ("buses", "bus")])
-def test_default_chain_preserves_bus_inflection_variants(
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("bus", "buses"),
+        ("buses", "bus"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
+    ],
+)
+def test_default_chain_preserves_sibilant_inflection_variants(
     tmp_path: Path,
     query_term: str,
     lesson_term: str,
@@ -683,6 +693,10 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("watches", "watch"),
         ("box", "boxes"),
         ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -886,6 +900,10 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("watches", "watch"),
         ("box", "boxes"),
         ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -1429,6 +1447,8 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("processes", "process"),
         ("watches", "watch"),
         ("boxes", "box"),
+        ("patches", "patch"),
+        ("branches", "branch"),
         ("classes", "class"),
         ("buses", "bus"),
         ("statuses", "status"),

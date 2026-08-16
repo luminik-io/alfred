@@ -56,12 +56,9 @@ _IRREGULAR_ENGLISH_INFLECTIONS = {
     "analyses": "analysis",
     "statuses": "status",
 }
-_REGULAR_SIBILANT_ENGLISH_INFLECTIONS = {
-    "boxes": "box",
+_AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS = {
     "buses": "bus",
-    "classes": "class",
-    "processes": "process",
-    "watches": "watch",
+    "caches": "cache",
 }
 _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
     {
@@ -170,12 +167,12 @@ def _english_inflection_form(token: str) -> str:
     irregular = _IRREGULAR_ENGLISH_INFLECTIONS.get(token)
     if irregular is not None:
         return irregular
-    sibilant = _REGULAR_SIBILANT_ENGLISH_INFLECTIONS.get(token)
+    sibilant = _AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS.get(token)
     if sibilant is not None:
         return sibilant
     if token.endswith("ies") and len(token) > 4:
         return f"{token[:-3]}y"
-    if token.endswith("sses"):
+    if token.endswith(("sses", "xes", "zes", "ches", "shes")):
         return token[:-2]
     if token.endswith("s") and not token.endswith(("ss", "us", "is")):
         return token[:-1]

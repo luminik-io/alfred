@@ -474,6 +474,23 @@ def _lexical_like_query(
     return sql, params
 
 
+def _fts_represents_all_concepts(conn: Any, concepts: list[str]) -> bool:
+    """Ask PostgreSQL whether English FTS preserves every query concept.
+
+    Canonical concepts are already de-duplicated and bounded by the shared
+    tokenizer. A single aggregate query keeps PostgreSQL's configured English
+    dictionary authoritative instead of maintaining a partial stop-word list
+    in Alfred.
+    """
+
+    rows = conn.execute(
+        "SELECT COALESCE(bool_and(numnode(plainto_tsquery('english', concept)) > 0), FALSE) "
+        "FROM unnest(%s::text[]) AS concepts(concept)",
+        [concepts],
+    ).fetchall()
+    return bool(rows and rows[0][0])
+
+
 def _lexical_literal_query(
     text: str,
     *,
@@ -1126,17 +1143,18 @@ class PgvectorProvider:
             )
             return [str(row[0]) for row in conn.execute(sql, params).fetchall()]
         if self._fts_ok and not _requires_exact_lexical_tokens(tokens):
-            sql, params = _lexical_query(
-                token_groups,
-                table=self._lessons,
-                codename=codename,
-                repo=repo,
-                pool=self.pool,
-                now=now,
-            )
             try:
-                ids = [r[0] for r in conn.execute(sql, params).fetchall()]
-                return ids
+                if _fts_represents_all_concepts(conn, tokens):
+                    sql, params = _lexical_query(
+                        token_groups,
+                        table=self._lessons,
+                        codename=codename,
+                        repo=repo,
+                        pool=self.pool,
+                        now=now,
+                    )
+                    ids = [r[0] for r in conn.execute(sql, params).fetchall()]
+                    return ids
             except Exception as exc:
                 _LOG.debug("memory.pgvector: full-text query failed, using ILIKE: %s", exc)
         out: list[str] = []

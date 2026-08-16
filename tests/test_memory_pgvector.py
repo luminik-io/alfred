@@ -194,6 +194,9 @@ def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
         def execute(self, sql: str, _params: Any) -> Cursor:
             normalized = " ".join(sql.split())
             self.calls.append((normalized, _params))
+            if normalized.startswith("SELECT COALESCE(bool_and"):
+                assert _params == [["caching", "cached", "response"]]
+                return Cursor([(True,)])
             if "SELECT l.id FROM lessons l" in normalized:
                 return Cursor([("stemmed",)])
             if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
@@ -213,12 +216,108 @@ def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
     )
 
     assert ids == ["stemmed"]
-    assert len(conn.calls) == 1
-    assert conn.calls[0][1][:3] == [
+    assert len(conn.calls) == 2
+    assert conn.calls[1][1][:3] == [
         [0, 0, 1, 1, 2, 2],
         ["caching", "caching", "cached", "cached", "response", "response"],
         ["caching", "cachings", "cached", "cacheds", "response", "responses"],
     ]
+
+
+@pytest.mark.parametrize("stop_concept", ["not", "very"])
+def test_pg_fts_unrepresentable_concept_uses_exact_bounded_fallback(
+    stop_concept: str,
+) -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, list[Any]]] = []
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            self.calls.append((normalized, params))
+            if normalized.startswith("SELECT COALESCE(bool_and"):
+                assert params == [["api", stop_concept]]
+                return Cursor([(False,)])
+            if "FROM lessons l WHERE" in normalized:
+                assert "body_tsv" not in normalized
+                assert params[-1] == 50
+                return Cursor(
+                    [
+                        ("api-only", "api guidance", _NOW),
+                        (
+                            "relevant",
+                            f"api {stop_concept} guidance",
+                            _NOW - timedelta(seconds=1),
+                        ),
+                    ]
+                )
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        f"API {stop_concept}",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+    assert len(conn.calls) == 2
+    assert sum("body_tsv" in sql for sql, _params in conn.calls) == 0
+
+
+def test_pg_fts_concept_preflight_and_fallback_keep_query_bounds() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.preflight_calls = 0
+            self.fallback_calls = 0
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if normalized.startswith("SELECT COALESCE(bool_and"):
+                self.preflight_calls += 1
+                assert len(params) == 1
+                assert len(params[0]) == 24
+                return Cursor([(False,)])
+            if "FROM lessons l WHERE" in normalized:
+                self.fallback_calls += 1
+                assert params[-1] == 50
+                return Cursor([])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        " ".join(f"concept{index}" for index in range(100)),
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == []
+    assert conn.preflight_calls == 1
+    assert conn.fallback_calls == 1
 
 
 @pytest.mark.parametrize(
@@ -983,6 +1082,10 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("watches", "watch"),
         ("box", "boxes"),
         ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
