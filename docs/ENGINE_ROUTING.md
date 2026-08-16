@@ -167,7 +167,7 @@ carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and
 
 Claude Code 2.1.41 or newer is required because Alfred's readiness contract
 uses `claude auth status`, introduced in that release. Alfred uses the stable
-version command for compatibility because Claude's top-level help is
+version command because Claude's top-level help is
 intentionally incomplete and cannot prove that a documented flag is absent.
 
 A new engine needs all of the following before it can join a fleet:

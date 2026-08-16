@@ -18,6 +18,8 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Launch quality
 
+- Publish v0.7.0 with signed packages, concise release notes, and a verified
+  clean-install path.
 - Add a complete scratch-home test. It must install Alfred, configure a fleet,
   start the local API, exercise the desktop-ready setup path, verify optional
   battery status, and remove its temporary state.
@@ -25,6 +27,9 @@ The order can change when testing finds a reliability or safety problem.
   failures, approval points, and verification evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the shipped
   runtime.
+- Launch with a reproducible demo and direct links to the source, install
+  guide, threat model, and benchmark method. Submit only to directories whose
+  published scope matches the shipped product.
 
 ### Harness capability contract
 
@@ -62,7 +67,7 @@ The order can change when testing finds a reliability or safety problem.
 
 ## Next
 
-- Add a versioned `alfred serve` API contract with compatibility tests and
+- Add a versioned `alfred serve` API contract with contract tests and
   stable error payloads.
 - Extend engine diagnostics to report permissions, MCPs, skills, and config
   ownership alongside the shipped version, authentication, and scheduler

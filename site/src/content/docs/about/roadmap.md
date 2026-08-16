@@ -16,9 +16,14 @@ shipped work. The canonical source is
 
 ### Launch quality
 
+- Publish v0.7.0 with signed packages, concise release notes, and a verified
+  clean-install path.
 - Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.
+- Launch with a reproducible demo and direct links to the source, install
+  guide, threat model, and benchmark method. Submit only to directories whose
+  published scope matches the shipped product.
 
 ### Harness capability contract
 
@@ -51,7 +56,7 @@ shipped work. The canonical source is
 
 ## Next
 
-- Version the `alfred serve` API and add compatibility tests.
+- Version the `alfred serve` API and add contract tests.
 - Expand engine diagnostics to report permissions, MCPs, skills, and config
   ownership alongside the shipped authentication and profile checks.
 - Generate reversible role-specific harness configuration from one capability

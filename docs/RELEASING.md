@@ -23,10 +23,12 @@ attached. A human attaches the assets and presses Publish.
 
 ## Flow for a version (vX.Y.Z)
 
-1. **Bump `VERSION` and `CHANGELOG.md`** in a prep PR (this is what the v0.5.0
-   prep PR does). `VERSION` holds the number with no leading `v`. The changelog
-   has a dated section for that version, and the `Next` section holds only
-   future work. Land the prep PR on `main`.
+1. **Prepare the release in a signed PR.** Set the same version, without a
+   leading `v`, in `VERSION`, `pyproject.toml`, `site/package.json`,
+   `clients/desktop/package.json`, and `clients/desktop/src-tauri/Cargo.toml`.
+   Regenerate both npm lockfiles and the Cargo lockfile. Move the shipped
+   changelog entries into a dated version section and leave only future work in
+   `Unreleased`. Land the PR on `main`.
 
 2. **Tag from the release commit.** From `main` at the merged prep commit:
 

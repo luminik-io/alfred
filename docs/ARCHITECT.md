@@ -29,7 +29,7 @@ or migrate those labels before deploying this build against those repos:
   a Batman alias after that one-way migration.
 - Prefer role slugs (`architect`, `senior-dev`, `planner`, `reviewer`) in
   scripts and config. Display names such as Batman or Lucius come from the
-  active roster theme and are not cross-theme compatibility aliases.
+  active roster theme and are not cross-theme aliases.
 
 This is a breaking cutover by design. Alfred does not keep Batman-specific
 runtime aliases in the core pickup path.

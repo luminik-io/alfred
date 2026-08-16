@@ -95,7 +95,7 @@ The shipped fleet is designed to run on subscriptions you already have. No doubl
 
 Claude Code and Codex are dispatchable today. Setup can detect an OpenCode or Cline executable, but it does not run these candidate harnesses. Detection is not support. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` for supported engines.
 
-Claude Code 2.1.41 or newer is required because Alfred's readiness contract uses `claude auth status`, introduced in that release. Alfred uses the stable version command for compatibility because Claude's top-level help is intentionally incomplete and cannot prove that a documented flag is absent.
+Claude Code 2.1.41 or newer is required because Alfred's readiness contract uses `claude auth status`, introduced in that release. Alfred uses the stable version command because Claude's top-level help is intentionally incomplete and cannot prove that a documented flag is absent.
 
 A new engine needs all of the following before it can join a fleet:
 

@@ -4,8 +4,12 @@ Use this before tagging a public Alfred release.
 
 ## Preflight
 
-- Confirm `VERSION` has the intended version without a leading `v`.
-- Confirm `CHANGELOG.md` has a section for that version and the `Next` section only contains future work.
+- Confirm every release version field has the intended version without a
+  leading `v`: `VERSION`, `pyproject.toml`, `site/package.json`,
+  `clients/desktop/package.json`, and `clients/desktop/src-tauri/Cargo.toml`.
+  Regenerate the npm and Cargo lockfiles after the change.
+- Confirm `CHANGELOG.md` has a dated section for that version and its
+  `Unreleased` section contains only future work.
 - Confirm GitHub Pages is set to workflow publishing, not branch/root publishing:
 
   ```sh
@@ -38,7 +42,8 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 
 ## Tag And Release
 
-1. Commit the version, changelog, and docs updates.
+1. Land the signed release-preparation PR with the aligned version fields,
+   changelog, lockfiles, and docs updates.
 2. Tag from the release commit:
 
    ```sh
