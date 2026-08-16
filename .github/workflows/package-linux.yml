@@ -71,14 +71,6 @@ jobs:
             echo "::error::Release tag and commit must both be verified"
             exit 1
           fi
-          is_draft="$(
-            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft --jq '.isDraft'
-          )"
-          if [ "$is_draft" != "true" ]; then
-            echo "::error::Release $tag must exist and remain a draft"
-            exit 1
-          fi
           version="${tag#v}"
           version_in_file="$(git show "${tag}:VERSION" | tr -d '[:space:]')"
           if [ "$version" != "$version_in_file" ]; then

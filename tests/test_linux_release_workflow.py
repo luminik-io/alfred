@@ -18,7 +18,7 @@ def test_linux_packaging_uses_a_verified_tag_and_separate_upload_job() -> None:
     assert "bin/release-source-gate.sh" in workflow
     assert "--jq '.verification.verified'" in workflow
     assert "--jq '.commit.verification.verified'" in workflow
-    assert workflow.count("--json isDraft") == 2
+    assert workflow.count("--json isDraft") == 1
 
     build_job = workflow.partition("  build:")[2].partition("  upload:")[0]
     upload_job = workflow.partition("  upload:")[2]
@@ -28,6 +28,7 @@ def test_linux_packaging_uses_a_verified_tag_and_separate_upload_job() -> None:
     assert "Alfred.deb" in build_job
     assert "actions/upload-artifact@v7" in build_job
     assert "contents: write" not in build_job
+    assert "--json isDraft" not in build_job
 
     assert "needs: build" in upload_job
     assert "permissions:\n      contents: write" in upload_job
