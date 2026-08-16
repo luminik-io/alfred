@@ -158,6 +158,35 @@ def test_recall_requires_two_meaningful_terms_for_multiword_queries(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_like_fallback_applies_overlap_before_candidate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The GraphQL schema defines nested unions",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL resolvers use batching",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="Schema migrations run before deploy",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+
+    out = provider.recall(query="GraphQL schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
     assert mod._tokenize("Fix the GraphQL schema with the loader") == [
         "graphql",

@@ -757,22 +757,23 @@ class SqliteHybridProvider:
                 return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
-        # LIKE fallback (SQLite build without FTS5): any-token substring match,
-        # most-recent first. Match the SAME body+tags surface the FTS arm indexes
-        # via _fts_text(), so a tag-only hit is still recalled here. Tags are
-        # stored as a JSON array in tags_json, so a token like "graphql" matches
-        # the serialized '["graphql", ...]'.
+        # LIKE fallback (SQLite build without FTS5): require enough token
+        # substrings before applying the candidate LIMIT, then enforce exact
+        # token overlap in _filter_lexical_ids(). Match the SAME body+tags
+        # surface the FTS arm indexes via _fts_text(), so a tag-only hit is still
+        # recalled here. Tags are stored as a JSON array in tags_json, so a token
+        # like "graphql" matches the serialized '["graphql", ...]'.
         like_params: list[Any] = []
         clauses: list[str] = []
         for tok in tokens:
             clauses.append("(l.body LIKE ? OR l.tags_json LIKE ?)")
             like_params.extend([f"%{tok}%", f"%{tok}%"])
-        like_sql = " OR ".join(clauses)
+        like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
         sql = (
-            f"SELECT l.id FROM lessons l WHERE ({like_sql}) {scope_sql} "
+            f"SELECT l.id FROM lessons l WHERE ({like_score_sql}) >= ? {scope_sql} "
             "ORDER BY l.created_at DESC LIMIT ?"
         )
-        params = [*like_params, *scope_params, self.pool]
+        params = [*like_params, _required_lexical_overlap(tokens), *scope_params, self.pool]
         rows = conn.execute(sql, params).fetchall()
         return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)
 
@@ -1275,9 +1276,12 @@ def _tokenize(text: str) -> list[str]:
 
 def _has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
     """Require one term for a single-term query and two for a longer query."""
-    required = 1 if len(query_tokens) == 1 else 2
     lesson_tokens = set(_tokenize(text))
-    return len(lesson_tokens.intersection(query_tokens)) >= required
+    return len(lesson_tokens.intersection(query_tokens)) >= _required_lexical_overlap(query_tokens)
+
+
+def _required_lexical_overlap(query_tokens: list[str]) -> int:
+    return 1 if len(query_tokens) == 1 else 2
 
 
 def _scope_clause(codename: str | None, repo: str | None, *, alias: str) -> tuple[str, list[Any]]:
