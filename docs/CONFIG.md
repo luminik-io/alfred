@@ -7,9 +7,9 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **390**
-- Operator-facing (in `.env.example`): **71**
-- Internal / experimental: **319**
+- Declared variables: **391**
+- Operator-facing (in `.env.example`): **73**
+- Internal / experimental: **318**
 
 Operator-facing vars also appear, with their defaults, in
 `.env.example`. Internal vars are listed here for completeness; they
@@ -113,15 +113,15 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_AMS_FORGETTING` | bool |  | internal | Toggle AMS forgetting/eviction. |
 | `ALFRED_AMS_COMPACTION_INTERVAL_S` | int |  | internal | AMS compaction interval in seconds. |
 | `ALFRED_AMS_UVX_SPEC` | str |  | internal | uvx spec used to launch the AMS server. |
-| `ALFRED_CODE_MEMORY_MCP` | bool | `1` | operator | Expose the code-memory MCP server (on by default when the binary is installed; set 0 to disable). |
+| `ALFRED_CODE_MEMORY_MCP` | bool | `1` | operator | Expose the code-memory MCP server when its binary and repository scope are ready; set 0 to disable. |
 | `ALFRED_CODE_MEMORY_AUTOFETCH` | bool | `1` | operator | Auto-fetch code memory before a firing (on by default; set 0 to disable). |
-| `ALFRED_CODE_MEMORY_BIN` | path |  | operator | Path override for the code-memory binary. |
+| `ALFRED_CODE_MEMORY_BIN` | path |  | operator | Trusted executable path override; bypasses Alfred's pinned download verification. An invalid path blocks fallback. |
 | `ALFRED_CODE_MEMORY_REPO` | str | `DeusData/codebase-memory-mcp` | operator | Repo slug providing the code-memory index source. |
-| `ALFRED_CODE_MEMORY_REPOS` | list |  | operator | Comma-separated repos the code-memory index covers. |
+| `ALFRED_CODE_MEMORY_REPOS` | list |  | operator | Comma-separated repos the code-memory index covers. Required unless ALFRED_CODE_MAP_REPOS is set. |
 | `ALFRED_CODE_MEMORY_INDEX_DIR` | path |  | operator | Directory holding the code-memory index. |
-| `ALFRED_CODE_MEMORY_HOME` | path |  | internal | Home directory for the code-memory tool. |
+| `ALFRED_CODE_MEMORY_HOME` | path |  | internal | Home directory for the code-memory tool and its default graph-cache root. |
+| `CBM_CACHE_DIR` | path |  | operator | Root for scope-isolated code-memory graph caches. |
 | `ALFRED_CODE_MEMORY_VERSION` | str | `v0.8.1` | operator | Pinned code-memory tool version. |
-| `ALFRED_CODE_MEMORY_DISCOVERY_LIMIT` | int |  | internal | Max files the code-memory discovery pass scans. |
 | `ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S` | int | `10` | internal | Connect timeout in seconds for the code-memory server. |
 | `ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S` | int | `120` | internal | Fetch timeout in seconds for the code-memory server. |
 | `ALFRED_GRAPHIFY_MCP` | bool | `0` | operator | Expose the graphify MCP server. |
@@ -395,6 +395,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_SHIPPED_QUEUE_INCLUDE_LABELS` | list |  | internal | Labels a shipped item must have to be included (* for all). |
 | `ALFRED_SHIPPED_QUEUE_EXCLUDE_LABELS` | list |  | internal | Labels that exclude an item from the shipped queue. |
 | `ALFRED_AUTO_PROMOTE` | bool | `1` | internal | Enable memory auto-promotion; 0 disables save/skip decisions. |
+| `ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES` | bool | `0` | operator | Allow memory auto-promotion to save behavior-changing lessons without human review. |
 | `ALFRED_AUTO_PROMOTE_KILL` | bool | `0` | internal | Kill switch that fails auto-promotion closed. |
 | `ALFRED_AUTO_PROMOTE_LLM_JUDGE` | bool | `1` | internal | Use the LLM judge for auto-promotion; falsy disables it. |
 | `ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT` | int | `120` | internal | Timeout in seconds for the auto-promote judge call. |

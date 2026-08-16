@@ -99,6 +99,59 @@ def test_oversized_description_is_rejected() -> None:
     assert CHECK.metadata_findings("fix: setup", body) == ["oversized PR description"]
 
 
+def test_same_repo_dependabot_body_may_exceed_human_prose_limit() -> None:
+    body = "Dependency release note.\n" * (CHECK.MAX_BODY_LINES + 1)
+    assert (
+        CHECK.is_trusted_dependabot_pr(
+            author="dependabot[bot]",
+            head_ref="dependabot/npm_and_yarn/site/astro",
+            head_repo="luminik-io/alfred",
+            repository="luminik-io/alfred",
+        )
+        is True
+    )
+    assert CHECK.metadata_findings("chore(deps): update astro", body, allow_oversized=True) == []
+
+
+def test_dependabot_size_exception_keeps_privacy_checks() -> None:
+    body = ("Dependency release note.\n" * (CHECK.MAX_BODY_LINES + 1)) + "/tmp/private.log"
+    assert CHECK.metadata_findings("chore(deps): update astro", body, allow_oversized=True) == [
+        "local filesystem path"
+    ]
+
+
+def test_dependabot_trust_requires_actor_branch_and_same_repository() -> None:
+    cases = [
+        ("contributor", "dependabot/npm_and_yarn/site/astro", "luminik-io/alfred"),
+        ("dependabot[bot]", "feature/dependabot-copy", "luminik-io/alfred"),
+        ("dependabot[bot]", "dependabot/npm_and_yarn/site/astro", "fork/alfred"),
+    ]
+    for author, head_ref, head_repo in cases:
+        assert (
+            CHECK.is_trusted_dependabot_pr(
+                author=author,
+                head_ref=head_ref,
+                head_repo=head_repo,
+                repository="luminik-io/alfred",
+            )
+            is False
+        )
+
+
+def test_main_applies_dependabot_size_exception(monkeypatch) -> None:
+    monkeypatch.setenv("PR_TITLE", "chore(deps): update astro")
+    monkeypatch.setenv("PR_BODY", "Dependency release note.\n" * (CHECK.MAX_BODY_LINES + 1))
+    monkeypatch.setenv("PR_COMMITS", "chore(deps): update astro")
+    monkeypatch.setenv("PR_AUTHOR", "dependabot[bot]")
+    monkeypatch.setenv("PR_HEAD_REF", "dependabot/npm_and_yarn/site/astro")
+    monkeypatch.setenv("PR_HEAD_REPO", "luminik-io/alfred")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "luminik-io/alfred")
+    monkeypatch.setattr(CHECK, "_existing_scrub_rejects", lambda _title, _body: False)
+    monkeypatch.setattr(CHECK, "_scrub_rejects_text", lambda _text: False)
+
+    assert CHECK.main() == 0
+
+
 def test_existing_private_identifier_scrub_applies_to_pr_metadata() -> None:
     private_repo = "luminik-" + "orchestrator"
     assert CHECK._existing_scrub_rejects("fix: setup", f"Validated in {private_repo}") is True

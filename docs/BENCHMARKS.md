@@ -253,10 +253,10 @@ alfred benchmark memory --show-suite
 The *same* task suite runs twice against the *same* seed repo and the *same*
 seeded lessons. The only variable between the two arms is memory:
 
-- **memory ON** uses a provider seeded with the lessons the fleet has already
-  "learned" about the seed repo (the real in-memory FleetBrain, or your
-  configured provider chain), and injects recalled lessons through the exact
-  path a live firing uses (`format_memory_context`).
+- **memory ON** uses the shipped `sqlite,fleet` chain, seeded with the lessons
+  the fleet has already "learned" about the seed repo. Both stores run in
+  memory, so the benchmark cannot read or change operator state. It injects
+  recalled lessons through the live firing path (`format_memory_context`).
 - **memory OFF** uses `NullMemoryProvider`: it recalls nothing and injects
   nothing. It is a true no-memory control, not memory-with-an-empty-store.
 
@@ -294,7 +294,8 @@ the N it was measured over and the per-task breakdown behind it.
    model cannot guess without memory and is the headline fixture. Point at
    either with `--fixture DIR`, or at your own.
 2. **Capture a baseline** with `--engine <name> --label before --json`.
-3. **Change something** - the memory provider, the recall limit, a prompt.
+3. **Change something** - the recall limit, a prompt, or the provider passed to
+   the Python benchmark API.
 4. **Re-run** with `--label after --json` and compare. Same suite, same seed
    repo, same seeded lessons: the delta is the memory signal.
 
@@ -303,13 +304,10 @@ the N it was measured over and the per-task breakdown behind it.
 - **Marker fidelity is the honest limit.** The mistake/success verdict is a
   regex match against solver output. A marker that is too loose or too tight
   mis-scores a task. Markers live in `tasks.json`; audit them for your fixture.
-- **The local FleetBrain fallback recalls by recency, not semantics.** The
-  literal-substring match surfaces a lesson whose body contains the task's
-  recall query, then backfills by recency up to the limit. Per-task *semantic*
-  discrimination is the Redis Agent Memory layer's job (see
-  [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md)); a fixture that leans on the
-  local fallback measures recency retrieval, and precision reflects the
-  distractor share in the top-K. Say which backend a result used.
+- **The benchmark uses lexical SQLite recall.** It exercises the zero-daemon
+  shipped default without optional dense embeddings. BM25 ranks overlapping
+  terms; it does not infer semantic similarity. Precision therefore depends on
+  fixture wording and the recall limit. Every report names its provider.
 - **`--stub` numbers are illustrative, not a result.** The stub solver is
   deterministic and reacts only to whether the lesson text reached the prompt.
   It exercises the harness (recall, injection, scoring) with no model; it is
@@ -340,7 +338,7 @@ result. A real `--engine claude` run of this template is filled in under
 Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills it)
   label:        <before | after | ...>
   seed repo:    tests/fixtures/mem-bench/repo   (or your fixture)
-  memory backend: <fleet-local (recency) | redis+fleet (semantic)>
+  memory backend: <sqlite,fleet | custom provider label>
   solver:       <engine:claude | engine:codex>
   N (tasks that re-tempt a learned mistake): <n>
 
@@ -512,14 +510,14 @@ these as the headline.
 ```
 Memory A/B run                     (OFFLINE FIXTURE result: stub solver, no engine)
   seed repo:      acme-org/widgets   (tests/fixtures/mem-bench)
-  memory backend: fleet-local (in-memory SQLite FleetBrain, recency + literal recall)
+  memory backend: sqlite,fleet (in-memory shipped default; lexical SQLite recall)
   solver:         stub (deterministic; reacts only to whether the lesson text
                   reached the injected prompt)
   N (tasks that re-tempt a learned mistake): 4   (+1 control task)
 
   repeated-mistake-rate     memory OFF: 100%   memory ON: 0%    delta: +100 pts
   task success rate         memory OFF: 20%    memory ON: 100%
-  retrieval precision/recall (ON only):  33.3% / 100%
+  retrieval precision/recall (ON only):  100% / 100%
   tokens in / turns         memory OFF: 5,000/25   memory ON: 5,000/25
 
   per-task (mistake repeated?  off / on):
@@ -537,11 +535,9 @@ How to read it honestly:
   arm, so the ON arm follows every lesson and the OFF arm repeats every mistake.
   A real engine will not be this clean; the value of the stub run is that the
   harness, recall, injection and marker scoring are all exercised for real.
-- **Retrieval precision is 33.3%, not 100%**, because the fixture seeds
-  distractor lessons and the local FleetBrain fallback recalls by recency once
-  the literal match is exhausted, so the top-K carries irrelevant lessons
-  alongside the right one. Recall of the right lesson is 100% (it is always in
-  the top-K). This is the recency-retrieval caveat above, visible in a number.
+- **Retrieval precision and recall are 100% for this fixture.** The SQLite
+  lexical arm returns the relevant lesson for all four eligible tasks. This is
+  a small, wording-dependent fixture result, not a general retrieval claim.
 - **Cost is arm-equal** (5,000 tokens / 25 turns both sides) because the stub
   assigns a fixed synthetic cost; only a real engine measures true token/turn
   cost, and only there is a cost delta meaningful.
@@ -633,12 +629,11 @@ uv run pytest tests/test_benchmark.py
 ```
 
 The memory A/B is covered by `tests/test_memory_benchmark.py`. It runs the full
-A/B over the built-in fixture with the deterministic stub solver and a **real**
-in-memory FleetBrain (SQLite `:memory:`), so recall, injection and every metric
-are exercised for real - only the engine is stubbed. **No LLM is called, no
-network is touched, and no quota is burned.** The one path left uncovered is the
-real-engine solver (`make_cli_engine_solver`), by design: exercising it needs a
-live model.
+A/B over the built-in fixture with the deterministic stub solver and the real
+in-memory `sqlite,fleet` chain. Recall, injection, and every metric run for real;
+only the engine is stubbed. **No LLM is called, no network is touched, and no
+quota is burned.** The one path left uncovered is the real-engine solver
+(`make_cli_engine_solver`), by design: exercising it needs a live model.
 
 ```
 uv run pytest tests/test_memory_benchmark.py

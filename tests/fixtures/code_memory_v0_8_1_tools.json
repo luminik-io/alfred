@@ -1,0 +1,22 @@
+{
+  "version": "v0.8.1",
+  "source": "https://github.com/DeusData/codebase-memory-mcp/blob/v0.8.1/README.md",
+  "read_only": [
+    "index_status",
+    "list_projects",
+    "search_graph",
+    "search_code",
+    "trace_path",
+    "detect_changes",
+    "query_graph",
+    "get_graph_schema",
+    "get_code_snippet",
+    "get_architecture"
+  ],
+  "mutating": [
+    "index_repository",
+    "delete_project",
+    "manage_adr",
+    "ingest_traces"
+  ]
+}

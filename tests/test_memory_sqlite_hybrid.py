@@ -86,6 +86,21 @@ def test_lexical_recall_ranks_matching_lesson_first(provider: SqliteHybridProvid
     assert out[0].id == match.id
 
 
+def test_lexical_recall_keeps_compound_single_character_terms(
+    provider: SqliteHybridProvider,
+) -> None:
+    match = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The reporting endpoint had an N+1 query. Use one batch query.",
+    )
+    provider.reflect(codename="c", repo="r", body="Unrelated release checklist")
+
+    out = provider.recall(query="N+1", codename="c", repo="r")
+
+    assert out[0].id == match.id
+
+
 def test_recall_scopes_by_codename_and_repo(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="lucius", repo="acme/api", body="shared token about caching")
     other = provider.reflect(codename="drake", repo="acme/web", body="shared token about caching")

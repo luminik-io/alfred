@@ -847,7 +847,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "bool",
         "1",
         "memory",
-        "Expose the code-memory MCP server (on by default when the binary is installed; set 0 to disable).",
+        "Expose the code-memory MCP server when its binary and repository scope are ready; set 0 to disable.",
         operator=True,
     ),
     V(
@@ -863,7 +863,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "path",
         None,
         "memory",
-        "Path override for the code-memory binary.",
+        "Trusted executable path override; bypasses Alfred's pinned download verification. An invalid path blocks fallback.",
         operator=True,
     ),
     V(
@@ -879,7 +879,7 @@ _VARS: tuple[ConfigVar, ...] = (
         "list",
         None,
         "memory",
-        "Comma-separated repos the code-memory index covers.",
+        "Comma-separated repos the code-memory index covers. Required unless ALFRED_CODE_MAP_REPOS is set.",
         operator=True,
     ),
     V(
@@ -895,7 +895,15 @@ _VARS: tuple[ConfigVar, ...] = (
         "path",
         None,
         "memory",
-        "Home directory for the code-memory tool.",
+        "Home directory for the code-memory tool and its default graph-cache root.",
+    ),
+    V(
+        "CBM_CACHE_DIR",
+        "path",
+        None,
+        "memory",
+        "Root for scope-isolated code-memory graph caches.",
+        operator=True,
     ),
     V(
         "ALFRED_CODE_MEMORY_VERSION",
@@ -904,13 +912,6 @@ _VARS: tuple[ConfigVar, ...] = (
         "memory",
         "Pinned code-memory tool version.",
         operator=True,
-    ),
-    V(
-        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT",
-        "int",
-        None,
-        "memory",
-        "Max files the code-memory discovery pass scans.",
     ),
     V(
         "ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S",
@@ -2232,6 +2233,14 @@ _VARS: tuple[ConfigVar, ...] = (
         "1",
         "agents",
         "Enable memory auto-promotion; 0 disables save/skip decisions.",
+    ),
+    V(
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
+        "bool",
+        "0",
+        "agents",
+        "Allow memory auto-promotion to save behavior-changing lessons without human review.",
+        operator=True,
     ),
     V(
         "ALFRED_AUTO_PROMOTE_KILL",

@@ -110,10 +110,10 @@ runners that know their target repo recall up to three lessons before invoking
 the engine. If the engine returns a machine-readable memory reflection block,
 Alfred strips it from the user-facing result and queues those entries as
 FleetBrain candidates by default. The LLM judge saves safe candidates
-autonomously rather than waiting on a human queue (see
-[Fleet brain](./FLEET_BRAIN.md)). Set `ALFRED_AUTO_PROMOTE=0` to opt out, or
-`ALFRED_MEMORY_REFLECTION_MODE=direct` only when direct lesson writes are
-intentional.
+autonomously and holds candidates that it classifies as behavior-changing (see
+[Fleet brain](./FLEET_BRAIN.md)). Set `ALFRED_AUTO_PROMOTE=0` to opt out.
+`ALFRED_MEMORY_REFLECTION_MODE=direct` bypasses the candidate review loop, so
+use it only when direct lesson writes are intentional.
 
 FleetBrain stores recent file touches when an agent or outbox import knows which
 repo-relative paths changed. Use `alfred brain files <repo>` to inspect that

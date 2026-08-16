@@ -9,8 +9,8 @@ import type { OnboardingNotice } from "./types";
 
 /**
  * Step 4: Connect Slack (optional, clearly skippable). Skip is a first-class
- * button, not a tiny link. Maya skips. A Dev who wants approvals and questions
- * in Slack adds a trusted approver (POST /api/slack/trusted-users).
+ * button, not a tiny link. The guided path skips. An operator who wants Slack
+ * approvals and questions adds a trusted approver (POST /api/slack/trusted-users).
  */
 export function SlackStep({
   baseUrl,
@@ -42,7 +42,7 @@ export function SlackStep({
         if (!cancelled) setUsers(result.users || []);
       })
       .catch((err) => {
-        // A missing list is not fatal here (the step still lets Dev add one),
+        // A missing list is not fatal here (the step still lets an operator add one),
         // but a silent empty list hides whoever is already trusted, so surface
         // the failure quietly instead of swallowing it.
         if (!cancelled) {

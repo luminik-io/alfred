@@ -39,6 +39,20 @@ _ENGINEERING_SLUGS = {
 }
 
 
+def test_explicit_theme_builder_engine_hydrates_its_cli_path(monkeypatch) -> None:
+    hydrated: list[str] = []
+    monkeypatch.setenv(tb.ENGINE_ENV, "codex")
+    monkeypatch.setattr(
+        cc,
+        "converse_engine_from_env",
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must win")),
+    )
+    monkeypatch.setattr(cc, "hydrate_engine_paths", hydrated.append)
+
+    assert tb.engine_from_env() == "codex"
+    assert hydrated == ["codex"]
+
+
 def _messages(*texts: str) -> list[cc.ConverseMessage]:
     return [cc.ConverseMessage(role="user", content=text) for text in texts]
 

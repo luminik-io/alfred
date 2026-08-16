@@ -79,6 +79,7 @@ from .agent_events import (
 # Config (env, engine, dry-run, doctor)
 # --------------------------------------------------------------------------
 from .config import (
+    DISABLED_ENGINE,
     ENGINE_CHOICES,
     MODEL_ENGINES,
     PROVIDER_LIMIT_SUBTYPES,
@@ -122,6 +123,18 @@ from .disk import (
     DEFAULT_MIN_FREE_DISK_PCT,
     DiskPressure,
     disk_pressure_status,
+)
+from .engine_registry import (
+    DEFAULT_ENGINE_REGISTRY,
+    ENGINE_DESCRIPTORS,
+    EngineCapability,
+    EngineDescriptor,
+    EngineProbeResult,
+    EngineProbeState,
+    EngineRegistry,
+    ProbeCommand,
+    clear_engine_probe_cache,
+    probe_engine,
 )
 
 # --------------------------------------------------------------------------
@@ -289,6 +302,7 @@ from .process import (
     claude_invoke,
     claude_invoke_streaming,
     codex_invoke,
+    engine_readiness_allows_dispatch_attempt,
     gh_json,
     invoke_agent_engine,
     pid_start_key,
@@ -446,6 +460,7 @@ __all__ = [
     "now_iso",
     "today_str",
     # config
+    "DISABLED_ENGINE",
     "ENGINE_CHOICES",
     "PROVIDER_LIMIT_SUBTYPES",
     "agent_engine",
@@ -465,6 +480,17 @@ __all__ = [
     "ContextGovernance",
     "context_governor_enabled",
     "govern_prompt_context",
+    # engine registry
+    "DEFAULT_ENGINE_REGISTRY",
+    "ENGINE_DESCRIPTORS",
+    "EngineCapability",
+    "EngineDescriptor",
+    "EngineProbeResult",
+    "EngineProbeState",
+    "EngineRegistry",
+    "ProbeCommand",
+    "clear_engine_probe_cache",
+    "probe_engine",
     # reliability
     "BreakerStatus",
     "CircuitBreaker",
@@ -495,6 +521,7 @@ __all__ = [
     "claude_invoke",
     "claude_invoke_streaming",
     "codex_invoke",
+    "engine_readiness_allows_dispatch_attempt",
     "gh_json",
     "invoke_agent_engine",
     "pid_start_key",
@@ -687,6 +714,9 @@ from . import (
     disk as _sub_disk,
 )
 from . import (
+    engine_registry as _sub_engine_registry,
+)
+from . import (
     github as _sub_github,
 )
 from . import (
@@ -720,6 +750,7 @@ from . import (
 _SUBMODULE_OBJS: tuple[_ModuleType, ...] = (
     _sub_paths,
     _sub_config,
+    _sub_engine_registry,
     _sub_disk,
     _sub_process,
     _sub_result,
