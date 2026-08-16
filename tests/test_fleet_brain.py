@@ -327,6 +327,20 @@ def test_recall_query_matches_singular_lesson_for_plural_query(brain: FleetBrain
     assert [lesson.body for lesson in out] == [relevant]
 
 
+def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="GraphQL resolver guidance")
+    relevant = "GraphQL schema guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix src/api GraphQL schema",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
 @pytest.mark.parametrize(
     "query",
     ["C", "R", "N+12", "C++", "C#", "F#", "HTTP/2.1", "O(n)", "O(log n)", "O(42)", "I/O", "A/B"],

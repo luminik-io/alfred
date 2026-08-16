@@ -684,6 +684,35 @@ def test_lexical_like_fallback_matches_singular_lesson_for_plural_query() -> Non
     assert ids == ["relevant"]
 
 
+def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("graphql-only", "graphql resolver guidance", _NOW),
+                ("relevant", "graphql schema guidance", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix src/api GraphQL schema",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
 def test_lexical_like_fallback_matches_unicode_subject_stored_only_in_tag() -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:

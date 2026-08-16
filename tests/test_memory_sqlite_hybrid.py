@@ -287,6 +287,25 @@ def test_default_chain_matches_singular_lesson_for_plural_query(tmp_path: Path) 
     assert [item.id for item in out] == [relevant.id]
 
 
+def test_default_chain_does_not_require_ordinary_slash_path(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = writer.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = load_provider(env).recall(
+        query="Fix src/api GraphQL schema",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
 @pytest.mark.parametrize(
     "query",
     ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
@@ -418,6 +437,17 @@ def test_recall_matches_singular_lesson_for_plural_query(
     relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema guidance")
 
     out = provider.recall(query="Fix GraphQL schemas", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_does_not_require_ordinary_slash_path(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = provider.recall(query="Fix src/api GraphQL schema", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -747,6 +777,28 @@ def test_unicode_word_is_one_overlap_concept(
 )
 def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
     assert mod._tokenize(query) == [expected]
+
+
+@pytest.mark.parametrize(
+    "ordinary_slash",
+    ["src/api", "owner/repo", "2026/08", "path/A/B", "HTTP/2.1/client"],
+)
+def test_ordinary_slash_terms_are_not_mandatory_identities(ordinary_slash: str) -> None:
+    query_tokens = mod._tokenize(f"Fix {ordinary_slash} GraphQL schema")
+
+    assert ordinary_slash not in query_tokens
+    assert mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
+
+
+@pytest.mark.parametrize("identity", ["HTTP/2.1", "I/O", "A/B"])
+def test_explicit_slash_technical_terms_remain_mandatory_identities(identity: str) -> None:
+    query_tokens = mod._tokenize(f"Fix {identity} GraphQL schema")
+
+    assert not mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
+    assert mod._has_meaningful_lexical_overlap(
+        f"{identity} GraphQL schema guidance",
+        query_tokens,
+    )
 
 
 @pytest.mark.parametrize(

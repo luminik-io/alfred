@@ -16,7 +16,7 @@ _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:C\+\+|[A-Za-z]#|N\+[0-9]+|"
     r"O\((?:[0-9]+|n|log[ \t]+n)\)|"
-    r"[A-Za-z0-9]{1,24}/[A-Za-z0-9]{1,24}(?:\.[A-Za-z0-9]{1,8})?)"
+    r"(?<!/)(?:HTTP/[0-9]{1,3}(?:\.[0-9]{1,3})?|I/O|A/B)(?![./]))"
     r"(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
