@@ -22,7 +22,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal, Protocol
 
-from memory_tokens import has_meaningful_lexical_overlap, required_lexical_overlap, tokenize
+from memory_tokens import (
+    MAX_LITERAL_QUERY_CANDIDATES,
+    escape_like_literal,
+    has_meaningful_lexical_overlap,
+    literal_fallback_query,
+    required_lexical_overlap,
+    tokenize,
+)
 
 from . import schema as schema_mod
 from .taxonomy import (
@@ -588,11 +595,6 @@ def _from_iso(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
-def _escape_like_literal(value: str) -> str:
-    """Escape SQLite LIKE metacharacters for literal substring matching."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 @dataclass
 class SQLiteStore:
     """SQLite-backed :class:`Store` implementation.
@@ -705,7 +707,12 @@ class SQLiteStore:
         limit = int(limit)
         query_body = (query or "").strip() or None
         query_tokens = tokenize(query_body) if query_body is not None else []
-        if query_body is not None and not query_tokens:
+        literal_only_query = (
+            literal_fallback_query(query_body)
+            if query_body is not None and not query_tokens
+            else None
+        )
+        if query_body is not None and not query_tokens and literal_only_query is None:
             return []
         now_iso = _to_iso(datetime.now(UTC))
 
@@ -732,13 +739,20 @@ class SQLiteStore:
             if repo:
                 params.append(repo)
             if query_body:
-                params.append(f"%{_escape_like_literal(query_body)}%")
-            params.append(limit)
+                params.append(f"%{escape_like_literal(query_body)}%")
+            query_limit = (
+                min(max(0, limit), MAX_LITERAL_QUERY_CANDIDATES)
+                if literal_only_query is not None
+                else limit
+            )
+            params.append(query_limit)
             return params
 
         with self._connect() as conn:
             rows = conn.execute(_scoped(query_body), _scope_params(query_body)).fetchall()
             if query_body is None:
+                return [self._row_to_lesson(conn, row) for row in rows]
+            if literal_only_query is not None:
                 return [self._row_to_lesson(conn, row) for row in rows]
 
             # Keep exact literal matches first. Queries containing SQLite LIKE
@@ -767,7 +781,7 @@ class SQLiteStore:
             like_clauses = ["body LIKE ? ESCAPE '\\'" for _token in query_tokens]
             like_score = " + ".join(f"CAST({clause} AS INTEGER)" for clause in like_clauses)
             wheres.append(f"({like_score}) >= ?")
-            params.extend(f"%{_escape_like_literal(token)}%" for token in query_tokens)
+            params.extend(f"%{escape_like_literal(token)}%" for token in query_tokens)
             params.append(required_lexical_overlap(query_tokens))
 
             seen = {str(row[0]) for row in matched_rows}

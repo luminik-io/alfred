@@ -313,7 +313,7 @@ def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain
     assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
 
 
-@pytest.mark.parametrize("query", ["N+12", "C++", "C#", "HTTP/2.1", "O(42)"])
+@pytest.mark.parametrize("query", ["N+12", "C++", "C#", "HTTP/2.1", "O(42)", "I/O"])
 def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query: str) -> None:
     matching_body = f"Use {query} carefully in this code path."
     brain.reflect(codename="lucius", repo="org/api", body=matching_body)
@@ -321,6 +321,31 @@ def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query:
     out = brain.recall(codename="lucius", repo="org/api", query=query)
 
     assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_accepts_japanese_issue_title(brain: FleetBrain) -> None:
+    query = "認証エラーを修正"
+    matching_body = f"手順: {query}してください"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+    brain.reflect(codename="lucius", repo="org/web", body=query)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_token_empty_literal_is_escaped_and_never_backfills(
+    brain: FleetBrain,
+) -> None:
+    exact = "修_%"
+    brain.reflect(codename="lucius", repo="org/api", body=exact)
+    brain.reflect(codename="lucius", repo="org/api", body="修AX")
+
+    out = brain.recall(codename="lucius", repo="org/api", query=exact)
+    miss = brain.recall(codename="lucius", repo="org/api", query="録")
+
+    assert [lesson.body for lesson in out] == [exact]
+    assert miss == []
 
 
 @pytest.mark.parametrize(

@@ -66,9 +66,12 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
+from memory_tokens import MAX_LITERAL_QUERY_CANDIDATES
+from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
 )
+from memory_tokens import literal_fallback_query as _literal_fallback_query
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
@@ -634,7 +637,7 @@ class SqliteHybridProvider:
                 self._lexical_ids(conn, text, codename=codename, repo=repo) if has_query else []
             )
             dense: list[str] = []
-            if has_query and self._dense_active(conn):
+            if has_query and _tokenize(text) and self._dense_active(conn):
                 dense = self._dense_ids(conn, text, codename=codename, repo=repo)
             if not lexical and not dense:
                 # An intentionally unfiltered view gets a recency baseline. A
@@ -711,7 +714,19 @@ class SqliteHybridProvider:
     ) -> list[str]:
         tokens = _tokenize(text)
         if not tokens:
-            return []
+            literal = _literal_fallback_query(text)
+            if literal is None:
+                return []
+            scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
+            pattern = f"%{_escape_like_literal(literal)}%"
+            limit = min(max(1, self.pool), MAX_LITERAL_QUERY_CANDIDATES)
+            sql = (
+                "SELECT l.id FROM lessons l "
+                "WHERE (l.body LIKE ? ESCAPE '\\' OR l.tags_json LIKE ? ESCAPE '\\') "
+                f"{scope_sql} ORDER BY l.created_at DESC, l.id ASC LIMIT ?"
+            )
+            rows = conn.execute(sql, [pattern, pattern, *scope_params, limit]).fetchall()
+            return [str(row[0]) for row in rows]
         scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
         if self._fts_ok:
             match = " OR ".join(f'"{t}"' for t in tokens)

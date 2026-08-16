@@ -334,7 +334,7 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
     assert conn.candidate_calls == 8
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
+@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
 def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:
@@ -362,6 +362,55 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
     )
 
     assert ids == ["match"]
+
+
+def test_lexical_like_fallback_recalls_unicode_query() -> None:
+    query = "認証エラーを修正"
+    lesson_body = f"手順: {query}してください"
+
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match", lesson_body, "[]", _NOW)]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(Connection(), query, codename="c", repo="r", now=_NOW)
+
+    assert ids == ["match"]
+
+
+def test_token_empty_literal_lookup_is_bounded_escaped_and_scoped() -> None:
+    calls: list[tuple[str, list[Any]]] = []
+
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match",)]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            calls.append((" ".join(sql.split()), params))
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=1000)
+
+    ids = provider._lexical_ids(Connection(), "修_%", codename="c", repo="r", now=_NOW)
+
+    assert ids == ["match"]
+    assert len(calls) == 1
+    sql, params = calls[0]
+    assert "l.body ILIKE %s ESCAPE '\\'" in sql
+    assert "l.codename = %s" in sql
+    assert "l.repo = %s" in sql
+    assert params[0] == r"%修\_\%%"
+    assert params[-1] == 400
 
 
 @pytest.mark.parametrize(

@@ -101,7 +101,7 @@ def test_lexical_recall_keeps_compound_single_character_terms(
     assert out[0].id == match.id
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
+@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
 def test_default_chain_round_trips_symbolic_technical_terms(
     tmp_path: Path,
     query: str,
@@ -121,6 +121,39 @@ def test_default_chain_round_trips_symbolic_technical_terms(
     out = load_provider(env).recall(query=query, codename="c", repo="r")
 
     assert [item.id for item in out] == [lesson.id]
+
+
+def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    query = "認証エラーを修正"
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    lesson = writer.reflect(codename="c", repo="r", body=f"手順: {query}してください")
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_default_chain_bounds_token_empty_literal_lookup_and_keeps_scope(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+        "ALFRED_MEMORY_SQLITE_POOL": "1000",
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    for index in range(401):
+        writer.reflect(codename="c", repo="r", body=f"修 {index}")
+    writer.reflect(codename="c", repo="other", body="修 out of scope")
+
+    out = load_provider(env).recall(query="修", codename="c", repo="r", limit=1000)
+
+    assert len(out) == 400
+    assert all(item.repo == "r" and "修" in item.body for item in out)
 
 
 def test_default_chain_keeps_generic_low_signal_queries_as_hard_misses(tmp_path: Path) -> None:
@@ -160,7 +193,7 @@ def test_default_chain_matches_hyphenated_spelling_variants(
     assert [item.id for item in out] == [lesson.id]
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1"])
+@pytest.mark.parametrize("query", ["C++", "C#", "N+12", "O(42)", "HTTP/2.1", "I/O"])
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,
     query: str,
@@ -172,6 +205,30 @@ def test_like_fallback_recalls_symbolic_technical_terms(
     out = provider.recall(query=query, codename="c", repo="r")
 
     assert [item.id for item in out] == [lesson.id]
+
+
+def test_like_fallback_recalls_unicode_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    query = "認証エラーを修正"
+    lesson = provider.reflect(codename="c", repo="r", body=f"手順: {query}してください")
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_token_empty_literal_lookup_escapes_like_metacharacters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    exact = provider.reflect(codename="c", repo="r", body="修_%")
+    provider.reflect(codename="c", repo="r", body="修AX")
+
+    out = provider.recall(query="修_%", codename="c", repo="r")
+
+    assert [item.id for item in out] == [exact.id]
 
 
 def test_recall_scopes_by_codename_and_repo(provider: SqliteHybridProvider) -> None:
@@ -344,6 +401,7 @@ def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
         ("N+12", "n+12"),
         ("O(42)", "o(42)"),
         ("HTTP/2.1", "http/2.1"),
+        ("I/O", "i/o"),
     ],
 )
 def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:

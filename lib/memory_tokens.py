@@ -12,12 +12,14 @@ import re
 from collections.abc import Iterator
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
+_UNICODE_WORD_RE = re.compile(r"[^\W_]+")
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:C\+\+|C#|N\+[0-9]+|O\([0-9]+\)|HTTP/[0-9]+(?:\.[0-9]+)?)"
+    r"(?<![A-Za-z0-9])(?:C\+\+|C#|I/O|N\+[0-9]+|O\([0-9]+\)|HTTP/[0-9]+(?:\.[0-9]+)?)"
     r"(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
 _MAX_QUERY_TOKENS = 24
+MAX_LITERAL_QUERY_CANDIDATES = 400
 _LOW_SIGNAL_QUERY_TOKENS = frozenset(
     {
         "add",
@@ -118,6 +120,29 @@ def has_meaningful_memory_query(text: str) -> bool:
     """Return whether a query has at least one meaningful recall concept."""
 
     return bool(tokenize(text))
+
+
+def literal_fallback_query(text: str) -> str | None:
+    """Return a safe literal-only query when canonical tokenization is empty.
+
+    A one-character non-ASCII word can still be meaningful, so providers may
+    perform one escaped, bounded literal lookup for it. ASCII stop words,
+    one-character ASCII noise, and punctuation-only input remain hard misses.
+    """
+
+    stripped = text.strip()
+    if not stripped or tokenize(stripped):
+        return None
+    words = [match.group(0) for match in _UNICODE_WORD_RE.finditer(stripped)]
+    if not words or all(word.isascii() for word in words):
+        return None
+    return stripped
+
+
+def escape_like_literal(value: str) -> str:
+    """Escape SQL LIKE metacharacters for an explicit backslash escape."""
+
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def required_lexical_overlap(query_tokens: list[str]) -> int:

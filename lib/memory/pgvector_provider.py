@@ -71,9 +71,12 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
+from memory_tokens import MAX_LITERAL_QUERY_CANDIDATES
+from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
 )
+from memory_tokens import literal_fallback_query as _literal_fallback_query
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
@@ -405,6 +408,33 @@ def _lexical_like_query(
         *scope_params,
         *cursor_params,
         pool,
+    ]
+    return sql, params
+
+
+def _lexical_literal_query(
+    text: str,
+    *,
+    table: str,
+    codename: str | None,
+    repo: str | None,
+    pool: int,
+    now: datetime,
+) -> tuple[str, list[Any]]:
+    """Build one bounded escaped lookup for a token-empty Unicode query."""
+
+    scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
+    pattern = f"%{_escape_like_literal(text)}%"
+    sql = (
+        f"SELECT l.id FROM {table} l "
+        "WHERE (l.body ILIKE %s ESCAPE '\\' OR l.tags_json ILIKE %s ESCAPE '\\') "
+        f"{scope_sql} ORDER BY l.created_at DESC, l.id ASC LIMIT %s"
+    )
+    params = [
+        pattern,
+        pattern,
+        *scope_params,
+        min(max(1, pool), MAX_LITERAL_QUERY_CANDIDATES),
     ]
     return sql, params
 
@@ -963,7 +993,7 @@ class PgvectorProvider:
                     else []
                 )
                 dense: list[str] = []
-                if has_query and self._vec_ok:
+                if has_query and _tokenize(text) and self._vec_ok:
                     dense = self._dense_ids(conn, text, codename=codename, repo=repo, now=now)
                 if not lexical and not dense and not has_query:
                     fused_ids = self._recency_ids(
@@ -1013,7 +1043,18 @@ class PgvectorProvider:
     ) -> list[str]:
         tokens = _tokenize(text)
         if not tokens:
-            return []
+            literal = _literal_fallback_query(text)
+            if literal is None:
+                return []
+            sql, params = _lexical_literal_query(
+                literal,
+                table=self._lessons,
+                codename=codename,
+                repo=repo,
+                pool=self.pool,
+                now=now,
+            )
+            return [str(row[0]) for row in conn.execute(sql, params).fetchall()]
         if self._fts_ok:
             sql, params = _lexical_query(
                 tokens,
