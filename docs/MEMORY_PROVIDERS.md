@@ -4,10 +4,10 @@ Alfred ships a single-host memory layer: a runner can call
 `memory.recall(...)` before a firing to surface lessons earlier
 firings learned, and `memory.reflect(...)` afterwards to file new
 ones. The default chain is `sqlite,fleet`: the embedded SQLite store gives
-lexical recall with **no daemon** (no Redis, no Ollama), while
-FleetBrain keeps the local operational ledger and review queue. Redis Agent
-Memory Server stays a fully supported opt-in for operators who want it
-(`ALFRED_MEMORY_PROVIDERS=redis,fleet`).
+ranked lexical recall with **no daemon** (no Redis, no Ollama), while
+FleetBrain keeps the local operational ledger and review queue. Dense recall is
+optional. Operators can also select Redis Agent Memory Server with
+`ALFRED_MEMORY_PROVIDERS=redis,fleet`.
 
 Nothing is sent to a hosted memory service. Anonymous aggregate usage counts
 are on by default; opt out with `alfred telemetry off`.
@@ -28,6 +28,19 @@ When both arms run they are fused with **Reciprocal Rank Fusion** (RRF):
 `score(id) = Σ 1 / (k + rank)` over each arm's ranked list, `k` default 60. A
 lesson both arms rank highly rises above one only a single arm found. With only
 the lexical arm, the fused order is exactly the BM25 order.
+
+With the default lexical arm, a non-empty query that has no meaningful match
+returns no lessons from the shipped chain. The tokenizer drops common English
+words and generic task verbs before it searches, so sharing only a term such as
+`the` or `fix` does not turn an unrelated lesson into a hit. The FleetBrain
+fallback uses literal matching. Alfred does not substitute unrelated recent
+lessons into an agent prompt. A recall without a query is an explicit
+unfiltered listing and uses recency order.
+
+The optional dense arm returns nearest semantic candidates. Vector search does
+not have a universal model-independent definition of a miss, so dense recall
+can return a candidate when lexical recall is empty. Leave dense recall off
+when the operator needs strict lexical empty-on-miss behavior.
 
 **The dense arm is optional and degrades cleanly.** If `sqlite-vec` is not
 installed (`pip install "alfred-os[vector]"`) or the Ollama embedder is
@@ -119,7 +132,7 @@ not before. Concretely, any one of:
   is the fix.
 
 Until one of those is true, stay on the SQLite default. It is faster to operate
-(no daemon) and semantically identical.
+(no daemon) and implements the same provider contract.
 
 ### pgvector knobs
 

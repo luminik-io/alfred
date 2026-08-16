@@ -26,7 +26,7 @@ import os
 import re
 import sys
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.pgvector_provider as mod  # noqa: E402
+import memory_tokens as token_mod  # noqa: E402
 from agent_runner import memory_ranking  # noqa: E402
 from agent_runner.memory_runtime import load_runtime_memory  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
@@ -106,23 +107,1599 @@ def test_dense_query_filters_scope_in_the_same_where_as_vector_order() -> None:
 
 def test_lexical_query_or_joins_tokens_and_scopes() -> None:
     sql, params = _lexical_query(
-        ["gateway", "rate"], table="lessons", codename="c", repo="r", pool=5, now=_NOW
+        [("gateway", "gateways"), ("rate", "rates")],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=5,
+        now=_NOW,
     )
     assert "to_tsquery('english', %s)" in sql
     assert "ts_rank(l.body_tsv" in sql
     assert "l.codename = %s" in sql
     # OR-of-tokens tsquery, like the SQLite FTS arm.
-    assert params[0] == "gateway | rate"
+    assert params[:4] == [
+        [0, 0, 1, 1],
+        ["gateway", "gateway", "rate", "rate"],
+        ["gateway", "gateways", "rate", "rates"],
+        "gateway | gateways | rate | rates",
+    ]
     assert params[-1] == 5
+
+
+def test_lexical_query_deduplicates_english_lexemes_before_candidate_limit() -> None:
+    sql, params = _lexical_query(
+        [("caching", "cachings"), ("cached", "cacheds"), ("response", "responses")],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
+    )
+
+    where, _, order = sql.partition("ORDER BY")
+    assert "WITH query_lexemes AS" in where
+    assert "SELECT DISTINCT concept_index" in where
+    assert "plainto_tsquery('english', canonical) AS canonical_query" in where
+    assert "plainto_tsquery('english', token) AS lexeme_query" in where
+    assert "FROM unnest(%s::int[], %s::text[], %s::text[])" in where
+    assert "numnode(plainto_tsquery('english', token)) > 0" in where
+    assert "l.body_tsv @@ to_tsquery('english', %s)" in where
+    assert "SELECT COUNT(DISTINCT q.canonical_query) FROM query_lexemes q" in where
+    assert ">= LEAST(2, (SELECT COUNT(DISTINCT canonical_query) FROM query_lexemes))" in where
+    assert "LIMIT %s" in order
+    assert params == [
+        [0, 0, 1, 1, 2, 2],
+        ["caching", "caching", "cached", "cached", "response", "response"],
+        ["caching", "cachings", "cached", "cacheds", "response", "responses"],
+        "caching | cachings | cached | cacheds | response | responses",
+        _NOW,
+        "c",
+        "r",
+        "caching | cachings | cached | cacheds | response | responses",
+        2,
+    ]
+
+
+def test_lexical_query_counts_variants_as_one_required_concept() -> None:
+    sql, params = _lexical_query(
+        [("graphql", "graphqls"), ("policy", "policies")],
+        table="lessons",
+        codename=None,
+        repo=None,
+        pool=2,
+        now=_NOW,
+    )
+
+    assert "COUNT(DISTINCT q.canonical_query)" in sql
+    assert "COUNT(DISTINCT canonical_query)" in sql
+    assert params[:3] == [
+        [0, 0, 1, 1],
+        ["graphql", "graphql", "policy", "policy"],
+        ["graphql", "graphqls", "policy", "policies"],
+    ]
+
+
+def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, Any]] = []
+
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            self.calls.append((normalized, _params))
+            if normalized.startswith("SELECT COALESCE(bool_and"):
+                assert _params == [["caching", "cached", "response"]]
+                return Cursor([(True,)])
+            if "SELECT l.id FROM lessons l" in normalized:
+                return Cursor([("stemmed",)])
+            if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
+                return Cursor([("stemmed", "cache invalidation", "[]")])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db")
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        "caching cached responses",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["stemmed"]
+    assert len(conn.calls) == 2
+    assert conn.calls[1][1][:3] == [
+        [0, 0, 1, 1, 2, 2],
+        ["caching", "caching", "cached", "cached", "response", "response"],
+        ["caching", "cachings", "cached", "cacheds", "response", "responses"],
+    ]
+
+
+@pytest.mark.parametrize("stop_concept", ["not", "very"])
+def test_pg_fts_unrepresentable_concept_uses_exact_bounded_fallback(
+    stop_concept: str,
+) -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, list[Any]]] = []
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            self.calls.append((normalized, params))
+            if normalized.startswith("SELECT COALESCE(bool_and"):
+                assert params == [["api", stop_concept]]
+                return Cursor([(False,)])
+            if "FROM lessons l WHERE" in normalized:
+                assert "body_tsv" not in normalized
+                assert params[-1] == 50
+                return Cursor(
+                    [
+                        ("api-only", "api guidance", _NOW),
+                        (
+                            "relevant",
+                            f"api {stop_concept} guidance",
+                            _NOW - timedelta(seconds=1),
+                        ),
+                    ]
+                )
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        f"API {stop_concept}",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+    assert len(conn.calls) == 2
+    assert sum("body_tsv" in sql for sql, _params in conn.calls) == 0
+
+
+def test_pg_fts_concept_preflight_and_fallback_keep_query_bounds() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.preflight_calls = 0
+            self.fallback_calls = 0
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if normalized.startswith("SELECT COALESCE(bool_and"):
+                self.preflight_calls += 1
+                assert len(params) == 1
+                assert len(params[0]) == 24
+                return Cursor([(False,)])
+            if "FROM lessons l WHERE" in normalized:
+                self.fallback_calls += 1
+                assert params[-1] == 50
+                return Cursor([])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        " ".join(f"concept{index}" for index in range(100)),
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == []
+    assert conn.preflight_calls == 1
+    assert conn.fallback_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("query", "collision_body", "matching_body"),
+    [
+        ("C++", "Use C# for the client", "Use C++ for the client"),
+        ("C#", "Use C++ for the client", "Use C# for the client"),
+        ("F#", "Use C# for the client", "Use F# for the client"),
+        ("N+12", "Avoid N+13 queries", "Avoid N+12 queries"),
+        ("O(42)", "The lookup is O(1)", "The lookup is O(42)"),
+        ("I/O", "Use IO batching", "Use I/O batching"),
+        ("A/B", "Use A/C testing", "Use A/B testing"),
+        ("HTTP/2.1", "Require HTTP/3", "Require HTTP/2.1"),
+    ],
+)
+def test_fts_enabled_symbolic_queries_use_exact_bounded_fallback(
+    query: str,
+    collision_body: str,
+    matching_body: str,
+) -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.fts_calls = 0
+            self.fallback_calls = 0
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "body_tsv" in normalized:
+                self.fts_calls += 1
+                return Cursor([("collision",)])
+            if "FROM lessons l WHERE" in normalized:
+                self.fallback_calls += 1
+                assert params[-1] == 50
+                return Cursor(
+                    [
+                        ("collision", collision_body.casefold(), _NOW),
+                        (
+                            "matching",
+                            matching_body.casefold(),
+                            _NOW - timedelta(seconds=1),
+                        ),
+                    ]
+                )
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+    conn = Connection()
+
+    ids = provider._lexical_ids(conn, query, codename="c", repo="r", now=_NOW)
+
+    assert ids == ["matching"]
+    assert conn.fts_calls == 0
+    assert conn.fallback_calls == 1
 
 
 def test_lexical_like_fallback_matches_body_and_tags() -> None:
     sql, params = _lexical_like_query(
-        ["graphql"], table="lessons", codename=None, repo="r", pool=3, now=_NOW
+        [("graphql", "graphqls")],
+        table="lessons",
+        codename=None,
+        repo="r",
+        pool=3,
+        now=_NOW,
     )
-    assert "l.body ILIKE %s OR l.tags_json ILIKE %s" in sql
+    assert "l.lexical_text ILIKE %s" in sql
     assert "%graphql%" in params
+    assert "OFFSET" not in sql
     assert params[-1] == 3
+
+
+def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
+    sql, params = _lexical_like_query(
+        [("graphql", "graphqls"), ("schema", "schemas")],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
+    )
+
+    where, _, order = sql.partition("ORDER BY")
+    assert (
+        where.count(
+            "CAST((l.lexical_text ILIKE %s ESCAPE '\\' OR "
+            "l.lexical_text ILIKE %s ESCAPE '\\') AS INTEGER)"
+        )
+        == 2
+    )
+    assert ") >= %s" in where
+    assert "LIMIT %s" in order
+    assert "OFFSET" not in order
+    assert params == [
+        "%graphql%",
+        "%graphqls%",
+        "%schema%",
+        "%schemas%",
+        2,
+        _NOW,
+        "c",
+        "r",
+        2,
+    ]
+
+
+def test_lexical_like_fallback_uses_created_at_id_keyset() -> None:
+    sql, params = _lexical_like_query(
+        [("graphql", "graphqls"), ("schema", "schemas")],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
+        after=(_NOW, "lesson-9"),
+    )
+
+    where, _, order = sql.partition("ORDER BY")
+    assert "l.created_at < %s OR (l.created_at = %s AND l.id > %s)" in where
+    assert "l.created_at DESC, l.id" in order
+    assert "OFFSET" not in sql
+    assert params[-4:] == [_NOW, _NOW, "lesson-9", 2]
+
+
+def test_lexical_like_fallback_pages_past_substring_only_matches() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.candidate_sql: list[str] = []
+
+        def execute(self, sql: str, params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                page = len(self.candidate_sql)
+                self.candidate_sql.append(normalized)
+                pages = {
+                    0: [
+                        (
+                            f"weak-{index:02}",
+                            f"rapid rollout {index}",
+                            _NOW - timedelta(seconds=index),
+                        )
+                        for index in range(50)
+                    ],
+                    1: [
+                        (
+                            "valid-older",
+                            "api rapid response policy",
+                            datetime(2026, 7, 8, tzinfo=UTC),
+                        )
+                    ],
+                }
+                return Cursor(pages.get(page, []))
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        "api rapid",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["valid-older"]
+    assert len(conn.candidate_sql) == 2
+    assert "OFFSET" not in conn.candidate_sql[0]
+    assert "l.created_at < %s OR (l.created_at = %s AND l.id > %s)" in conn.candidate_sql[1]
+
+
+@pytest.mark.parametrize("pool", [1, 2])
+def test_lexical_like_fallback_candidate_page_is_independent_of_result_pool(pool: int) -> None:
+    rows = [
+        (
+            f"weak-{index:02}",
+            f"rapid rollout {index}",
+            _NOW - timedelta(seconds=index),
+        )
+        for index in range(pool * 8)
+    ]
+    rows.append(
+        (
+            "valid-older",
+            "api rapid response policy",
+            _NOW - timedelta(minutes=1),
+        )
+    )
+
+    class Cursor:
+        def __init__(self, page: list[tuple[Any, ...]]) -> None:
+            self.page = page
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.page
+
+    class Connection:
+        def __init__(self) -> None:
+            self.offset = 0
+            self.page_sizes: list[int] = []
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" not in normalized:
+                raise AssertionError(f"unexpected SQL: {normalized}")
+            page_size = int(params[-1])
+            self.page_sizes.append(page_size)
+            page = rows[self.offset : self.offset + page_size]
+            self.offset += len(page)
+            return Cursor(page)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=pool)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(conn, "api rapid", codename="c", repo="r", now=_NOW)
+
+    assert ids == ["valid-older"]
+    assert conn.page_sizes == [50]
+
+
+def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.candidate_calls = 0
+
+        def execute(self, sql: str, params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                page = self.candidate_calls
+                self.candidate_calls += 1
+                if page >= 20:
+                    return Cursor([])
+                rows = [
+                    (
+                        f"weak-{page:02}-{index}",
+                        f"rapid rollout {page}-{index}",
+                        datetime(2026, 7, 9 - (page // 8), tzinfo=UTC),
+                    )
+                    for index in range(50)
+                ]
+                return Cursor(rows)
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(
+        conn,
+        "api rapid",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == []
+    assert conn.candidate_calls == 8
+
+
+@pytest.mark.parametrize(
+    ("query", "prefix_collision", "matching_text", "expected_pattern"),
+    [
+        (
+            "Node 2",
+            "Node 2.0",
+            "runtime [node 2].",
+            r"(^|[^A-Za-z0-9])node 2($|[^A-Za-z0-9.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "TLS 1.3",
+            "TLS /1.3",
+            "tls (1.3).",
+            r"(^|[^A-Za-z0-9./])1\.3($|[^A-Za-z0-9/.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "192.168.1.2",
+            "/192.168.1.2",
+            "address=(192.168.1.2),",
+            r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "192.168.1.2",
+            "192.168.1.2:443",
+            "address=(192.168.1.2),",
+            r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "192.168.1.2",
+            "192.168.1.2.9",
+            "address=(192.168.1.2).",
+            r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        ),
+        (
+            "2001:db8::1",
+            "[2001:db8::1]:443",
+            "address=[2001:0db8::1],",
+            None,
+        ),
+        ("2001:db8::1", "[2001:db8::1]:https", "address=[2001:db8::1].", None),
+        ("2001:db8::1", "[2001:db8::1]:", "address=[2001:db8::1].", None),
+        (
+            "2001:db8::1",
+            "2001:db8::10",
+            "address=(2001:db8::1).",
+            None,
+        ),
+        (
+            "HTTP/2.1",
+            "HTTP/2.1/path",
+            "protocol [http/2.1],",
+            r"(^|[^A-Za-z0-9/])http/2\.1($|[^A-Za-z0-9./])",
+        ),
+        (
+            "HTTP/2.1",
+            "HTTP/2.1.next",
+            "protocol [http/2.1]",
+            r"(^|[^A-Za-z0-9/])http/2\.1($|[^A-Za-z0-9./])",
+        ),
+    ],
+)
+def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
+    query: str,
+    prefix_collision: str,
+    matching_text: str,
+    expected_pattern: str | None,
+) -> None:
+    if expected_pattern is None:
+        expected_pattern = mod._identity_regex_pattern(mod._query_token_groups(query)[0][0])
+    prefix_rows = [
+        (
+            f"collision-{index:03}",
+            f"{prefix_collision.casefold()} collision {index}",
+            _NOW - timedelta(seconds=index),
+        )
+        for index in range(401)
+    ]
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.candidate_calls = 0
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" not in normalized:
+                raise AssertionError(f"unexpected SQL: {normalized}")
+            self.candidate_calls += 1
+            if expected_pattern in params:
+                assert re.search(expected_pattern, matching_text) is not None
+                return Cursor([("matching", matching_text, _NOW - timedelta(days=1))])
+            page_size = int(params[-1])
+            start = (self.candidate_calls - 1) * page_size
+            return Cursor(prefix_rows[start : start + page_size])
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=1)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(conn, query, codename="c", repo="r", now=_NOW)
+
+    assert ids == ["matching"]
+    assert conn.candidate_calls == 1
+
+
+def test_lexical_like_identity_regex_uses_canonical_class_boundaries() -> None:
+    sql, params = _lexical_like_query(
+        [("c++",), ("node 2",), ("1.3",), ("192.168.1.2",), ("http/2.1",)],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
+    )
+
+    assert sql.count("l.lexical_text ~ %s") == 5
+    assert params[:5] == [
+        r"(^|[^A-Za-z0-9])c\+\+(?:[0-9]{2,4})?([^A-Za-z0-9]|$)",
+        r"(^|[^A-Za-z0-9])node 2($|[^A-Za-z0-9.]|\.$|\.[^A-Za-z0-9])",
+        r"(^|[^A-Za-z0-9./])1\.3($|[^A-Za-z0-9/.]|\.$|\.[^A-Za-z0-9])",
+        r"(^|[^A-Za-z0-9./:])192\.168\.1\.2($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])",
+        r"(^|[^A-Za-z0-9/])http/2\.1($|[^A-Za-z0-9./])",
+    ]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C#",
+        "F#",
+        "N+12",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+    ],
+)
+def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                expected_patterns = {
+                    mod._identity_regex_pattern(variant)
+                    for group in mod._query_token_groups(query)
+                    for variant in group
+                }
+                assert expected_patterns.intersection(params)
+                return Cursor([("match", f"prefer {query.casefold()} for this case.", _NOW)])
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["match"]
+
+
+def test_lexical_like_fallback_requires_language_compound_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("r", "fix r compiler warnings", _NOW),
+                ("c", "fix c compiler warnings", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix C compiler warnings",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["c"]
+
+
+@pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_lexical_like_fallback_canonicalizes_language_identity_contexts(
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    lesson_text = f"{lesson_context.casefold()} warnings guidance"
+    wrong_text = f"{wrong_context.casefold()} warnings guidance"
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            patterns = [
+                value.strip("%")
+                for value in params
+                if isinstance(value, str) and value.startswith("%")
+            ]
+            rows = [
+                (lesson_id, text, _NOW - timedelta(seconds=index))
+                for index, (lesson_id, text) in enumerate(
+                    [("wrong", wrong_text), ("matching", lesson_text)]
+                )
+                if any(pattern in text for pattern in patterns)
+            ]
+            return Cursor(rows)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        f"Fix {query_context} warnings",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Rename column C in GraphQL schema", "Rename variable R in GraphQL schema"],
+)
+def test_lexical_like_fallback_does_not_require_one_letter_labels(query: str) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("relevant", "graphql schema renaming guidance", _NOW)]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_requires_symbolic_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("c-sharp", "fix c# compiler warnings", _NOW),
+                ("c-plus-plus", "fix c++ compiler warnings", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix C++ compiler warnings",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["c-plus-plus"]
+
+
+@pytest.mark.parametrize(
+    ("query", "version", "wrong_text", "matching_text"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "1.3",
+            "tls 1.2 configuration guidance",
+            "tls 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "3.13",
+            "python 3.12 runtime guidance",
+            "python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_lexical_like_fallback_requires_dotted_version_identity(
+    query: str,
+    version: str,
+    wrong_text: str,
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", wrong_text, _NOW),
+                ("matching", matching_text, _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert mod._identity_regex_pattern(version) in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    ("query", "identity", "wrong_texts", "matching_text"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            "c++17",
+            ["fix c#17 compiler warnings", "fix c++20 compiler warnings"],
+            "fix c++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            "c#17",
+            ["fix c++17 compiler warnings", "fix c#12 compiler warnings"],
+            "fix c#17 compiler warnings",
+        ),
+    ],
+)
+def test_lexical_like_fallback_requires_atomic_language_standard_identity(
+    query: str,
+    identity: str,
+    wrong_texts: list[str],
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            rows = [
+                (f"wrong-{index}", text, _NOW - timedelta(seconds=index))
+                for index, text in enumerate(wrong_texts)
+            ]
+            rows.append(("matching", matching_text, _NOW - timedelta(seconds=10)))
+            return rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert mod._identity_regex_pattern(identity) in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=3)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    ("query", "identity", "wrong_text", "matching_text"),
+    [
+        (
+            "Fix Python 3 migration",
+            "python 3",
+            "python 2 migration guidance",
+            "python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "node 22",
+            "node 20 runtime guidance",
+            "node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "node.js 22",
+            "node.js 20 runtime guidance",
+            "node.js 22 runtime guidance",
+        ),
+        (
+            "Fix NodeJS 22 runtime",
+            "nodejs 22",
+            "nodejs 20 runtime guidance",
+            "nodejs 22 runtime guidance",
+        ),
+    ],
+)
+def test_lexical_like_fallback_requires_contextual_major_version_identity(
+    query: str,
+    identity: str,
+    wrong_text: str,
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", wrong_text, _NOW),
+                ("matching", matching_text, _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert mod._identity_regex_pattern(identity) in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_text", "matching_text"),
+    [
+        ("Python migration", "python 3 packaging guidance", "python 3 migration guidance"),
+        ("Node runtime", "node 22 packaging guidance", "node 22 runtime guidance"),
+        ("Node.js runtime", "node.js 22 packaging guidance", "node.js 22 runtime guidance"),
+        ("NodeJS runtime", "nodejs 22 packaging guidance", "nodejs 22 runtime guidance"),
+        ("C++ compiler", "c++17 linker guidance", "c++17 compiler guidance"),
+        ("C# compiler", "c#17 linker guidance", "c#17 compiler guidance"),
+    ],
+)
+def test_lexical_like_fallback_unversioned_technology_matches_versioned_lesson(
+    query: str,
+    crowding_text: str,
+    matching_text: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("crowding", crowding_text, _NOW),
+                ("matching", matching_text, _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=1)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+def test_lexical_like_fallback_requires_ipv4_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", "connect 192.168.1.3 database guidance", _NOW),
+                (
+                    "matching",
+                    "connect 192.168.1.2 database guidance",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+def test_lexical_like_fallback_requires_canonical_ipv6_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("wrong", "connect 2001:db8::2 database guidance", _NOW),
+                (
+                    "matching",
+                    "connect 2001:0db8:0000:0000:0000:0000:0000:0001 database guidance",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            assert mod._identity_regex_pattern("2001:db8::1") in params
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Connect 2001:db8::1 database",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+@pytest.mark.parametrize(
+    ("text", "matches"),
+    [
+        ("2001:db8::1", True),
+        ("address=(2001:db8::1).", True),
+        ("address=[2001:db8::1].", True),
+        ("2001:0db8:0000:0000:0000:0000:0000:0001", True),
+        ("2001:db8::2", False),
+        ("2001:db8::10", False),
+        ("[2001:db8::1]:443", False),
+        ("[2001:db8::1]:https", False),
+        ("[2001:db8::1]:", False),
+        ("2001:db8::1/64", False),
+        ("fe80::1%en0", False),
+    ],
+)
+def test_ipv6_identity_regex_variants_preserve_exact_boundaries(
+    text: str,
+    matches: bool,
+) -> None:
+    patterns = [
+        mod._identity_regex_pattern(variant)
+        for variant in mod._query_token_groups("2001:db8::1")[0]
+    ]
+
+    assert any(re.search(pattern, text.casefold()) for pattern in patterns) is matches
+
+
+@pytest.mark.parametrize(
+    ("query", "canonical", "equivalent_forms"),
+    [
+        (
+            "2001:db8::1",
+            "2001:db8::1",
+            [
+                "2001:0db8::1",
+                "2001:db8:0:0:0:0:0:1",
+                "2001:db8:0::0:1",
+                "2001:0db8:0000:0000:0000:0000:0000:0001",
+            ],
+        ),
+        (
+            "::ffff:192.0.2.1",
+            "::ffff:c000:201",
+            [
+                "::ffff:192.0.2.1",
+                "::ffff:c000:201",
+                "0:0:0:0:0:ffff:192.0.2.1",
+                "0000:0000:0000:0000:0000:ffff:c000:0201",
+            ],
+        ),
+    ],
+)
+def test_ipv6_pg_regex_matches_every_representative_stdlib_equivalent(
+    query: str,
+    canonical: str,
+    equivalent_forms: list[str],
+) -> None:
+    assert mod._query_token_groups(query) == [(canonical,)]
+    pattern = mod._identity_regex_pattern(canonical)
+    assert len(pattern) <= 8_192
+    for form in equivalent_forms:
+        assert token_mod.identity_variant_matches(form, canonical)
+        assert re.search(pattern, form.casefold()) is not None
+
+
+@pytest.mark.parametrize(
+    ("query_alias", "lesson_alias"),
+    [
+        ("Node", "Node.js"),
+        ("Node", "NodeJS"),
+        ("Node.js", "Node"),
+        ("Node.js", "NodeJS"),
+        ("NodeJS", "Node"),
+        ("NodeJS", "Node.js"),
+    ],
+)
+def test_lexical_like_fallback_retrieves_cross_alias_node_major(
+    query_alias: str,
+    lesson_alias: str,
+) -> None:
+    matching_text = f"{lesson_alias.casefold()} 22 runtime guidance"
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            patterns = [
+                value.strip("%")
+                for value in params
+                if isinstance(value, str) and value.startswith("%")
+            ]
+            rows = (
+                [("matching", matching_text, _NOW)]
+                if any(pattern in matching_text for pattern in patterns)
+                else []
+            )
+            return Cursor(rows)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        f"Fix {query_alias} 22 runtime",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["matching"]
+
+
+def test_lexical_like_fallback_recalls_unicode_query() -> None:
+    query = "認証エラーを修正"
+    lesson_body = f"手順: {query}してください"
+
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match", lesson_body.casefold(), _NOW)]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(Connection(), query, codename="c", repo="r", now=_NOW)
+
+    assert ids == ["match"]
+
+
+def test_lexical_like_fallback_requires_unicode_subject_in_mixed_query() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("api-only", "the api client retries requests", _NOW),
+                (
+                    "relevant",
+                    "api の課金エラーを修正する手順",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API の課金エラーを修正",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_requires_devanagari_subject_in_mixed_query() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("api-only", "the api client retries requests", _NOW),
+                (
+                    "relevant",
+                    "api डेटा मिटाएँ प्रक्रिया",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API डेटा मिटाएँ",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_requires_single_character_unicode_subject() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("api-only", "api billing guidance", _NOW),
+                ("relevant", "api 税 guidance", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API 税",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_matches_singular_lesson_for_plural_query() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("graphql-only", "graphql resolver guidance", _NOW),
+                ("relevant", "graphql schema guidance", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix GraphQL schemas",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("graphql-only", "graphql resolver guidance", _NOW),
+                ("relevant", "graphql schema guidance", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix src/api GraphQL schema",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
+        ("class", "classes"),
+        ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
+    ],
+)
+def test_lexical_like_fallback_preserves_inflection_retrieval_variants(
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    lexical_text = f"graphql {lesson_term} must be reviewed"
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" not in normalized:
+                raise AssertionError(f"unexpected SQL: {normalized}")
+            patterns = [
+                value.strip("%")
+                for value in params
+                if isinstance(value, str) and value.startswith("%")
+            ]
+            threshold = next(value for value in params if isinstance(value, int))
+            matches = sum(pattern in lexical_text for pattern in patterns)
+            rows = [("relevant", lexical_text, _NOW)] if matches >= threshold else []
+            return Cursor(rows)
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        f"Fix GraphQL {query_term}",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
+def test_lexical_like_fallback_matches_unicode_subject_stored_only_in_tag() -> None:
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert normalized.startswith("SELECT l.id, l.lexical_text")
+            return Cursor([("match", "api billing guidance 課金", _NOW)])
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API 課金",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["match"]
+
+
+def test_token_empty_literal_lookup_is_bounded_escaped_and_scoped() -> None:
+    calls: list[tuple[str, list[Any]]] = []
+
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match",)]
+
+    class Connection:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            calls.append((" ".join(sql.split()), params))
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=1000)
+
+    ids = provider._lexical_ids(Connection(), "修_%", codename="c", repo="r", now=_NOW)
+
+    assert ids == ["match"]
+    assert len(calls) == 1
+    sql, params = calls[0]
+    assert "l.lexical_text ILIKE %s ESCAPE '\\'" in sql
+    assert "l.codename = %s" in sql
+    assert "l.repo = %s" in sql
+    assert params[0] == r"%修\_\%%"
+    assert params[-1] == 400
+
+
+def test_token_empty_literal_lookup_nfkc_normalizes_before_prefilter() -> None:
+    calls: list[list[Any]] = []
+
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match",)]
+
+    class Connection:
+        def execute(self, _sql: str, params: list[Any]) -> Cursor:
+            calls.append(params)
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+
+    assert provider._lexical_ids(Connection(), "ｴﾗｰ", codename="c", repo="r", now=_NOW) == ["match"]
+    assert calls[0][0] == "%エラー%"
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        ("Fix cold-start handling", "Use cold start handling in the request path."),
+        ("Fix cold start handling", "Use cold-start handling in the request path."),
+    ],
+)
+def test_lexical_like_fallback_matches_hyphenated_spelling_variants(
+    query: str,
+    lesson_body: str,
+) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("match", lesson_body.casefold(), _NOW)]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["match"]
 
 
 def test_recency_query_is_scoped_and_ordered() -> None:
@@ -518,6 +2095,61 @@ class _RecordingConn:
         return _FakeCursor()
 
 
+class _LexicalMigrationConn(_RecordingConn):
+    def __init__(self) -> None:
+        super().__init__()
+        self.has_lexical_column = False
+        self.rows = [
+            ("legacy-a", "Use Ａ／Ｂ testing", '["Ｆ＃"]'),  # noqa: RUF001
+            ("legacy-b", "Straße caching", "[]"),
+        ]
+        self.updates: list[tuple[str, str]] = []
+        self.tsv_updates: list[tuple[str, str]] = []
+
+    def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
+        normalized = " ".join(sql.split())
+        self.sql.append(normalized)
+        if "FROM information_schema.columns" in normalized:
+            return _FakeCursor([(self.has_lexical_column,)])
+        if "ADD COLUMN IF NOT EXISTS lexical_text" in normalized:
+            self.has_lexical_column = True
+            return _FakeCursor()
+        if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
+            after = str(params[0])
+            rows = [row for row in self.rows if row[0] > after]
+            return _FakeCursor(rows)
+        if normalized.startswith("UPDATE lessons SET lexical_text"):
+            surface, lesson_id = str(params[0]), str(params[-1])
+            self.updates.append((surface, lesson_id))
+            if "body_tsv = to_tsvector('english', %s)" in normalized:
+                self.tsv_updates.append((str(params[1]), lesson_id))
+            return _FakeCursor(rowcount=1)
+        return _FakeCursor()
+
+
+def test_schema_migration_backfills_canonical_lexical_surface_once() -> None:
+    conn = _LexicalMigrationConn()
+
+    PgvectorProvider(dsn="postgresql://u:p@h/db")._ensure_schema(conn)
+
+    assert conn.updates == [
+        ("use a/b testing f#", "legacy-a"),
+        ("strasse caching", "legacy-b"),
+    ]
+    assert conn.tsv_updates == [
+        ("use a/b testing f#", "legacy-a"),
+        ("strasse caching", "legacy-b"),
+    ]
+    assert any("lexical_text = ''" in sql for sql in conn.sql)
+
+    conn.updates.clear()
+    conn.tsv_updates.clear()
+    PgvectorProvider(dsn="postgresql://u:p@h/db")._ensure_schema(conn)
+
+    assert conn.updates == []
+    assert conn.tsv_updates == []
+
+
 def _generated_identifiers(sql_log: list[str]) -> set[str]:
     """Extract the table/index identifiers a schema run created."""
     ids: set[str] = set()
@@ -614,6 +2246,10 @@ class _FakePgConn:
     def __init__(self) -> None:
         self.closed = False
         self.lessons: dict[str, dict[str, Any]] = {}
+        self.lexical_texts: dict[str, str] = {}
+        self.dense_ids: list[str] = []
+        self.dense_limits: list[int] = []
+        self.dense_filter_queries = 0
         self.anchors: list[dict[str, Any]] = []
         self.reuse: dict[str, int] = {}
 
@@ -636,6 +2272,13 @@ class _FakePgConn:
     def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
         s = " ".join(sql.split())
         p = list(params)
+        if "ORDER BY l.embedding <=> %s::vector" in s:
+            limit = int(p[-1])
+            self.dense_limits.append(limit)
+            return _FakeCursor([(lesson_id,) for lesson_id in self.dense_ids[:limit]])
+        if s.startswith("SELECT id, lexical_text FROM lessons WHERE id = ANY"):
+            self.dense_filter_queries += 1
+            return _FakeCursor([(lesson_id, self.lexical_texts[lesson_id]) for lesson_id in p[0]])
         if s.startswith("SELECT provenance, codename, repo FROM lessons WHERE id ="):
             row = self.lessons.get(p[0])
             rows = [(row["provenance"], row["codename"], row["repo"])] if row else []
@@ -703,6 +2346,193 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
     provider._conn = fake
     provider._schema_ready = True
     return provider, fake
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_text", "matching_text"),
+    [
+        ("Fix C++ compiler warnings", "c# compiler warnings", "c++ compiler warnings"),
+        ("Fix C++17 compiler warnings", "c++20 compiler warnings", "c++17 compiler warnings"),
+        ("Fix C#17 compiler warnings", "c#20 compiler warnings", "c#17 compiler warnings"),
+        ("Fix C compiler warnings", "r compiler warnings", "c language warnings"),
+        ("Fix TLS 1.3 configuration", "tls 1.2 configuration", "tls 1.3 configuration"),
+        ("Fix NodeJS 22 runtime", "node.js 20 runtime", "node 22 runtime"),
+        (
+            "Connect 192.168.1.2 database",
+            "connect 192.168.1.3 database",
+            "connect 192.168.1.2 database",
+        ),
+        (
+            "Connect 2001:db8::1 database",
+            "connect 2001:db8::2 database",
+            "connect 2001:0db8:0000:0000:0000:0000:0000:0001 database",
+        ),
+        (
+            "Connect ::ffff:192.0.2.1 database",
+            "connect ::ffff:192.0.2.2 database",
+            "connect ::ffff:c000:201 database",
+        ),
+    ],
+)
+def test_dense_recall_requires_matching_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_text: str,
+    matching_text: str,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    fake.lexical_texts = {"wrong": wrong_text, "matching": matching_text}
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        provider,
+        "_dense_ids",
+        lambda *args, **kwargs: ["wrong", "matching"],
+    )
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert out == ["matching"]
+
+
+def test_dense_recall_keeps_semantic_candidates_without_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    fake.lexical_texts = {"semantic": "throttle requests per tenant before dispatch"}
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_dense_ids", lambda *args, **kwargs: ["semantic"])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert out == ["semantic"]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_standard", "matching_standard"),
+    [
+        ("Fix C++ compiler warnings", "c#17", "c++17"),
+        ("Fix C# compiler warnings", "c++17", "c#17"),
+    ],
+)
+def test_dense_identity_filter_runs_before_pgvector_result_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_standard: str,
+    matching_standard: str,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    provider.dimensions = 2
+    provider.embedder = lambda _text: [0.1, 0.2]
+    wrong_ids = [f"wrong-{index}" for index in range(50)]
+    fake.dense_ids = [*wrong_ids, "matching"]
+    fake.lexical_texts = {
+        **dict.fromkeys(wrong_ids, f"{wrong_standard} compiler warnings"),
+        "matching": f"{matching_standard} compiler warnings",
+    }
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert out == ["matching"]
+    assert fake.dense_limits == [400]
+    assert fake.dense_filter_queries == 1
+
+
+def test_pgvector_dense_candidate_budget_stops_at_rank_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    provider.dimensions = 2
+    provider.embedder = lambda _text: [0.1, 0.2]
+    wrong_ids = [f"wrong-{index}" for index in range(400)]
+    fake.dense_ids = [*wrong_ids, "matching"]
+    fake.lexical_texts = {
+        **dict.fromkeys(wrong_ids, "c#17 compiler warnings"),
+        "matching": "c++17 compiler warnings",
+    }
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query="Fix C++ compiler warnings", codename="c", repo="r")
+
+    assert out == []
+    assert fake.dense_limits == [400]
+
+
+def test_pgvector_dense_identity_free_query_keeps_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    provider.dimensions = 2
+    provider.embedder = lambda _text: [0.1, 0.2]
+    fake.dense_ids = [f"semantic-{index}" for index in range(10)]
+    fake.lexical_texts = dict.fromkeys(fake.dense_ids, "semantic guidance")
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert out == ["semantic-0", "semantic-1"]
+    assert fake.dense_limits == [2]
+
+
+def test_query_miss_does_not_backfill_recent_lessons(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, _ = _fake_provider()
+    provider._vec_ok = False
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+
+    recency_calls: list[bool] = []
+
+    def track_recency(*args: Any, **kwargs: Any) -> list[str]:
+        recency_calls.append(True)
+        return ["recent"]
+
+    monkeypatch.setattr(provider, "_recency_ids", track_recency)
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    assert provider.recall(query="missing topic", repo="acme/api") == []
+    assert recency_calls == []
+
+
+def test_unfiltered_recall_uses_recent_lessons(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider, _ = _fake_provider()
+    provider._vec_ok = False
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    lexical_calls: list[bool] = []
+
+    def track_lexical(*args: Any, **kwargs: Any) -> list[str]:
+        lexical_calls.append(True)
+        return []
+
+    monkeypatch.setattr(provider, "_lexical_ids", track_lexical)
+    monkeypatch.setattr(provider, "_recency_ids", lambda *args, **kwargs: ["recent"])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    assert provider.recall(repo="acme/api") == ["recent"]
+    assert lexical_calls == []
 
 
 def test_union_reuse_counts_moves_and_clears() -> None:
@@ -797,3 +2627,49 @@ def test_live_write_recall_merge_forget_round_trip() -> None:
     assert provider.health()["ok"] is True
     assert provider.forget_lesson("pgtest-a") is True
     assert provider.forget_lesson("pgtest-b") is True
+
+
+@pytest.mark.skipif(
+    not _LIVE_DSN or not mod.psycopg_available(),
+    reason="set ALFRED_MEMORY_PG_DSN and install psycopg to run the live pgvector test",
+)
+def test_live_fts_deduplicates_stems_before_overlap_and_candidate_limit() -> None:
+    provider = PgvectorProvider.from_env(
+        env={
+            **os.environ,
+            "ALFRED_MEMORY_PG_DSN": _LIVE_DSN,
+            "ALFRED_MEMORY_PG_DENSE": "0",
+            "ALFRED_MEMORY_PG_POOL": "2",
+        }
+    )
+    lesson_ids = ("pgtest-stem-relevant", "pgtest-stem-cache", "pgtest-stem-response")
+    try:
+        relevant = provider.reflect(
+            codename="lucius",
+            repo="acme/api",
+            body="cache response",
+            memory_id=lesson_ids[0],
+        )
+        provider.reflect(
+            codename="lucius",
+            repo="acme/api",
+            body=" ".join(["cache"] * 50),
+            memory_id=lesson_ids[1],
+        )
+        provider.reflect(
+            codename="lucius",
+            repo="acme/api",
+            body=" ".join(["response"] * 50),
+            memory_id=lesson_ids[2],
+        )
+
+        out = provider.recall(
+            query="caching cached responses",
+            codename="lucius",
+            repo="acme/api",
+        )
+
+        assert [lesson.id for lesson in out] == [relevant.id]
+    finally:
+        for lesson_id in lesson_ids:
+            provider.forget_lesson(lesson_id)

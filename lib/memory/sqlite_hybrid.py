@@ -1,9 +1,9 @@
 """Embedded SQLite hybrid memory provider (zero-daemon default).
 
-This provider gives Alfred semantic-quality recall of promoted lessons
-without any running service. It is the zero-dependency default recall
-backend: a single SQLite file under the state root, no Redis, no Ollama,
-no cloud vector database.
+This provider gives Alfred ranked lexical recall of promoted lessons without
+any running service. It is the zero-dependency default recall backend: a single
+SQLite file under the state root, no Redis, no Ollama, no cloud vector database.
+Dense semantic retrieval is optional.
 
 Retrieval is hybrid and degrades in clean tiers:
 
@@ -46,7 +46,6 @@ import contextlib
 import json
 import logging
 import os
-import re
 import sqlite3
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -67,6 +66,26 @@ from fleet_brain import (
     normalize_kind,
 )
 from fleet_brain.taxonomy import DEFAULT_LESSON_KIND
+from memory_tokens import MAX_DENSE_QUERY_CANDIDATES, MAX_LITERAL_QUERY_CANDIDATES
+from memory_tokens import escape_like_literal as _escape_like_literal
+from memory_tokens import (
+    has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
+)
+from memory_tokens import identity_variant_matches as _identity_variant_matches
+from memory_tokens import is_identity_token as _is_identity_token
+from memory_tokens import lexical_surface as _lexical_surface
+from memory_tokens import literal_fallback_query as _literal_fallback_query
+from memory_tokens import query_token_groups as _query_token_groups
+from memory_tokens import required_identities_match as _required_identities_match
+from memory_tokens import (
+    required_lexical_overlap as _required_lexical_overlap,
+)
+from memory_tokens import (
+    requires_exact_lexical_tokens as _requires_exact_lexical_tokens,
+)
+from memory_tokens import (
+    tokenize as _tokenize,
+)
 
 __all__ = ["SqliteHybridProvider", "default_hybrid_db_path"]
 
@@ -80,12 +99,18 @@ _DEFAULT_EMBEDDING_DIM = 1024
 _DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 _EMBED_TIMEOUT_S = 5.0
 
-# Token extraction for the FTS/LIKE lexical arm. One-character tokens are
-# dropped as noise; the list is capped so a giant issue-body query cannot build
-# a pathological MATCH expression.
-_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
-_COMPOUND_TOKEN_RE = re.compile(r"\b[A-Za-z0-9]+(?:\s*[+/#-]\s*[A-Za-z0-9]+)+\b")
-_MAX_QUERY_TOKENS = 24
+# The substring fallback is a last-resort path for SQLite builds without FTS5.
+# Keep it predictably bounded even when every recent lesson is a false
+# substring match. Eight keyset pages of at most 50 rows means one recall
+# inspects no more than 400 candidates and issues no more than eight fallback
+# queries. Smaller configured pools keep their existing page size.
+_LEXICAL_FALLBACK_PAGE_SIZE = 50
+_MAX_LEXICAL_FALLBACK_PAGES = 8
+# FTS retrieves a wider BM25-ranked window before exact overlap filtering so
+# short partial matches cannot consume a small result pool. The scan shares
+# the 400-candidate hard cap used by bounded literal recall.
+_MIN_LEXICAL_FTS_CANDIDATES = 50
+_LEXICAL_MIGRATION_BATCH_SIZE = 200
 
 
 def default_hybrid_db_path(env: Mapping[str, str] | None = None) -> Path:
@@ -321,6 +346,12 @@ class SqliteHybridProvider:
 
     def _open(self, target: str) -> sqlite3.Connection:
         conn = sqlite3.connect(target)
+        conn.create_function(
+            "alfred_identity_variant_matches",
+            2,
+            _identity_variant_matches,
+            deterministic=True,
+        )
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA synchronous = NORMAL")
         return conn
@@ -346,6 +377,7 @@ class SqliteHybridProvider:
                     repo          TEXT NOT NULL,
                     body          TEXT NOT NULL,
                     tags_json     TEXT NOT NULL DEFAULT '[]',
+                    lexical_text  TEXT NOT NULL DEFAULT '',
                     severity      TEXT NOT NULL DEFAULT 'info',
                     firing_id     TEXT,
                     created_at    TEXT NOT NULL,
@@ -368,6 +400,11 @@ class SqliteHybridProvider:
             _add_column_if_missing(conn, "lessons", "valid_until", "TEXT")
             _add_column_if_missing(conn, "lessons", "superseded_by", "TEXT")
             _add_column_if_missing(conn, "lessons", "provenance", "TEXT")
+            lexical_text_added = _add_column_if_missing(
+                conn, "lessons", "lexical_text", "TEXT NOT NULL DEFAULT ''"
+            )
+            if lexical_text_added:
+                _backfill_lexical_text(conn)
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS lesson_anchors (
@@ -412,6 +449,8 @@ class SqliteHybridProvider:
             )
             if self._fts_ok is None:
                 self._fts_ok = self._try_create_fts(conn)
+            if lexical_text_added and self._fts_ok:
+                _rebuild_fts_lexical_text(conn)
             if self._dense_active(conn):
                 self._try_create_vec(conn)
         self._schema_ready = True
@@ -539,12 +578,13 @@ class SqliteHybridProvider:
         now = _iso(datetime.now(UTC))
         conn.execute(
             "INSERT INTO lessons "
-            "(id, codename, repo, body, tags_json, severity, firing_id, created_at, "
+            "(id, codename, repo, body, tags_json, lexical_text, severity, firing_id, created_at, "
             " updated_at, kind, valid_until, superseded_by, provenance) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (id) DO UPDATE SET "
             "  codename = excluded.codename, repo = excluded.repo, body = excluded.body, "
-            "  tags_json = excluded.tags_json, severity = excluded.severity, "
+            "  tags_json = excluded.tags_json, lexical_text = excluded.lexical_text, "
+            "  severity = excluded.severity, "
             "  firing_id = excluded.firing_id, created_at = excluded.created_at, "
             "  updated_at = excluded.updated_at, kind = excluded.kind, "
             "  valid_until = excluded.valid_until, superseded_by = excluded.superseded_by, "
@@ -555,6 +595,7 @@ class SqliteHybridProvider:
                 lesson.repo,
                 lesson.body,
                 json.dumps(lesson.tags),
+                self._fts_text(lesson),
                 lesson.severity,
                 lesson.firing_id,
                 _iso(lesson.created_at),
@@ -592,7 +633,7 @@ class SqliteHybridProvider:
 
     @staticmethod
     def _fts_text(lesson: Lesson) -> str:
-        return " ".join([lesson.body, " ".join(lesson.tags)]).strip()
+        return _lexical_surface(" ".join([lesson.body, " ".join(lesson.tags)]).strip())
 
     # ----- read path -----------------------------------------------------
 
@@ -617,17 +658,33 @@ class SqliteHybridProvider:
         call passes no anchors and behaves exactly as Phase 1.
         """
         cap = max(1, int(limit))
-        text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
+        has_query = bool((query or "").strip())
+        text = (query or "").strip()
+        query_tokens = _tokenize(text) if has_query else []
         anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
         with self._connect() as conn:
-            lexical = self._lexical_ids(conn, text, codename=codename, repo=repo)
+            lexical = (
+                self._lexical_ids(conn, text, codename=codename, repo=repo) if has_query else []
+            )
             dense: list[str] = []
-            if self._dense_active(conn):
-                dense = self._dense_ids(conn, text, codename=codename, repo=repo)
+            if has_query and query_tokens and self._dense_active(conn):
+                dense = self._dense_ids(conn, text)
+                dense = self._filter_dense_ids(
+                    conn,
+                    dense,
+                    query_tokens,
+                    codename=codename,
+                    repo=repo,
+                )[: self.pool]
             if not lexical and not dense:
-                # No query signal (or no lexical/dense hit): fall back to the
-                # recency baseline so a scoped rail is never blank.
-                fused_ids = self._recency_ids(conn, codename=codename, repo=repo, limit=cap)
+                # An intentionally unfiltered view gets a recency baseline. A
+                # real query miss stays empty so unrelated recent lessons do
+                # not enter an agent prompt as if they matched the task.
+                fused_ids = (
+                    []
+                    if has_query
+                    else self._recency_ids(conn, codename=codename, repo=repo, limit=cap)
+                )
             else:
                 fused = _reciprocal_rank_fusion(lexical, dense, k=self.rrf_k)
                 fused_ids = [lid for lid, _ in fused]
@@ -692,48 +749,123 @@ class SqliteHybridProvider:
         codename: str | None,
         repo: str | None,
     ) -> list[str]:
-        tokens = _tokenize(text)
+        text = _lexical_surface(text)
+        token_groups = _query_token_groups(text)
+        tokens = [group[0] for group in token_groups]
         if not tokens:
-            return []
+            literal = _literal_fallback_query(text)
+            if literal is None:
+                return []
+            scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
+            pattern = f"%{_escape_like_literal(literal)}%"
+            limit = min(max(1, self.pool), MAX_LITERAL_QUERY_CANDIDATES)
+            sql = (
+                "SELECT l.id FROM lessons l "
+                "WHERE l.lexical_text LIKE ? ESCAPE '\\' "
+                f"{scope_sql} ORDER BY l.created_at DESC, l.id ASC LIMIT ?"
+            )
+            rows = conn.execute(sql, [pattern, *scope_params, limit]).fetchall()
+            return [str(row[0]) for row in rows]
         scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
-        if self._fts_ok:
-            match = " OR ".join(f'"{t}"' for t in tokens)
+        if self._fts_ok and not _requires_exact_lexical_tokens(tokens):
+            retrieval_tokens = dict.fromkeys(variant for group in token_groups for variant in group)
+            match = " OR ".join(f'"{token}"' for token in retrieval_tokens)
+            candidate_limit = min(
+                max(self.pool * 4, _MIN_LEXICAL_FTS_CANDIDATES),
+                MAX_LITERAL_QUERY_CANDIDATES,
+            )
             sql = (
                 "SELECT l.id FROM lessons_fts f JOIN lessons l ON l.id = f.lesson_id "
-                "WHERE f.text MATCH ? " + scope_sql + " ORDER BY bm25(f) LIMIT ?"
+                "WHERE f.text MATCH ? "
+                + scope_sql
+                + " ORDER BY bm25(lessons_fts), l.created_at DESC, l.id ASC LIMIT ?"
             )
-            params: list[Any] = [match, *scope_params, self.pool]
+            params: list[Any] = [match, *scope_params, candidate_limit]
             try:
                 rows = conn.execute(sql, params).fetchall()
-                return [r[0] for r in rows]
+                return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)[: self.pool]
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
-        # LIKE fallback (SQLite build without FTS5): any-token substring match,
-        # most-recent first. Match the SAME body+tags surface the FTS arm indexes
-        # via _fts_text(), so a tag-only hit is still recalled here. Tags are
-        # stored as a JSON array in tags_json, so a token like "graphql" matches
-        # the serialized '["graphql", ...]'.
+        # LIKE fallback (SQLite build without FTS5): require enough token
+        # substrings before each bounded candidate page, then enforce exact
+        # token overlap on the returned canonical lexical surface. Keyset
+        # pagination avoids increasingly expensive OFFSET scans. The fixed page and page-count
+        # caps above bound this fallback to 400 inspected candidates and eight
+        # SQL queries even if the corpus contains only substring false matches.
+        # Match the same canonical body+tags surface the FTS arm indexes via
+        # _fts_text(), so compatibility/case variants and tag-only hits behave
+        # identically before the exact Python overlap filter.
         like_params: list[Any] = []
         clauses: list[str] = []
-        for tok in tokens:
-            clauses.append("(l.body LIKE ? OR l.tags_json LIKE ?)")
-            like_params.extend([f"%{tok}%", f"%{tok}%"])
-        like_sql = " OR ".join(clauses)
-        sql = (
-            f"SELECT l.id FROM lessons l WHERE ({like_sql}) {scope_sql} "
-            "ORDER BY l.created_at DESC LIMIT ?"
-        )
-        params = [*like_params, *scope_params, self.pool]
-        rows = conn.execute(sql, params).fetchall()
-        return [r[0] for r in rows]
+        for group in token_groups:
+            if _is_identity_token(group[0]):
+                group_clauses = [
+                    "alfred_identity_variant_matches(l.lexical_text, ?) = 1" for _variant in group
+                ]
+                like_params.extend(group)
+            else:
+                group_clauses = ["l.lexical_text LIKE ? ESCAPE '\\'" for _variant in group]
+                like_params.extend(f"%{_escape_like_literal(variant)}%" for variant in group)
+            clauses.append(f"({' OR '.join(group_clauses)})")
+        like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
+        base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
+        out: list[str] = []
+        page_size = _lexical_fallback_page_size()
+        after: tuple[str, str] | None = None
+        for _page in range(_MAX_LEXICAL_FALLBACK_PAGES):
+            cursor_sql = ""
+            cursor_params: list[Any] = []
+            if after is not None:
+                created_at, lesson_id = after
+                cursor_sql = "AND (l.created_at < ? OR (l.created_at = ? AND l.id > ?)) "
+                cursor_params = [created_at, created_at, lesson_id]
+            sql = (
+                "SELECT l.id, l.lexical_text, l.created_at FROM lessons l "
+                f"WHERE ({like_score_sql}) >= ? {scope_sql} {cursor_sql}"
+                "ORDER BY l.created_at DESC, l.id ASC LIMIT ?"
+            )
+            rows = conn.execute(sql, [*base_params, *cursor_params, page_size]).fetchall()
+            if not rows:
+                break
+            for lesson_id, lexical_text, _created_at in rows:
+                if _has_meaningful_lexical_overlap(str(lexical_text), tokens):
+                    out.append(str(lesson_id))
+                if len(out) >= self.pool:
+                    break
+            if len(out) >= self.pool:
+                break
+            next_after = (str(rows[-1][2]), str(rows[-1][0]))
+            if next_after == after:
+                break
+            after = next_after
+            if len(rows) < page_size:
+                break
+        return out
+
+    def _filter_lexical_ids(
+        self,
+        conn: sqlite3.Connection,
+        ids: list[str],
+        query_tokens: list[str],
+    ) -> list[str]:
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT id, lexical_text FROM lessons WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        text_by_id = {row[0]: str(row[1]) for row in rows}
+        return [
+            lesson_id
+            for lesson_id in ids
+            if _has_meaningful_lexical_overlap(text_by_id.get(lesson_id, ""), query_tokens)
+        ]
 
     def _dense_ids(
         self,
         conn: sqlite3.Connection,
         text: str,
-        *,
-        codename: str | None,
-        repo: str | None,
     ) -> list[str]:
         if self.embedder is None or not text:
             return []
@@ -741,26 +873,42 @@ class SqliteHybridProvider:
         if not vec or len(vec) != int(self.dimensions):
             return []
         serialized = _serialize_vector(vec)
-        want = self.pool
         # The vec0 KNN limit is GLOBAL and cannot filter on scope or validity, so
-        # taking the top `want` nearest vectors first and filtering afterwards
-        # would drop in-scope/valid vectors whenever enough out-of-scope or
-        # invalidated vectors rank closer. Grow the KNN window until we have
-        # `want` surviving hits or we have pulled every stored vector (an upper
-        # bound from the lessons count), so the filter can never truncate away a
-        # relevant vector. This runs even unscoped so an invalidated (superseded/
-        # expired) lesson is never recalled through the dense arm.
-        (total,) = conn.execute("SELECT COUNT(*) FROM lessons").fetchone()
-        total = max(1, int(total))
-        k = min(total, max(want * 4, want))
-        while True:
-            candidate_ids = self._knn(conn, serialized, limit=k)
-            if not candidate_ids:
-                return []
-            in_scope = self._filter_scope(conn, candidate_ids, codename=codename, repo=repo)
-            if len(in_scope) >= want or k >= total:
-                return in_scope[:want]
-            k = min(total, k * 2)
+        # taking only the result pool before filtering
+        # would drop in-scope, valid, identity-matching vectors whenever enough
+        # other vectors rank closer. Inspect one result-pool-independent bounded
+        # window, then apply every authoritative filter before the pool cap.
+        # This runs even unscoped so an invalidated (superseded/expired) lesson
+        # is never recalled through the dense arm.
+        return self._knn(conn, serialized, limit=MAX_DENSE_QUERY_CANDIDATES)
+
+    def _filter_dense_ids(
+        self,
+        conn: sqlite3.Connection,
+        ids: list[str],
+        query_tokens: list[str],
+        *,
+        codename: str | None,
+        repo: str | None,
+    ) -> list[str]:
+        """Apply scope, validity, and mandatory identities in one bounded read."""
+
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
+        rows = conn.execute(
+            f"SELECT l.id, l.lexical_text FROM lessons l "
+            f"WHERE l.id IN ({placeholders}) {scope_sql}",
+            [*ids, *scope_params],
+        ).fetchall()
+        text_by_id = {str(row[0]): str(row[1]) for row in rows}
+        return [
+            lesson_id
+            for lesson_id in ids
+            if lesson_id in text_by_id
+            and _required_identities_match(text_by_id[lesson_id], query_tokens)
+        ]
 
     def _knn(self, conn: sqlite3.Connection, serialized: Any, *, limit: int) -> list[str]:
         try:
@@ -773,27 +921,6 @@ class SqliteHybridProvider:
             _LOG.debug("memory.sqlite: dense KNN failed: %s", exc)
             return []
         return [r[0] for r in rows]
-
-    def _filter_scope(
-        self,
-        conn: sqlite3.Connection,
-        candidate_ids: list[str],
-        *,
-        codename: str | None,
-        repo: str | None,
-    ) -> list[str]:
-        # vec0 KNN cannot filter on scope columns, so narrow in Python while
-        # preserving the KNN (distance) order.
-        scope_sql, scope_params = _scope_clause(codename, repo, alias="l")
-        placeholders = ",".join("?" for _ in candidate_ids)
-        allowed = {
-            r[0]
-            for r in conn.execute(
-                f"SELECT l.id FROM lessons l WHERE l.id IN ({placeholders}) {scope_sql}",
-                [*candidate_ids, *scope_params],
-            ).fetchall()
-        }
-        return [cid for cid in candidate_ids if cid in allowed]
 
     def _recency_ids(
         self,
@@ -1185,24 +1312,10 @@ def _union_provenance(survivor: str | None, loser: str | None) -> str | None:
     return ", ".join(out) if out else None
 
 
-def _tokenize(text: str) -> list[str]:
-    # Keep compact technical terms such as ``N+1`` intact. FTS5 interprets a
-    # quoted ``N+1`` token as the adjacent ``n 1`` phrase, while the LIKE
-    # fallback matches the literal spelling. Splitting first would discard both
-    # one-character parts and turn the query into an unrelated recency lookup.
-    compounds = [re.sub(r"\s+", "", t).lower() for t in _COMPOUND_TOKEN_RE.findall(text)]
-    tokens = compounds + [t.lower() for t in _TOKEN_RE.findall(text) if len(t) > 1]
-    # De-dupe preserving order, then cap.
-    seen: set[str] = set()
-    out: list[str] = []
-    for tok in tokens:
-        if tok in seen:
-            continue
-        seen.add(tok)
-        out.append(tok)
-        if len(out) >= _MAX_QUERY_TOKENS:
-            break
-    return out
+def _lexical_fallback_page_size() -> int:
+    """Return the fixed candidate page size, independent of result count."""
+
+    return _LEXICAL_FALLBACK_PAGE_SIZE
 
 
 def _scope_clause(codename: str | None, repo: str | None, *, alias: str) -> tuple[str, list[Any]]:
@@ -1289,7 +1402,60 @@ def _row_to_lesson(row: tuple[Any, ...]) -> Lesson:
     )
 
 
-def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+def _stored_lexical_text(body: str, tags_json: str) -> str:
+    """Build the canonical body+tags surface for a stored lesson row."""
+
+    try:
+        decoded = json.loads(tags_json) if tags_json else []
+    except (json.JSONDecodeError, TypeError):
+        decoded = []
+    tags = [str(tag) for tag in decoded] if isinstance(decoded, list) else []
+    return _lexical_surface(" ".join([body, *tags]).strip())
+
+
+def _backfill_lexical_text(conn: sqlite3.Connection) -> None:
+    """Populate a newly introduced lexical column in bounded keyset batches."""
+
+    after_id = ""
+    while True:
+        rows = conn.execute(
+            "SELECT id, body, tags_json FROM lessons "
+            "WHERE lexical_text = '' AND id > ? ORDER BY id LIMIT ?",
+            (after_id, _LEXICAL_MIGRATION_BATCH_SIZE),
+        ).fetchall()
+        if not rows:
+            return
+        conn.executemany(
+            "UPDATE lessons SET lexical_text = ? WHERE id = ? AND lexical_text = ''",
+            [
+                (_stored_lexical_text(str(body), str(tags_json)), str(lesson_id))
+                for lesson_id, body, tags_json in rows
+            ],
+        )
+        after_id = str(rows[-1][0])
+
+
+def _rebuild_fts_lexical_text(conn: sqlite3.Connection) -> None:
+    """Replace legacy FTS rows with canonical text in bounded batches."""
+
+    after_id = ""
+    while True:
+        rows = conn.execute(
+            "SELECT id, lexical_text FROM lessons WHERE id > ? ORDER BY id LIMIT ?",
+            (after_id, _LEXICAL_MIGRATION_BATCH_SIZE),
+        ).fetchall()
+        if not rows:
+            return
+        ids = [(str(lesson_id),) for lesson_id, _lexical_text in rows]
+        conn.executemany("DELETE FROM lessons_fts WHERE lesson_id = ?", ids)
+        conn.executemany(
+            "INSERT INTO lessons_fts (text, lesson_id) VALUES (?, ?)",
+            [(str(lexical_text), str(lesson_id)) for lesson_id, lexical_text in rows],
+        )
+        after_id = str(rows[-1][0])
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> bool:
     """Additively migrate an existing table: ``ALTER TABLE ... ADD COLUMN``.
 
     Idempotent: inspects ``PRAGMA table_info`` and only alters when the column
@@ -1299,10 +1465,11 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, dd
     """
     cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
     if column in cols:
-        return
+        return False
     try:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
     except sqlite3.OperationalError as exc:
         if "duplicate column name" in str(exc).lower():
-            return
+            return False
         raise
+    return True

@@ -14,9 +14,11 @@ Covers:
 
 from __future__ import annotations
 
+import sqlite3
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -24,10 +26,11 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.sqlite_hybrid as mod  # noqa: E402
+import memory_tokens as token_mod  # noqa: E402
 from fleet_brain import FleetBrain, Lesson, MemoryPromotionError  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
 from memory.config import load_lesson_writer, load_provider  # noqa: E402
-from memory.providers import FleetBrainProvider  # noqa: E402
+from memory.providers import ChainedMemoryProvider, FleetBrainProvider  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 from memory.sqlite_hybrid import (  # noqa: E402
     SqliteHybridProvider,
@@ -101,6 +104,639 @@ def test_lexical_recall_keeps_compound_single_character_terms(
     assert out[0].id == match.id
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C#",
+        "F#",
+        "N+12",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+    ],
+)
+def test_default_chain_round_trips_symbolic_technical_terms(
+    tmp_path: Path,
+    query: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    lesson = writer.reflect(
+        codename="c",
+        repo="r",
+        body=f"Use {query} carefully in the request path.",
+    )
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Rename column C in GraphQL schema",
+        "Rename field R in GraphQL schema",
+        "Rename variable R in GraphQL schema",
+    ],
+)
+def test_default_chain_does_not_require_one_letter_labels(
+    tmp_path: Path,
+    query: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL schema renaming guidance",
+    )
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_requires_symbolic_query_identity(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Fix C# compiler warnings")
+    relevant = writer.reflect(codename="c", repo="r", body="Fix C++ compiler warnings")
+
+    out = load_provider(env).recall(
+        query="Fix C++ compiler warnings",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_default_chain_requires_dotted_version_identity(
+    tmp_path: Path,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_default_chain_requires_atomic_language_standard_identity(
+    tmp_path: Path,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    for body in wrong_bodies:
+        writer.reflect(codename="c", repo="r", body=body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix NodeJS 22 runtime",
+            "NodeJS 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+    ],
+)
+def test_default_chain_requires_contextual_major_version_identity(
+    tmp_path: Path,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
+    ],
+)
+def test_default_chain_unversioned_technology_query_matches_versioned_lesson(
+    tmp_path: Path,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=crowding_body)
+    relevant = writer.reflect(codename="c", repo="r", body=matching_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_requires_ipv4_identity(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Connect 192.168.1.3 database guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 192.168.1.2 database guidance",
+    )
+
+    out = load_provider(env).recall(
+        query="Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_requires_canonical_ipv6_identity(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Connect 2001:db8::2 database guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 2001:0DB8:0000:0000:0000:0000:0000:0001 database guidance",
+    )
+
+    out = load_provider(env).recall(
+        query="Connect 2001:db8::1 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_default_chain_canonicalizes_language_identity_contexts(
+    tmp_path: Path,
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body=f"{wrong_context} warnings guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body=f"{lesson_context} warnings guidance",
+    )
+
+    out = load_provider(env).recall(
+        query=f"Fix {query_context} warnings",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("bus", "buses"),
+        ("buses", "bus"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
+    ],
+)
+def test_default_chain_preserves_sibilant_inflection_variants(
+    tmp_path: Path,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body=f"GraphQL {lesson_term} must be reviewed",
+    )
+
+    out = load_provider(env).recall(
+        query=f"Fix GraphQL {query_term}",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_round_trips_japanese_issue_title(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    query = "認証エラーを修正"
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    lesson = writer.reflect(codename="c", repo="r", body=f"手順: {query}してください")
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_default_chain_bounds_token_empty_literal_lookup_and_keeps_scope(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+        "ALFRED_MEMORY_SQLITE_POOL": "1000",
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    for index in range(401):
+        writer.reflect(codename="c", repo="r", body=f"修 {index}")
+    writer.reflect(codename="c", repo="other", body="修 out of scope")
+
+    out = load_provider(env).recall(query="修", codename="c", repo="r", limit=1000)
+
+    assert len(out) == 400
+    assert all(item.repo == "r" and "修" in item.body for item in out)
+
+
+def test_default_chain_keeps_generic_low_signal_queries_as_hard_misses(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="Fix the release process.")
+
+    assert load_provider(env).recall(query="fix", codename="c", repo="r") == []
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        ("Fix cold-start handling", "Use cold start handling in the request path."),
+        ("Fix cold start handling", "Use cold-start handling in the request path."),
+    ],
+)
+def test_default_chain_matches_hyphenated_spelling_variants(
+    tmp_path: Path,
+    query: str,
+    lesson_body: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    lesson = writer.reflect(codename="c", repo="r", body=lesson_body)
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_default_chain_falls_through_to_fleet_for_identifier_concepts(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    lesson_body = "The task id schema is validated by the API serializer"
+    brain = FleetBrain.from_env(env)
+    lesson = brain.reflect(codename="c", repo="r", body=lesson_body)
+
+    out = load_provider(env).recall(
+        query="Fix the task_id schema in the API serializer",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_default_chain_requires_mixed_query_unicode_subject(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="The API client retries requests")
+    relevant = FleetBrain.from_env(env).reflect(
+        codename="c",
+        repo="r",
+        body="API の課金エラーを修正する手順",
+    )
+
+    out = load_provider(env).recall(
+        query="API の課金エラーを修正",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_requires_single_character_unicode_subject(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="API billing guidance")
+    relevant = writer.reflect(codename="c", repo="r", body="API 税 guidance")
+
+    out = load_provider(env).recall(query="API 税", codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_matches_singular_lesson_for_plural_query(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = writer.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = load_provider(env).recall(query="Fix GraphQL schemas", codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_does_not_require_ordinary_slash_path(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    writer.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = writer.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = load_provider(env).recall(
+        query="Fix src/api GraphQL schema",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+def test_default_chain_preserves_plural_retrieval_variant(tmp_path: Path) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL policies must be reviewed",
+    )
+
+    out = load_provider(env).recall(
+        query="Fix GraphQL policies",
+        codename="c",
+        repo="r",
+    )
+
+    assert [item.id for item in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C#",
+        "F#",
+        "N+12",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+    ],
+)
+def test_like_fallback_recalls_symbolic_technical_terms(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    lesson = provider.reflect(codename="c", repo="r", body=f"Prefer {query} for this case.")
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_symbolic_query_distinguishes_punctuation_collision(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Use C# for the client")
+    matching = provider.reflect(codename="c", repo="r", body="Use C++ for the client")
+
+    out = provider.recall(query="C++", codename="c", repo="r")
+
+    assert [item.id for item in out] == [matching.id]
+
+
+def test_like_fallback_recalls_unicode_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    query = "認証エラーを修正"
+    lesson = provider.reflect(codename="c", repo="r", body=f"手順: {query}してください")
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_token_empty_literal_lookup_escapes_like_metacharacters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    exact = provider.reflect(codename="c", repo="r", body="修_%")
+    provider.reflect(codename="c", repo="r", body="修AX")
+
+    out = provider.recall(query="修_%", codename="c", repo="r")
+
+    assert [item.id for item in out] == [exact.id]
+
+
 def test_recall_scopes_by_codename_and_repo(provider: SqliteHybridProvider) -> None:
     provider.reflect(codename="lucius", repo="acme/api", body="shared token about caching")
     other = provider.reflect(codename="drake", repo="acme/web", body="shared token about caching")
@@ -117,6 +753,1908 @@ def test_recall_no_query_returns_recency_baseline(provider: SqliteHybridProvider
     # No query text -> recency baseline, most-recent first, never blank.
     assert out[0].id == newer.id
     assert len(out) == 2
+
+
+def test_unfiltered_recall_does_not_search_with_scope_text(
+    provider: SqliteHybridProvider,
+) -> None:
+    older = provider.reflect(codename="c", repo="acme/api", body="acme api legacy lesson")
+    newer = provider.reflect(codename="c", repo="acme/api", body="newest scoped lesson")
+
+    out = provider.recall(codename="c", repo="acme/api", limit=5)
+
+    assert [lesson.id for lesson in out] == [newer.id, older.id]
+
+
+def test_recall_query_miss_does_not_inject_unrelated_recent_lessons(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Always use UTC for stored timestamps")
+
+    out = provider.recall(query="GraphQL batching policy", codename="c", repo="r")
+
+    assert out == []
+
+
+def test_recall_ignores_shared_low_signal_query_words(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Use the fixture factory")
+
+    out = provider.recall(
+        query="Fix the GraphQL schema loader so nested unions resolve on cold start",
+        codename="c",
+        repo="r",
+    )
+
+    assert out == []
+
+
+def test_recall_requires_two_meaningful_terms_for_multiword_queries(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="The schema uses the fixture factory")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The GraphQL schema loader caches nested unions",
+    )
+
+    out = provider.recall(
+        query="Fix the GraphQL schema loader so nested unions resolve on cold start",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_matches_singular_lesson_for_plural_query(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = provider.recall(query="Fix GraphQL schemas", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_does_not_require_ordinary_slash_path(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema guidance")
+
+    out = provider.recall(query="Fix src/api GraphQL schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
+        ("class", "classes"),
+        ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
+    ],
+)
+def test_fts_recall_preserves_inflection_retrieval_variants(
+    provider: SqliteHybridProvider,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"GraphQL {lesson_term} must be reviewed",
+    )
+
+    out = provider.recall(query=f"Fix GraphQL {query_term}", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_fts_inflection_retrieval_executes_without_like_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: SqliteHybridProvider,
+) -> None:
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL policies must be reviewed",
+    )
+    assert provider._fts_ok is True
+
+    def reject_like_fallback() -> int:
+        raise AssertionError("FTS query unexpectedly fell back to LIKE")
+
+    monkeypatch.setattr(mod, "_lexical_fallback_page_size", reject_like_fallback)
+
+    out = provider.recall(query="Fix GraphQL policies", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_fts_candidate_scan_filters_overlap_before_result_pool() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql schema " + "background context " * 200,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="schema",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+    assert provider._fts_ok is True
+
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="graphql schema", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id FROM lessons_fts")
+    ]
+    filter_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT id, lexical_text FROM lessons WHERE id IN")
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert len(candidate_queries) == 1
+    assert "LIMIT 50" in candidate_queries[0]
+    assert len(filter_queries) == 1
+
+
+def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=101)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="C++",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    for index in range(401):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body="C#",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+    assert provider._fts_ok is True
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="C++", codename="c", repo="r")
+
+    fallback_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id, l.lexical_text, l.created_at FROM lessons l")
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert not any(statement.startswith("SELECT l.id FROM lessons_fts") for statement in statements)
+    assert len(fallback_queries) == 1
+    assert "LIMIT 50" in fallback_queries[0]
+
+
+@pytest.mark.parametrize(
+    ("query", "prefix_collision", "matching_body"),
+    [
+        ("Node 2", "Node 2.0", "runtime [Node 2]."),
+        ("TLS 1.3", "TLS /1.3", "TLS (1.3)."),
+        ("192.168.1.2", "/192.168.1.2", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2:443", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2.9", "address=(192.168.1.2)."),
+        (
+            "2001:db8::1",
+            "[2001:db8::1]:443",
+            "address=[2001:0db8::1],",
+        ),
+        ("2001:db8::1", "[2001:db8::1]:https", "address=[2001:db8::1]."),
+        ("2001:db8::1", "[2001:db8::1]:", "address=[2001:db8::1]."),
+        ("2001:db8::1", "2001:db8::10", "address=(2001:db8::1)."),
+        ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
+        ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
+    ],
+)
+def test_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
+    query: str,
+    prefix_collision: str,
+    matching_body: str,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=1)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=matching_body,
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    for index in range(401):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"{prefix_collision} collision {index}",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    fallback_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id, l.lexical_text, l.created_at FROM lessons l")
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert len(fallback_queries) == 1
+    assert "alfred_identity_variant_matches" in fallback_queries[0]
+    assert "LIMIT 50" in fallback_queries[0]
+
+
+@pytest.mark.parametrize(
+    ("query", "matching_body"),
+    [
+        ("Node 2", "Node 2."),
+        ("Node 2", "Node 2 starts the lesson"),
+        ("192.168.1.2", "192.168.1.2 starts the lesson"),
+        ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("2001:db8::1", "2001:db8::1 starts the lesson"),
+        ("2001:db8::1", "the lesson ends at 2001:db8::1"),
+        ("2001:db8::1", "the lesson uses [2001:db8::1], here"),
+        ("1.3", "1.3 starts the lesson"),
+        ("1.3", "the lesson ends at 1.3"),
+        ("TLS 1.3", "TLS uses (1.3), here"),
+        ("HTTP/2.1", "HTTP/2.1 starts the lesson"),
+        ("HTTP/2.1", "the lesson ends at HTTP/2.1"),
+        ("HTTP/2.1", "protocol uses (HTTP/2.1), here"),
+        ("Node 2", "use (Node 2), then verify"),
+    ],
+)
+def test_identity_boundary_prefilter_accepts_start_end_and_punctuation(
+    query: str,
+    matching_body: str,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=1)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C++17",
+        "N+12",
+        "O(n)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+        "TLS 1.3",
+        "Python 3",
+    ],
+)
+def test_identity_classes_route_around_fts(query: str) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(codename="c", repo="r", body=f"{query} guidance")
+    assert provider._fts_ok is True
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert not any(statement.startswith("SELECT l.id FROM lessons_fts") for statement in statements)
+
+
+def test_fts_candidate_scan_preserves_bm25_order_and_result_cap() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    weaker = provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql schema " + "background context " * 40,
+    )
+    stronger = provider.reflect(codename="c", repo="r", body="graphql schema")
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="graphql schema " + "background context " * 80,
+    )
+
+    out = provider.recall(query="graphql schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [stronger.id, weaker.id]
+
+
+def test_fts_candidate_scan_has_hard_upper_bound() -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=500)
+    provider.reflect(codename="c", repo="r", body="graphql schema")
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    provider.recall(query="graphql schema", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id FROM lessons_fts")
+    ]
+    assert len(candidate_queries) == 1
+    assert "LIMIT 400" in candidate_queries[0]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
+        ("class", "classes"),
+        ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
+    ],
+)
+def test_like_recall_preserves_inflection_retrieval_variants(
+    monkeypatch: pytest.MonkeyPatch,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body="GraphQL resolver guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"GraphQL {lesson_term} must be reviewed",
+    )
+
+    out = provider.recall(query=f"Fix GraphQL {query_term}", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_retrieval_variants_count_as_one_concept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=1)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL policy guidance",
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="Policies policy checklist",
+    )
+
+    out = provider.recall(query="Fix GraphQL policies", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_language_compound_identity(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Fix R compiler warnings")
+    relevant = provider.reflect(codename="c", repo="r", body="Fix C compiler warnings")
+
+    out = provider.recall(query="Fix C compiler warnings", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_sqlite_recall_canonicalizes_language_identity_contexts(
+    provider: SqliteHybridProvider,
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=f"{wrong_context} warnings guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"{lesson_context} warnings guidance",
+    )
+
+    out = provider.recall(
+        query=f"Fix {query_context} warnings",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Rename column C in GraphQL schema", "Rename field R in GraphQL schema"],
+)
+def test_fts_recall_does_not_require_one_letter_labels(
+    provider: SqliteHybridProvider,
+    query: str,
+) -> None:
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema renaming guidance")
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_recall_does_not_require_one_letter_variable_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema renaming guidance")
+
+    out = provider.recall(query="Rename variable R in GraphQL schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_symbolic_query_identity(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Fix C# compiler warnings")
+    relevant = provider.reflect(codename="c", repo="r", body="Fix C++ compiler warnings")
+
+    out = provider.recall(query="Fix C++ compiler warnings", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_fts_recall_requires_dotted_version_identity(
+    provider: SqliteHybridProvider,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_like_recall_requires_dotted_version_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_fts_recall_requires_atomic_language_standard_identity(
+    provider: SqliteHybridProvider,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    for body in wrong_bodies:
+        provider.reflect(codename="c", repo="r", body=body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_like_recall_requires_atomic_language_standard_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    for body in wrong_bodies:
+        provider.reflect(codename="c", repo="r", body=body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix NodeJS 22 runtime",
+            "NodeJS 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+    ],
+)
+def test_fts_recall_requires_contextual_major_version_identity(
+    provider: SqliteHybridProvider,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix NodeJS 22 runtime",
+            "NodeJS 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+    ],
+)
+def test_like_recall_requires_contextual_major_version_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body=wrong_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
+    ],
+)
+def test_fts_recall_unversioned_technology_query_matches_versioned_lesson(
+    provider: SqliteHybridProvider,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    provider.reflect(codename="c", repo="r", body=crowding_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+    assert provider._fts_ok is True
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
+    ],
+)
+def test_like_recall_unversioned_technology_query_matches_versioned_lesson(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body=crowding_body)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_fts_recall_requires_ipv4_identity(provider: SqliteHybridProvider) -> None:
+    provider.reflect(codename="c", repo="r", body="Connect 192.168.1.3 database guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 192.168.1.2 database guidance",
+    )
+    assert provider._fts_ok is True
+
+    out = provider.recall(
+        query="Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_recall_requires_ipv4_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body="Connect 192.168.1.3 database guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 192.168.1.2 database guidance",
+    )
+
+    out = provider.recall(
+        query="Connect 192.168.1.2 database",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize("force_like", [False, True])
+def test_sqlite_lexical_recall_requires_canonical_ipv6_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    force_like: bool,
+) -> None:
+    if force_like:
+        monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    provider.reflect(codename="c", repo="r", body="Connect 2001:db8::2 database guidance")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Connect 2001:0DB8:0000:0000:0000:0000:0000:0001 database guidance",
+    )
+
+    out = provider.recall(query="Connect 2001:db8::1 database", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridProvider) -> None:
+    provider.reflect(codename="c", repo="r", body="The API client retries requests")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="API の課金エラーを修正する手順",
+    )
+
+    out = provider.recall(query="API の課金エラーを修正", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_devanagari_subject_in_mixed_query(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="The API client retries requests")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="API डेटा मिटाएँ प्रक्रिया",
+    )
+
+    out = provider.recall(query="API डेटा मिटाएँ", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_single_character_unicode_subject(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="API billing guidance")
+    relevant = provider.reflect(codename="c", repo="r", body="API 税 guidance")
+
+    out = provider.recall(query="API 税", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize("force_like_fallback", [False, True])
+def test_recall_matches_unicode_subject_stored_only_in_tag(
+    monkeypatch: pytest.MonkeyPatch,
+    force_like_fallback: bool,
+) -> None:
+    if force_like_fallback:
+        monkeypatch.setattr(
+            mod.SqliteHybridProvider,
+            "_try_create_fts",
+            lambda self, conn: False,
+        )
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="API billing guidance",
+        tags=["課金"],
+    )
+
+    out = provider.recall(query="API 課金", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_fallback_applies_overlap_before_candidate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The GraphQL schema defines nested unions",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL resolvers use batching",
+        created_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="Schema migrations run before deploy",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+    )
+
+    out = provider.recall(query="GraphQL schema", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_fallback_pages_past_substring_only_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The API rapid response policy is documented",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    for day in (2, 3):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"Rapid rollout note {day}",
+            created_at=datetime(2026, 1, day, tzinfo=UTC),
+        )
+
+    out = provider.recall(query="api rapid", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize("pool", [1, 2])
+def test_like_fallback_candidate_page_is_independent_of_result_pool(
+    monkeypatch: pytest.MonkeyPatch,
+    pool: int,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=pool)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The API rapid response policy is documented",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    for index in range(pool * 8):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"Rapid rollout note {index}",
+            created_at=datetime(2026, 1, 2, tzinfo=UTC) + timedelta(seconds=index),
+        )
+
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="api rapid", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id") and "FROM lessons l WHERE" in statement
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert len(candidate_queries) == 1
+    assert "LIMIT 50" in candidate_queries[0]
+
+
+def test_like_fallback_stops_after_eight_candidate_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    for index in range(450):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"Rapid rollout note {index}",
+            created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        )
+
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query="api rapid", codename="c", repo="r")
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id") and "FROM lessons l WHERE" in statement
+    ]
+    assert out == []
+    assert len(candidate_queries) == 8
+    assert all("LIMIT 50" in statement for statement in candidate_queries)
+    assert all(" OFFSET " not in statement for statement in candidate_queries)
+
+
+def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:
+    assert mod._tokenize("Fix the GraphQL schema with the loader") == [
+        "graphql",
+        "schema",
+        "loader",
+    ]
+
+
+def test_tokenize_mixed_query_emits_unicode_subject_concepts() -> None:
+    tokens = mod._tokenize("API の課金エラーを修正")
+
+    assert "api" in tokens
+    assert {"課金", "エラー", "修正"}.issubset(tokens)
+    assert not mod._has_meaningful_lexical_overlap("The API client retries requests", tokens)
+    assert mod._has_meaningful_lexical_overlap("API の課金エラーを修正する手順", tokens)
+
+
+def test_tokenize_keeps_devanagari_combining_marks_in_subject_concepts() -> None:
+    tokens = mod._tokenize("API डेटा मिटाएँ")
+
+    assert {"api", "डेटा", "मिटाएँ"}.issubset(tokens)
+    assert not mod._has_meaningful_lexical_overlap("API billing guidance", tokens)
+    assert mod._has_meaningful_lexical_overlap("API डेटा मिटाएँ प्रक्रिया", tokens)
+
+
+def test_tokenize_keeps_single_character_unicode_only_in_mixed_queries() -> None:
+    mixed_tokens = mod._tokenize("API 税")
+
+    assert mixed_tokens == ["api", "税"]
+    assert not mod._has_meaningful_lexical_overlap("API billing guidance", mixed_tokens)
+    assert mod._has_meaningful_lexical_overlap("API 税 guidance", mixed_tokens)
+    assert mod._tokenize("税") == []
+    assert mod._literal_fallback_query("税") == "税"
+    assert mod._tokenize("A I X Q") == []
+
+
+def test_overlap_normalizes_bounded_english_inflections() -> None:
+    query_tokens = mod._tokenize("Fix GraphQL schemas")
+
+    assert query_tokens == ["graphql", "schema"]
+    assert mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
+    assert not mod._has_meaningful_lexical_overlap("GraphQL resolver guidance", query_tokens)
+
+
+def test_query_token_groups_separate_retrieval_variants_from_overlap_concepts() -> None:
+    groups = mod._query_token_groups("Fix GraphQL policies and analyses")
+
+    assert groups == [
+        ("graphql", "graphqls"),
+        ("policy", "policies"),
+        ("analysis", "analyses"),
+    ]
+    assert [group[0] for group in groups] == mod._tokenize("Fix GraphQL policies and analyses")
+
+
+def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
+    groups = mod._query_token_groups(" ".join(f"concept{index}" for index in range(100)))
+
+    assert len(groups) == 24
+    assert all(1 <= len(group) <= 2 for group in groups)
+
+
+@pytest.mark.parametrize(
+    ("plural", "singular"),
+    [
+        ("schemas", "schema"),
+        ("policies", "policy"),
+        ("processes", "process"),
+        ("watches", "watch"),
+        ("boxes", "box"),
+        ("aliases", "alias"),
+        ("biases", "bias"),
+        ("focuses", "focus"),
+        ("canvases", "canvas"),
+        ("axes", "axis"),
+        ("indices", "index"),
+        ("matrices", "matrix"),
+        ("vertices", "vertex"),
+        ("appendices", "appendix"),
+        ("patches", "patch"),
+        ("branches", "branch"),
+        ("classes", "class"),
+        ("buses", "bus"),
+        ("cookies", "cookie"),
+        ("statuses", "status"),
+        ("analyses", "analysis"),
+    ],
+)
+def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
+    plural: str,
+    singular: str,
+) -> None:
+    query_tokens = mod._tokenize(plural)
+
+    assert query_tokens == [singular]
+    assert mod._has_meaningful_lexical_overlap(singular, query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("singular", "plural"),
+    [
+        ("index", "indices"),
+        ("matrix", "matrices"),
+        ("vertex", "vertices"),
+        ("appendix", "appendices"),
+        ("axis", "axes"),
+        ("analysis", "analyses"),
+        ("status", "statuses"),
+    ],
+)
+def test_technical_irregular_inflections_have_bounded_reverse_variants(
+    singular: str,
+    plural: str,
+) -> None:
+    assert token_mod._english_inflection_form(plural) == singular
+    assert token_mod._english_plural_form(singular) == plural
+    assert token_mod._retrieval_variants(plural, singular) == (singular, plural)
+
+
+def test_cookie_inflection_uses_one_explicit_symmetric_mapping() -> None:
+    assert token_mod._english_inflection_form("cookies") == "cookie"
+    assert token_mod._english_plural_form("cookie") == "cookies"
+    assert token_mod._retrieval_variants("cookies", "cookie") == ("cookie", "cookies")
+    assert token_mod._english_inflection_form("policies") == "policy"
+    assert token_mod._english_plural_form("policy") == "policies"
+    assert token_mod._english_inflection_form("movie") == "movie"
+    assert token_mod._english_plural_form("movie") == "movies"
+
+
+@pytest.mark.parametrize(
+    ("query", "expected", "damaged_form"),
+    [
+        ("status", "status", "statu"),
+        ("analysis", "analysis", "analysi"),
+        ("class", "class", "clas"),
+        ("CSS", "css", "cs"),
+        ("Redis", "redis", "redi"),
+        ("alias", "alias", "alia"),
+        ("bias", "bias", "bia"),
+        ("focus", "focus", "focu"),
+        ("canvas", "canvas", "canva"),
+        ("caches", "cache", "cach"),
+        ("news", "news", "new"),
+        ("series", "series", "serie"),
+        ("species", "species", "specie"),
+    ],
+)
+def test_overlap_does_not_strip_technical_s_endings(
+    query: str,
+    expected: str,
+    damaged_form: str,
+) -> None:
+    query_tokens = mod._tokenize(query)
+
+    assert query_tokens == [expected]
+    assert not mod._has_meaningful_lexical_overlap(damaged_form, query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("singular", "plural"),
+    [
+        ("base", "bases"),
+        ("case", "cases"),
+        ("use", "uses"),
+        ("cause", "causes"),
+        ("release", "releases"),
+        ("response", "responses"),
+    ],
+)
+def test_regular_ses_inflections_keep_the_full_singular(
+    singular: str,
+    plural: str,
+) -> None:
+    assert token_mod._english_inflection_form(singular) == singular
+    assert token_mod._english_inflection_form(plural) == singular
+
+
+def test_tokenize_bounds_inflection_normalization_by_token_length() -> None:
+    long_token = f"{'a' * 64}s"
+
+    assert mod._tokenize(long_token) == [long_token]
+
+
+@pytest.mark.parametrize(
+    ("unicode_word", "overlapping_ascii_fragment"),
+    [("café", "caf"), ("API課金", "api")],
+)
+def test_unicode_word_is_one_overlap_concept(
+    unicode_word: str,
+    overlapping_ascii_fragment: str,
+) -> None:
+    tokens = mod._tokenize(f"GraphQL schema {unicode_word}")
+
+    assert overlapping_ascii_fragment not in tokens
+    assert not mod._has_meaningful_lexical_overlap(unicode_word, tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("C++", "c++"),
+        ("C#", "c#"),
+        ("F#", "f#"),
+        ("N+12", "n+12"),
+        ("O(42)", "o(42)"),
+        ("HTTP/2.1", "http/2.1"),
+        ("I/O", "i/o"),
+        ("A/B", "a/b"),
+    ],
+)
+def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
+    assert mod._tokenize(query) == [expected]
+
+
+@pytest.mark.parametrize("standard", ["C++17", "C++23", "C#12", "C#17"])
+def test_tokenize_recognizes_bounded_atomic_language_standards(standard: str) -> None:
+    assert mod._tokenize(standard) == [standard.casefold()]
+
+
+@pytest.mark.parametrize(
+    "not_standard",
+    ["C++7", "C++12345", "C#7", "C#12345", "fooC++17", "C++17beta", "F#12", "Java17"],
+)
+def test_tokenize_rejects_unbounded_embedded_or_generic_language_standards(
+    not_standard: str,
+) -> None:
+    assert not any(token.startswith(("c++", "c#")) for token in mod._tokenize(not_standard))
+
+
+def test_atomic_language_standards_keep_punctuation_boundaries() -> None:
+    tokens = mod._tokenize("Use (C++23), then C#12.")
+
+    assert {"c++23", "c#12"}.issubset(tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_lesson"),
+    [
+        ("Fix C++17 compiler warnings", "Fix C#17 compiler warnings"),
+        ("Fix C++17 compiler warnings", "Fix C++20 compiler warnings"),
+        ("Fix C#17 compiler warnings", "Fix C++17 compiler warnings"),
+    ],
+)
+def test_atomic_language_standard_identity_is_mandatory(
+    query: str,
+    wrong_lesson: str,
+) -> None:
+    assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
+
+
+@pytest.mark.parametrize(
+    ("runtime", "canonical"),
+    [
+        ("Python 3", "python 3"),
+        ("Node 22", "node 22"),
+        ("Node.js 22", "node 22"),
+        ("NodeJS 22", "node 22"),
+    ],
+)
+def test_tokenize_recognizes_contextual_major_version_identity(
+    runtime: str,
+    canonical: str,
+) -> None:
+    assert mod._tokenize(runtime) == [canonical]
+
+
+def test_contextual_major_versions_casefold_and_keep_punctuation_boundaries() -> None:
+    tokens = mod._tokenize("Upgrade PYTHON 3, Node 22, NODE.JS 20, then NODEJS 18.")
+
+    assert {"python 3", "node 22", "node 20", "node 18"}.issubset(tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_lesson"),
+    [
+        ("Fix Python 3 migration", "Python 2 migration guidance"),
+        ("Fix Node 22 runtime", "Node 20 runtime guidance"),
+        ("Fix Node.js 22 runtime", "Node.js 20 runtime guidance"),
+        ("Fix NodeJS 22 runtime", "NodeJS 20 runtime guidance"),
+    ],
+)
+def test_contextual_major_version_identity_is_mandatory(
+    query: str,
+    wrong_lesson: str,
+) -> None:
+    assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
+
+
+def test_node_major_aliases_are_atomic_and_match_each_other() -> None:
+    assert mod._query_token_groups("NodeJS 22") == [
+        ("node 22", "node.js 22", "nodejs 22"),
+    ]
+    assert mod._requires_exact_lexical_tokens(["node 22"])
+    for query_alias in ("Node", "Node.js", "NodeJS"):
+        query_tokens = mod._tokenize(f"Fix {query_alias} 22 runtime")
+        assert query_tokens == ["node 22", "runtime"]
+        for lesson_alias in ("Node", "Node.js", "NodeJS"):
+            assert mod._has_meaningful_lexical_overlap(
+                f"{lesson_alias} 22 runtime guidance",
+                query_tokens,
+            )
+            assert not mod._has_meaningful_lexical_overlap(
+                f"{lesson_alias} 20 runtime guidance",
+                query_tokens,
+            )
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_lesson", "matching_lesson"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
+    ],
+)
+def test_unversioned_technology_query_matches_stored_version_companion(
+    query: str,
+    crowding_lesson: str,
+    matching_lesson: str,
+) -> None:
+    query_tokens = mod._tokenize(query)
+
+    assert not mod._has_meaningful_lexical_overlap(crowding_lesson, query_tokens)
+    assert mod._has_meaningful_lexical_overlap(matching_lesson, query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("versioned", "subject"),
+    [
+        ("Python 3", "migration"),
+        ("Node 22", "migration"),
+        ("Node.js 22", "migration"),
+        ("NodeJS 22", "migration"),
+        ("C++17", "compiler"),
+        ("C#17", "compiler"),
+    ],
+)
+def test_version_identity_companion_does_not_double_count_overlap(
+    versioned: str,
+    subject: str,
+) -> None:
+    query_tokens = mod._tokenize(f"{versioned} {subject}")
+
+    assert not mod._has_meaningful_lexical_overlap(
+        f"{versioned} packaging guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        f"{versioned} {subject} guidance",
+        query_tokens,
+    )
+
+
+def test_dense_candidate_window_has_one_fixed_hard_cap() -> None:
+    assert token_mod.MAX_DENSE_QUERY_CANDIDATES == 400
+
+
+def test_ipv4_is_a_bounded_mandatory_identity() -> None:
+    query_tokens = mod._tokenize("Connect 192.168.1.2 database")
+
+    assert "192.168.1.2" in query_tokens
+    assert mod._requires_exact_lexical_tokens(query_tokens)
+    assert not mod._has_meaningful_lexical_overlap(
+        "Connect 192.168.1.3 database guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        "Connect 192.168.1.2 database guidance",
+        query_tokens,
+    )
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["0.0.0.0", "1.2.3.4", "127.0.0.1", "255.255.255.255"],
+)
+def test_ipv4_identity_accepts_bounded_octets_and_sentence_punctuation(address: str) -> None:
+    assert token_mod._is_ipv4_identity(address)
+    assert address in mod._tokenize(f"Connect {address}.")
+
+
+@pytest.mark.parametrize(
+    "invalid_or_compound",
+    [
+        "999.1.1.1",
+        "256.1.1.1",
+        "192.168.001.2",
+        "192.168.1.2:5432",
+        "192.168.1.2/24",
+        "host192.168.1.2",
+        "192.168.1.2host",
+    ],
+)
+def test_ipv4_identity_rejects_invalid_octets_and_compound_boundaries(
+    invalid_or_compound: str,
+) -> None:
+    assert not token_mod._is_ipv4_identity(invalid_or_compound)
+    assert not any(
+        token_mod._is_ipv4_identity(token)
+        for token in mod._tokenize(f"Connect {invalid_or_compound} database")
+    )
+
+
+def test_ipv6_is_a_canonical_bounded_mandatory_identity() -> None:
+    expanded = "2001:0DB8:0000:0000:0000:0000:0000:0001"
+    query_tokens = mod._tokenize(f"Connect {expanded} database")
+
+    assert "2001:db8::1" in query_tokens
+    assert "2001" not in query_tokens
+    assert "db8" not in query_tokens
+    assert token_mod.is_identity_token("2001:db8::1")
+    assert token_mod.query_token_groups(expanded) == [("2001:db8::1",)]
+    assert not mod._has_meaningful_lexical_overlap(
+        "Connect 2001:db8::2 database guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        "Connect 2001:db8::1 database guidance",
+        query_tokens,
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2001:db8::1",
+        "Connect 2001:db8::1.",
+        "Connect (2001:db8::1),",
+        "Connect [2001:db8::1].",
+    ],
+)
+def test_ipv6_identity_accepts_sentence_boundaries_and_brackets(text: str) -> None:
+    assert "2001:db8::1" in mod._tokenize(text)
+
+
+@pytest.mark.parametrize(
+    "invalid_or_compound",
+    [
+        "2001:db8:::1",
+        "2001:db8::1/64",
+        "fe80::1%en0",
+        "[2001:db8::1]:443",
+        "[2001:db8::1]:https",
+        "[2001:db8::1]:",
+        "host2001:db8::1",
+        "2001:db8::1host",
+    ],
+)
+def test_ipv6_identity_rejects_invalid_and_unsupported_compounds(
+    invalid_or_compound: str,
+) -> None:
+    assert token_mod._canonical_ipv6_identity(invalid_or_compound) is None
+    assert not token_mod.identity_variant_matches(
+        f"Connect {invalid_or_compound} database",
+        "2001:db8::1",
+    )
+    assert not any(
+        token_mod.is_identity_token(token)
+        for token in mod._tokenize(f"Connect {invalid_or_compound} database")
+    )
+
+
+@pytest.mark.parametrize("port", ["443", "https", ""])
+def test_ipv6_bracketed_host_port_suppresses_address_and_port_fragments(port: str) -> None:
+    assert mod._tokenize(f"Connect [2001:db8::1]:{port} database") == [
+        "connect",
+        "database",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("query", "forbidden_identity"),
+    [
+        ("Run 3 tests", "run 3"),
+        ("Fix 2 bugs", "fix 2"),
+        ("Rust 3 migration", "rust 3"),
+        ("Python 03 migration", "python 03"),
+        ("Python 123 migration", "python 123"),
+        ("Python3 migration", "python 3"),
+        ("Node.js22 migration", "node 22"),
+        ("NodeJS22 migration", "node 22"),
+        ("NodeJS 03 migration", "node 03"),
+        ("NodeJS 123 migration", "node 123"),
+        ("XNode.js 22 migration", "node 22"),
+        ("XNodeJS 22 migration", "node 22"),
+        ("Node.js 22beta migration", "node 22"),
+        ("NodeJS 22beta migration", "node 22"),
+    ],
+)
+def test_tokenize_does_not_create_generic_or_unbounded_major_identities(
+    query: str,
+    forbidden_identity: str,
+) -> None:
+    assert forbidden_identity not in mod._tokenize(query)
+
+
+def test_contextual_major_does_not_double_count_dotted_version() -> None:
+    tokens = mod._tokenize("Python 3.13 migration")
+
+    assert "3.13" in tokens
+    assert "python" in tokens
+    assert "python 3" not in tokens
+
+
+def test_nodejs_dotted_version_remains_a_dotted_identity_not_a_major_identity() -> None:
+    tokens = mod._tokenize("NodeJS 22.1 migration")
+
+    assert "22.1" in tokens
+    assert "node 22" not in tokens
+
+
+@pytest.mark.parametrize("version", ["1.3", "3.13", "10.20.30", "123.456.789"])
+def test_tokenize_recognizes_bounded_standalone_dotted_versions(version: str) -> None:
+    query_tokens = mod._tokenize(f"Fix TLS {version} configuration")
+
+    assert version in query_tokens
+    assert not mod._has_meaningful_lexical_overlap(
+        "TLS 9.9 configuration guidance",
+        query_tokens,
+    )
+    assert mod._has_meaningful_lexical_overlap(
+        f"TLS {version} configuration guidance",
+        query_tokens,
+    )
+
+
+def test_tokenize_recognizes_dotted_version_before_sentence_period() -> None:
+    assert "1.3" in mod._tokenize("Use TLS 1.3.")
+
+
+@pytest.mark.parametrize(
+    "not_version",
+    [
+        "1234.1",
+        "1.1234",
+        "2026.08.16",
+        "TLSv1.3",
+        "tls1.3",
+        "1.3beta",
+    ],
+)
+def test_tokenize_rejects_unbounded_or_embedded_dotted_versions(not_version: str) -> None:
+    assert all("." not in token for token in mod._tokenize(not_version))
+
+
+def test_http_version_compound_does_not_double_count_dotted_constituent() -> None:
+    assert mod._tokenize("HTTP/2.1") == ["http/2.1"]
+
+
+@pytest.mark.parametrize(
+    "ordinary_slash",
+    ["src/api", "owner/repo", "2026/08", "path/A/B", "HTTP/2.1/client"],
+)
+def test_ordinary_slash_terms_are_not_mandatory_identities(ordinary_slash: str) -> None:
+    query_tokens = mod._tokenize(f"Fix {ordinary_slash} GraphQL schema")
+
+    assert ordinary_slash not in query_tokens
+    assert mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
+
+
+@pytest.mark.parametrize("identity", ["HTTP/2.1", "I/O", "A/B"])
+def test_explicit_slash_technical_terms_remain_mandatory_identities(identity: str) -> None:
+    query_tokens = mod._tokenize(f"Fix {identity} GraphQL schema")
+
+    assert not mod._has_meaningful_lexical_overlap("GraphQL schema guidance", query_tokens)
+    assert mod._has_meaningful_lexical_overlap(
+        f"{identity} GraphQL schema guidance",
+        query_tokens,
+    )
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [("O(n)", "o(n)"), ("O(log n)", "o(log n)"), ("O(42)", "o(42)")],
+)
+def test_tokenize_recognizes_bounded_big_o_terms(query: str, expected: str) -> None:
+    assert mod._tokenize(query) == [expected]
+
+
+def test_tokenize_does_not_treat_arbitrary_big_o_prose_as_symbolic() -> None:
+    assert "o(ready)" not in mod._tokenize("O(ready)")
+
+
+def test_tokenize_requires_language_shaped_context_for_single_letter_languages() -> None:
+    assert mod._tokenize("Fix C compiler warnings") == ["c language", "warning"]
+    assert mod._tokenize("C language") == ["c language"]
+    assert mod._tokenize("R compiler") == ["r language"]
+    assert mod._tokenize("R language") == ["r language"]
+    assert mod._tokenize("R package") == ["r language"]
+    assert mod._tokenize("R script") == ["r language"]
+    assert mod._query_token_groups("C compiler") == [
+        ("c language", "c compiler"),
+    ]
+    assert mod._query_token_groups("R package") == [
+        ("r language", "r compiler", "r package", "r script"),
+    ]
+    assert mod._requires_exact_lexical_tokens(["c language", "warning"])
+    assert mod._requires_exact_lexical_tokens(["r language", "warning"])
+    assert mod._tokenize("Use R") == []
+    assert "c" not in mod._tokenize("Rename column C in GraphQL schema")
+    assert "r" not in mod._tokenize("Rename variable R in GraphQL schema")
+    assert mod._tokenize("A I X Q") == []
+
+
+def test_compound_and_constituent_count_as_one_overlap_concept() -> None:
+    query_tokens = mod._tokenize("Fix GraphQL schema transport over HTTP/2")
+
+    assert "http/2" in query_tokens
+    assert "http" not in query_tokens
+    assert not mod._has_meaningful_lexical_overlap("Only HTTP/2 is supported", query_tokens)
+
+
+def test_tokenize_splits_ordinary_hyphens_but_keeps_symbolic_compounds() -> None:
+    tokens = mod._tokenize("cold-start HTTP/2 C++ C# N+1 O(1)")
+
+    assert {"cold", "start"}.issubset(tokens)
+    assert {"http/2", "c++", "c#", "n+1", "o(1)"}.issubset(tokens)
+    assert {"http", "1"}.isdisjoint(tokens)
+    assert len(tokens) == 7
+
+
+def test_tokenize_nfkc_casefolds_before_detecting_symbolic_compounds() -> None:
+    assert mod._tokenize("ＧｒａｐｈＱＬ Ｆ＃ Ａ／Ｂ") == [  # noqa: RUF001
+        "f#",
+        "a/b",
+        "graphql",
+    ]
+
+
+@pytest.mark.parametrize("compound", ["F#", "A/B"])
+def test_generic_symbolic_compound_does_not_double_count_constituents(compound: str) -> None:
+    query_tokens = mod._tokenize(f"GraphQL {compound}")
+
+    assert len(query_tokens) == 2
+    assert not mod._has_meaningful_lexical_overlap(f"Only {compound} is supported", query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_lesson"),
+    [
+        ("Fix C++ compiler warnings", "Fix C# compiler warnings"),
+        ("Optimize O(n) parser warnings", "Optimize O(42) parser warnings"),
+        ("Use A/B release testing", "Use A/C release testing"),
+    ],
+)
+def test_symbolic_query_identity_is_mandatory(query: str, wrong_lesson: str) -> None:
+    assert not mod._has_meaningful_lexical_overlap(wrong_lesson, mod._tokenize(query))
+
+
+def test_literal_only_query_uses_nfkc_surface_before_sqlite_prefilter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    lesson = provider.reflect(codename="c", repo="r", body="エラー処理の手順")
+
+    out = provider.recall(query="ｴﾗｰ", codename="c", repo="r")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_schema_migration_backfills_canonical_lexical_surface_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "pre-lexical.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE lessons (
+                id TEXT PRIMARY KEY, codename TEXT NOT NULL, repo TEXT NOT NULL,
+                body TEXT NOT NULL, tags_json TEXT NOT NULL DEFAULT '[]',
+                severity TEXT NOT NULL DEFAULT 'info', firing_id TEXT,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'note', valid_until TEXT,
+                superseded_by TEXT, provenance TEXT
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO lessons VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "legacy",
+                "c",
+                "r",
+                "Use Ａ／Ｂ testing",  # noqa: RUF001
+                '["Ｆ＃"]',  # noqa: RUF001
+                "info",
+                None,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+                "note",
+                None,
+                None,
+                None,
+            ),
+        )
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+
+    provider = SqliteHybridProvider(db_path=db_path, pool=2)
+
+    assert [item.id for item in provider.recall(query="A/B", codename="c", repo="r")] == ["legacy"]
+    assert [item.id for item in provider.recall(query="F#", codename="c", repo="r")] == ["legacy"]
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT lexical_text FROM lessons").fetchone() == (
+            "use a/b testing f#",
+        )
+        conn.execute("UPDATE lessons SET lexical_text = 'already-populated'")
+        conn.commit()
+
+    SqliteHybridProvider(db_path=db_path).health()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT lexical_text FROM lessons").fetchone() == ("already-populated",)
+
+
+def test_schema_migration_rebuilds_legacy_fts_rows_once_in_bounded_batches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "pre-lexical-fts.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE lessons (
+                id TEXT PRIMARY KEY, codename TEXT NOT NULL, repo TEXT NOT NULL,
+                body TEXT NOT NULL, tags_json TEXT NOT NULL DEFAULT '[]',
+                severity TEXT NOT NULL DEFAULT 'info', firing_id TEXT,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'note', valid_until TEXT,
+                superseded_by TEXT, provenance TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE VIRTUAL TABLE lessons_fts "
+            "USING fts5(text, lesson_id UNINDEXED, tokenize = 'unicode61')"
+        )
+        for lesson_id, body in (("legacy-a", "Straße guidance"), ("legacy-b", "Other lesson")):
+            conn.execute(
+                "INSERT INTO lessons VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    lesson_id,
+                    "c",
+                    "r",
+                    body,
+                    "[]",
+                    "info",
+                    None,
+                    "2026-01-01T00:00:00+00:00",
+                    "2026-01-01T00:00:00+00:00",
+                    "note",
+                    None,
+                    None,
+                    None,
+                ),
+            )
+            conn.execute(
+                "INSERT INTO lessons_fts (text, lesson_id) VALUES (?, ?)",
+                (body, lesson_id),
+            )
+    monkeypatch.setattr(mod, "_LEXICAL_MIGRATION_BATCH_SIZE", 1)
+
+    provider = SqliteHybridProvider(db_path=db_path, pool=2)
+
+    assert [item.id for item in provider.recall(query="Straße", codename="c", repo="r")] == [
+        "legacy-a"
+    ]
+    assert provider._fts_ok is True
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT text, COUNT(*) FROM lessons_fts WHERE lesson_id = 'legacy-a'"
+        ).fetchone() == ("strasse guidance", 1)
+        assert conn.execute("SELECT COUNT(*) FROM lessons_fts").fetchone() == (2,)
+        conn.execute("DELETE FROM lessons_fts WHERE lesson_id = 'legacy-a'")
+        conn.execute(
+            "INSERT INTO lessons_fts (text, lesson_id) VALUES ('migration-sentinel', 'legacy-a')"
+        )
+
+    SqliteHybridProvider(db_path=db_path).health()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute(
+            "SELECT text, COUNT(*) FROM lessons_fts WHERE lesson_id = 'legacy-a'"
+        ).fetchone() == ("migration-sentinel", 1)
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson"),
+    [
+        ("Fix cold-start handling", "Use cold start handling"),
+        ("Fix cold start handling", "Use cold-start handling"),
+    ],
+)
+def test_hyphenated_spelling_variants_share_constituent_overlap(
+    query: str,
+    lesson: str,
+) -> None:
+    assert mod._has_meaningful_lexical_overlap(lesson, mod._tokenize(query))
+
+
+def test_lexical_overlap_scans_lesson_terms_beyond_query_token_cap() -> None:
+    prefix = " ".join(f"noise{i}" for i in range(25))
+    lesson = f"{prefix} GraphQL schema"
+    query = " ".join([*(f"term{i}" for i in range(30)), "ignored-tail"])
+
+    assert len(mod._tokenize(query)) == 24
+    assert mod._has_meaningful_lexical_overlap(lesson, ["graphql", "schema"])
+
+
+def test_default_chain_query_miss_does_not_fall_back_to_recent_fleet_lesson(
+    tmp_path: Path,
+) -> None:
+    sqlite = SqliteHybridProvider(db_path=tmp_path / "memory.db")
+    fleet = FleetBrainProvider(brain=FleetBrain(db_path=tmp_path / "brain.db"))
+    sqlite.reflect(codename="c", repo="r", body="Always use UTC for stored timestamps")
+    fleet.reflect(codename="c", repo="r", body="Run the release checklist before tagging")
+    chain = ChainedMemoryProvider(providers=[sqlite, fleet])
+
+    out = chain.recall(query="GraphQL batching policy", codename="c", repo="r")
+
+    assert out == []
 
 
 def test_recall_honors_limit(provider: SqliteHybridProvider) -> None:
@@ -273,6 +2811,247 @@ def test_dense_requested_but_sqlite_vec_missing_falls_back_to_lexical(
     out = prov.recall(query="gateway", codename="c", repo="r")
     assert out and out[0].body.startswith("gateway degrades")
     assert prov.health()["dense"] is False
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        ("Fix C++ compiler warnings", "C# compiler warnings", "C++ compiler warnings"),
+        ("Fix C++17 compiler warnings", "C++20 compiler warnings", "C++17 compiler warnings"),
+        ("Fix C#17 compiler warnings", "C#20 compiler warnings", "C#17 compiler warnings"),
+        ("Fix C compiler warnings", "R compiler warnings", "C language warnings"),
+        ("Fix TLS 1.3 configuration", "TLS 1.2 configuration", "TLS 1.3 configuration"),
+        ("Fix NodeJS 22 runtime", "Node.js 20 runtime", "Node 22 runtime"),
+        (
+            "Connect 192.168.1.2 database",
+            "Connect 192.168.1.3 database",
+            "Connect 192.168.1.2 database",
+        ),
+        (
+            "Connect 2001:db8::1 database",
+            "Connect 2001:db8::2 database",
+            "Connect 2001:0db8:0000:0000:0000:0000:0000:0001 database",
+        ),
+        (
+            "Connect ::ffff:192.0.2.1 database",
+            "Connect ::ffff:192.0.2.2 database",
+            "Connect ::ffff:c000:201 database",
+        ),
+    ],
+)
+def test_dense_recall_requires_matching_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), dense=True, pool=2)
+    wrong = provider.reflect(codename="c", repo="r", body=wrong_body)
+    matching = provider.reflect(codename="c", repo="r", body=matching_body)
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        provider,
+        "_dense_ids",
+        lambda *args, **kwargs: [wrong.id, matching.id],
+    )
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [matching.id]
+
+
+def test_dense_recall_keeps_semantic_candidates_without_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), dense=True, pool=1)
+    semantic = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Throttle requests per tenant before dispatch",
+    )
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_dense_ids", lambda *args, **kwargs: [semantic.id])
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [semantic.id]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_standard", "matching_standard"),
+    [
+        ("Fix C++ compiler warnings", "C#17", "C++17"),
+        ("Fix C# compiler warnings", "C++17", "C#17"),
+    ],
+)
+def test_dense_identity_filter_runs_before_sqlite_result_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_standard: str,
+    matching_standard: str,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    wrong = [
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"{wrong_standard} compiler warnings {index}",
+        )
+        for index in range(50)
+    ]
+    matching = provider.reflect(
+        codename="c",
+        repo="r",
+        body=f"{matching_standard} compiler warnings",
+    )
+    ranked_ids = [*[lesson.id for lesson in wrong], matching.id]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+    statements: list[str] = []
+    with provider._connect() as conn:
+        conn.set_trace_callback(statements.append)
+
+    try:
+        out = provider.recall(query=query, codename="c", repo="r")
+    finally:
+        with provider._connect() as conn:
+            conn.set_trace_callback(None)
+
+    assert [lesson.id for lesson in out] == [matching.id]
+    assert knn_limits == [400]
+    assert (
+        sum("SELECT l.id, l.lexical_text FROM lessons l WHERE l.id IN" in s for s in statements)
+        == 1
+    )
+    assert not any("SELECT COUNT(*) FROM lessons" in statement for statement in statements)
+
+
+def test_sqlite_dense_scope_and_validity_filter_before_result_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    out_of_scope = [
+        provider.reflect(codename="other", repo="r", body=f"semantic filler {index}")
+        for index in range(25)
+    ]
+    invalid = [
+        provider.reflect(codename="c", repo="r", body=f"expired filler {index}")
+        for index in range(25)
+    ]
+    matching = provider.reflect(codename="c", repo="r", body="semantic target")
+    with provider._connect() as conn:
+        conn.executemany(
+            "UPDATE lessons SET valid_until = ? WHERE id = ?",
+            [("2000-01-01T00:00:00+00:00", lesson.id) for lesson in invalid],
+        )
+        conn.commit()
+    ranked_ids = [
+        *[lesson.id for lesson in out_of_scope],
+        *[lesson.id for lesson in invalid],
+        matching.id,
+    ]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [matching.id]
+    assert knn_limits == [400]
+
+
+def test_sqlite_dense_candidate_budget_stops_at_rank_400(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    wrong = [
+        provider.reflect(codename="c", repo="r", body=f"C#17 compiler warnings {index}")
+        for index in range(400)
+    ]
+    matching = provider.reflect(codename="c", repo="r", body="C++17 compiler warnings")
+    ranked_ids = [*[lesson.id for lesson in wrong], matching.id]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query="Fix C++ compiler warnings", codename="c", repo="r")
+
+    assert out == []
+    assert knn_limits == [400]
+
+
+def test_sqlite_dense_identity_free_query_keeps_pool_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(
+        db_path=Path(":memory:"),
+        dense=True,
+        pool=2,
+        dimensions=2,
+        embedder=lambda _text: [0.1, 0.2],
+    )
+    semantic = [
+        provider.reflect(codename="c", repo="r", body=f"semantic guidance {index}")
+        for index in range(10)
+    ]
+    ranked_ids = [lesson.id for lesson in semantic]
+    knn_limits: list[int] = []
+
+    def ranked_knn(_conn: Any, _serialized: Any, *, limit: int) -> list[str]:
+        knn_limits.append(limit)
+        return ranked_ids[:limit]
+
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_knn", ranked_knn)
+    monkeypatch.setattr(mod, "_serialize_vector", lambda vector: vector)
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [semantic[0].id, semantic[1].id]
+    assert knn_limits == [400]
 
 
 # ---------------------------------------------------------------------------

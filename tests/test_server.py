@@ -1706,6 +1706,35 @@ def test_planning_memory_provider_loads_for_runtime_state(
     assert server_views._planning_memory_provider(request) is sentinel
 
 
+def test_desktop_converse_empty_draft_does_not_recall_unfiltered_memory(tmp_path: Path) -> None:
+    class Memory:
+        name = "test"
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[str | None, str | None, int]] = []
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            self.calls.append((repo, query, limit))
+            return [{"repo": repo, "body": "Unfiltered recent lesson."}]
+
+    memory = Memory()
+    app = create_app(FilesystemReader(state_root=tmp_path / "state"))
+    app.state.planning_memory_provider = memory
+    request = SimpleNamespace(app=app)
+    messages = cc.parse_messages(
+        [{"role": "user", "content": "Build an audit log export for fleet runs."}]
+    )
+
+    grounding = server_views._converse_memory_grounding(
+        request,
+        messages=messages,
+        base_draft=IssueDraft(title=""),
+    )
+
+    assert grounding == ""
+    assert memory.calls == []
+
+
 def test_planning_spec_candidate_is_proposed_from_configured_provider(
     tmp_path: Path,
 ) -> None:

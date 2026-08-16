@@ -297,27 +297,714 @@ def test_recall_query_substring(brain: FleetBrain) -> None:
     assert "GraphQL" in out[0].body
 
 
-def test_recall_query_never_starves_local_fallback(brain: FleetBrain) -> None:
-    """An issue-scoped query is a long blob that literal ``body LIKE`` almost
-    never matches. It must NOT drop recall to empty; recent scoped lessons still
-    surface (query is a soft filter, not a hard one)."""
+def test_recall_query_miss_returns_no_unrelated_lesson(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Use the fixture factory")
     brain.reflect(codename="lucius", repo="org/api", body="Mock the outbound client")
 
     issue_query = "Fix the GraphQL schema loader so nested unions resolve on cold start"
     out = brain.recall(codename="lucius", repo="org/api", query=issue_query)
-    # No lesson body contains the query, but recall still returns the scoped
-    # lessons by recency rather than an empty list.
-    assert {L.body for L in out} == {"Use the fixture factory", "Mock the outbound client"}
+    assert out == []
 
 
-def test_recall_query_matches_first_then_backfills(brain: FleetBrain) -> None:
-    """A partial literal match ranks first, then recency backfills up to limit."""
+def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="older unrelated lesson")
     brain.reflect(codename="lucius", repo="org/api", body="the GraphQL loader caches unions")
     out = brain.recall(codename="lucius", repo="org/api", query="GraphQL loader", limit=5)
-    assert out[0].body == "the GraphQL loader caches unions"  # literal match first
-    assert "older unrelated lesson" in {L.body for L in out}  # recency backfill
+    assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
+
+
+def test_recall_query_matches_singular_lesson_for_plural_query(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="GraphQL resolver guidance")
+    relevant = "GraphQL schema guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix GraphQL schemas",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="GraphQL resolver guidance")
+    relevant = "GraphQL schema guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix src/api GraphQL schema",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+@pytest.mark.parametrize(
+    ("query_term", "lesson_term"),
+    [
+        ("policies", "policies"),
+        ("policy", "policies"),
+        ("policies", "policy"),
+        ("analyses", "analyses"),
+        ("analysis", "analyses"),
+        ("analyses", "analysis"),
+        ("process", "processes"),
+        ("processes", "process"),
+        ("watch", "watches"),
+        ("watches", "watch"),
+        ("box", "boxes"),
+        ("boxes", "box"),
+        ("patch", "patches"),
+        ("patches", "patch"),
+        ("branch", "branches"),
+        ("branches", "branch"),
+        ("alias", "aliases"),
+        ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
+        ("axis", "axes"),
+        ("axes", "axis"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
+        ("class", "classes"),
+        ("classes", "class"),
+        ("bus", "buses"),
+        ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
+    ],
+)
+def test_recall_query_preserves_inflection_retrieval_variants(
+    brain: FleetBrain,
+    query_term: str,
+    lesson_term: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="GraphQL resolver guidance")
+    relevant = f"GraphQL {lesson_term} must be reviewed"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query=f"Fix GraphQL {query_term}",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+def test_recall_query_counts_inflection_variants_as_one_concept(brain: FleetBrain) -> None:
+    relevant = "GraphQL policy guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+    brain.reflect(codename="lucius", repo="org/api", body="Policies policy checklist")
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix GraphQL policies",
+        limit=1,
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "C compiler",
+        "R package",
+        "N+12",
+        "C++",
+        "C#",
+        "F#",
+        "HTTP/2.1",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "I/O",
+        "A/B",
+    ],
+)
+def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query: str) -> None:
+    matching_body = f"Use {query} carefully in this code path."
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_requires_language_compound_identity(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Fix R compiler warnings")
+    matching_body = "Fix C compiler warnings"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix C compiler warnings",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query_context", "lesson_context", "wrong_context"),
+    [
+        ("C compiler", "C language", "R language"),
+        ("C language", "C compiler", "R compiler"),
+        ("R package", "R language", "C language"),
+        ("R language", "R package", "C compiler"),
+        ("R script", "R language", "C language"),
+        ("R language", "R script", "C compiler"),
+    ],
+)
+def test_recall_query_canonicalizes_language_identity_contexts(
+    brain: FleetBrain,
+    query_context: str,
+    lesson_context: str,
+    wrong_context: str,
+) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body=f"{wrong_context} warnings guidance",
+    )
+    matching_body = f"{lesson_context} warnings guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query=f"Fix {query_context} warnings",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Rename column C in GraphQL schema", "Rename field R in GraphQL schema"],
+)
+def test_recall_query_does_not_require_one_letter_labels(
+    brain: FleetBrain,
+    query: str,
+) -> None:
+    matching_body = "GraphQL schema renaming guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_requires_symbolic_identity(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Fix C# compiler warnings")
+    matching_body = "Fix C++ compiler warnings"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix C++ compiler warnings",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix TLS 1.3 configuration",
+            "TLS 1.2 configuration guidance",
+            "TLS 1.3 configuration guidance",
+        ),
+        (
+            "Fix Python 3.13 runtime",
+            "Python 3.12 runtime guidance",
+            "Python 3.13 runtime guidance",
+        ),
+    ],
+)
+def test_recall_query_requires_dotted_version_identity(
+    brain: FleetBrain,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=wrong_body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_bodies", "matching_body"),
+    [
+        (
+            "Fix C++17 compiler warnings",
+            ["Fix C#17 compiler warnings", "Fix C++20 compiler warnings"],
+            "Fix C++17 compiler warnings",
+        ),
+        (
+            "Fix C#17 compiler warnings",
+            ["Fix C++17 compiler warnings", "Fix C#12 compiler warnings"],
+            "Fix C#17 compiler warnings",
+        ),
+    ],
+)
+def test_recall_query_requires_atomic_language_standard_identity(
+    brain: FleetBrain,
+    query: str,
+    wrong_bodies: list[str],
+    matching_body: str,
+) -> None:
+    for body in wrong_bodies:
+        brain.reflect(codename="lucius", repo="org/api", body=body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        (
+            "Fix Python 3 migration",
+            "Python 2 migration guidance",
+            "Python 3 migration guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "Node 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix NodeJS 22 runtime",
+            "NodeJS 20 runtime guidance",
+            "Node.js 22 runtime guidance",
+        ),
+        (
+            "Fix Node.js 22 runtime",
+            "Node.js 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+        (
+            "Fix Node 22 runtime",
+            "Node 20 runtime guidance",
+            "NodeJS 22 runtime guidance",
+        ),
+    ],
+)
+def test_recall_query_requires_contextual_major_version_identity(
+    brain: FleetBrain,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=wrong_body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "crowding_body", "matching_body"),
+    [
+        ("Python migration", "Python 3 packaging guidance", "Python 3 migration guidance"),
+        ("Node runtime", "Node 22 packaging guidance", "Node 22 runtime guidance"),
+        ("Node.js runtime", "Node.js 22 packaging guidance", "Node.js 22 runtime guidance"),
+        ("NodeJS runtime", "NodeJS 22 packaging guidance", "NodeJS 22 runtime guidance"),
+        ("C++ compiler", "C++17 linker guidance", "C++17 compiler guidance"),
+        ("C# compiler", "C#17 linker guidance", "C#17 compiler guidance"),
+    ],
+)
+def test_recall_query_unversioned_technology_matches_versioned_lesson(
+    brain: FleetBrain,
+    query: str,
+    crowding_body: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=crowding_body)
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_requires_ipv4_identity(brain: FleetBrain) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Connect 192.168.1.3 database guidance",
+    )
+    matching_body = "Connect 192.168.1.2 database guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Connect 192.168.1.2 database",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_requires_canonical_ipv6_identity(brain: FleetBrain) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Connect 2001:db8::2 database guidance",
+    )
+    matching_body = "Connect 2001:0DB8:0000:0000:0000:0000:0000:0001 database guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Connect 2001:db8::1 database",
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "prefix_collision", "matching_body"),
+    [
+        ("Node 2", "Node 2.0", "runtime [Node 2]."),
+        ("TLS 1.3", "TLS /1.3", "TLS (1.3)."),
+        ("192.168.1.2", "/192.168.1.2", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2:443", "address=(192.168.1.2),"),
+        ("192.168.1.2", "192.168.1.2.9", "address=(192.168.1.2)."),
+        (
+            "2001:db8::1",
+            "[2001:db8::1]:443",
+            "address=[2001:0db8::1],",
+        ),
+        ("2001:db8::1", "[2001:db8::1]:https", "address=[2001:db8::1]."),
+        ("2001:db8::1", "[2001:db8::1]:", "address=[2001:db8::1]."),
+        ("2001:db8::1", "2001:db8::10", "address=(2001:db8::1)."),
+        ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
+        ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
+    ],
+)
+def test_recall_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
+    query: str,
+    prefix_collision: str,
+    matching_body: str,
+) -> None:
+    store = SQLiteStore(db_path=Path(":memory:"))
+    brain = FleetBrain(store=store)
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body=matching_body,
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    for index in range(401):
+        brain.reflect(
+            codename="lucius",
+            repo="org/api",
+            body=f"{prefix_collision} collision {index}",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+    assert store._memory_conn is not None
+    statements: list[str] = []
+    store._memory_conn.set_trace_callback(statements.append)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    candidate_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT id, codename, repo, body, severity")
+        and "alfred_identity_variant_matches" in statement
+    ]
+    assert [lesson.body for lesson in out] == [matching_body]
+    assert 1 <= len(candidate_queries) <= 2
+    assert "LIMIT 50" in candidate_queries[-1]
+
+
+@pytest.mark.parametrize(
+    ("query", "matching_body"),
+    [
+        ("Node 2", "Node 2."),
+        ("Node 2", "Node 2 starts the lesson"),
+        ("192.168.1.2", "192.168.1.2 starts the lesson"),
+        ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("2001:db8::1", "2001:db8::1 starts the lesson"),
+        ("2001:db8::1", "the lesson ends at 2001:db8::1"),
+        ("2001:db8::1", "the lesson uses [2001:db8::1], here"),
+        ("1.3", "1.3 starts the lesson"),
+        ("1.3", "the lesson ends at 1.3"),
+        ("TLS 1.3", "TLS uses (1.3), here"),
+        ("HTTP/2.1", "HTTP/2.1 starts the lesson"),
+        ("HTTP/2.1", "the lesson ends at HTTP/2.1"),
+        ("HTTP/2.1", "protocol uses (HTTP/2.1), here"),
+        ("Node 2", "use (Node 2), then verify"),
+    ],
+)
+def test_recall_identity_boundary_accepts_start_end_and_punctuation(
+    brain: FleetBrain,
+    query: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_distinguishes_symbolic_punctuation_collision(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Use C# for the client")
+    matching_body = "Use C++ for the client"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query="C++")
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_matches_lesson_tags_in_literal_and_concept_paths(
+    brain: FleetBrain,
+) -> None:
+    literal = brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Database migration guidance",
+        tags=["protobuf"],
+    )
+    concept = brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="The GraphQL transport guidance",
+        tags=["schema"],
+    )
+
+    literal_out = brain.recall(codename="lucius", repo="org/api", query="protobuf")
+    concept_out = brain.recall(codename="lucius", repo="org/api", query="graphql schema")
+
+    assert [lesson.id for lesson in literal_out] == [literal.id]
+    assert [lesson.id for lesson in concept_out] == [concept.id]
+
+
+def test_recall_literal_only_query_matches_nfkc_equivalent_tag(brain: FleetBrain) -> None:
+    lesson = brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body="Localized failure guidance",
+        tags=["エラー"],
+    )
+
+    out = brain.recall(codename="lucius", repo="org/api", query="ｴﾗｰ")
+
+    assert [item.id for item in out] == [lesson.id]
+
+
+def test_recall_query_accepts_japanese_issue_title(brain: FleetBrain) -> None:
+    query = "認証エラーを修正"
+    matching_body = f"手順: {query}してください"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+    brain.reflect(codename="lucius", repo="org/web", body=query)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_requires_unicode_subject_in_mixed_query(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="The API client retries requests")
+    relevant = "API の課金エラーを修正する手順"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="API の課金エラーを修正",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+def test_recall_query_requires_devanagari_subject_in_mixed_query(
+    brain: FleetBrain,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="The API client retries requests")
+    relevant = "API डेटा मिटाएँ प्रक्रिया"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="API डेटा मिटाएँ",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+def test_recall_query_requires_single_character_unicode_subject(
+    brain: FleetBrain,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="API billing guidance")
+    relevant = "API 税 guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=relevant)
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="API 税",
+    )
+
+    assert [lesson.body for lesson in out] == [relevant]
+
+
+def test_recall_query_token_empty_literal_is_escaped_and_never_backfills(
+    brain: FleetBrain,
+) -> None:
+    exact = "修_%"
+    brain.reflect(codename="lucius", repo="org/api", body=exact)
+    brain.reflect(codename="lucius", repo="org/api", body="修AX")
+
+    out = brain.recall(codename="lucius", repo="org/api", query=exact)
+    miss = brain.recall(codename="lucius", repo="org/api", query="録")
+
+    assert [lesson.body for lesson in out] == [exact]
+    assert miss == []
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        (
+            "Fix the task_id schema in the API serializer",
+            "The task id schema uses the API serializer",
+        ),
+        ("Fix the API% schema serializer", "The API schema uses the serializer"),
+        (r"Fix the API\schema serializer", "The API schema uses the serializer"),
+    ],
+)
+def test_recall_query_metacharacter_literal_miss_uses_concept_fallback(
+    brain: FleetBrain,
+    query: str,
+    lesson_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=lesson_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [lesson_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "lesson_body"),
+    [
+        ("Fix cold-start handling", "Use cold start handling in the request path."),
+        ("Fix cold start handling", "Use cold-start handling in the request path."),
+    ],
+)
+def test_recall_query_matches_hyphenated_spelling_variants(
+    brain: FleetBrain,
+    query: str,
+    lesson_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=lesson_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [lesson_body]
+
+
+def test_recall_query_hyphen_variant_is_not_crowded_out_by_substrings(
+    brain: FleetBrain,
+) -> None:
+    now = datetime.now(UTC)
+    matching_body = "Use cold start handling in the request path."
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body=matching_body,
+        created_at=now - timedelta(minutes=1),
+    )
+    for index in range(55):
+        brain.reflect(
+            codename="lucius",
+            repo="org/api",
+            body=f"scold startup handling note {index}",
+            created_at=now + timedelta(seconds=index),
+        )
+
+    out = brain.recall(
+        codename="lucius",
+        repo="org/api",
+        query="Fix cold-start handling",
+        limit=2,
+    )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+def test_recall_query_rejects_literal_substring_false_positive(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="Prefer the rapid transport path")
+
+    out = brain.recall(codename="lucius", repo="org/api", query="api")
+
+    assert out == []
+
+
+@pytest.mark.parametrize("query", ["fix", "%", "_", r"\\"])
+def test_recall_query_rejects_low_signal_words_and_punctuation(
+    brain: FleetBrain,
+    query: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=f"Contains {query} literally.")
+
+    assert brain.recall(codename="lucius", repo="org/api", query=query) == []
+
+
+@pytest.mark.parametrize(
+    ("query", "matching_body"),
+    [
+        ("100%", "Keep 100% of the evidence"),
+        ("task_id", "Use the task_id field"),
+        (r"C:\\work", r"Use C:\\work as the fixture path"),
+    ],
+)
+def test_recall_query_treats_like_metacharacters_as_literals(
+    brain: FleetBrain,
+    query: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="unrelated recent lesson")
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
 
 
 def test_recall_limit_is_clamped(brain: FleetBrain) -> None:

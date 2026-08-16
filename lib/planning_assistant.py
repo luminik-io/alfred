@@ -124,33 +124,32 @@ def recall_planning_memory(
     if provider is None or getattr(provider, "name", "") == "null" or limit <= 0:
         return ()
     query = _planning_memory_query(draft)
+    if query is None:
+        return ()
     repos: list[str | None] = [repo for repo in draft.repos if repo]
     if not repos:
         repos = [None]
     out: list[PlanningMemoryItem] = []
     seen: set[str] = set()
     for repo in repos:
-        for use_query in (query, None):
+        if len(out) >= limit:
+            break
+        lessons = _safe_memory_recall(
+            provider,
+            repo=repo,
+            query=query,
+            limit=limit,
+        )
+        for lesson in lessons or []:
+            item = _memory_item_from_lesson(lesson, fallback_repo=repo or "")
+            if item is None:
+                continue
+            key = f"{item.repo}|{item.body}"
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(item)
             if len(out) >= limit:
-                break
-            lessons = _safe_memory_recall(
-                provider,
-                repo=repo,
-                query=use_query,
-                limit=limit,
-            )
-            for lesson in lessons or []:
-                item = _memory_item_from_lesson(lesson, fallback_repo=repo or "")
-                if item is None:
-                    continue
-                key = f"{item.repo}|{item.body}"
-                if key in seen:
-                    continue
-                seen.add(key)
-                out.append(item)
-                if len(out) >= limit:
-                    break
-            if out and use_query is not None:
                 break
     return tuple(out)
 
@@ -164,11 +163,6 @@ def _safe_memory_recall(
 ) -> Iterable[Any]:
     try:
         return provider.recall(repo=repo, query=query, limit=limit) or ()
-    except TypeError:
-        try:
-            return provider.recall(repo=repo, limit=limit) or ()
-        except Exception:
-            return ()
     except Exception:
         return ()
 

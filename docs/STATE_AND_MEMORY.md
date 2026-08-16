@@ -6,7 +6,7 @@ Alfred is built on the premise that the host filesystem is a fine operational
 state store for a single-operator fleet. Every firing reads its inputs from
 scratch, writes operational state to plain JSON or JSONL files under
 `$ALFRED_HOME/state/`, and records local review and reliability state in
-`$ALFRED_HOME/fleet-brain.db`. Recalled semantic lessons live in the embedded
+`$ALFRED_HOME/fleet-brain.db`. Recalled lessons live in the embedded
 SQLite hybrid store by default. If you delete the state tree, memory database,
 and FleetBrain database, the next firing rebuilds whatever it still can from
 GitHub and local config.

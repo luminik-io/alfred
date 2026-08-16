@@ -22,6 +22,18 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, Literal, Protocol
 
+from memory_tokens import (
+    MAX_LITERAL_QUERY_CANDIDATES,
+    escape_like_literal,
+    has_meaningful_lexical_overlap,
+    identity_variant_matches,
+    is_identity_token,
+    lexical_surface,
+    literal_fallback_query,
+    query_token_groups,
+    required_lexical_overlap,
+)
+
 from . import schema as schema_mod
 from .taxonomy import (
     DEFAULT_ANCHOR_RELATION,
@@ -563,6 +575,8 @@ AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "triage/",
 )
 NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("architect:fanout-complete",)
+_MEMORY_QUERY_PAGE_SIZE: Final[int] = 50
+_MAX_MEMORY_QUERY_PAGES: Final[int] = 8
 
 
 def _to_iso(dt: datetime) -> str:
@@ -612,6 +626,15 @@ class SQLiteStore:
         if str(self.db_path) == ":memory:":
             if self._memory_conn is None:
                 self._memory_conn = sqlite3.connect(":memory:")
+                self._memory_conn.create_function(
+                    "alfred_lexical_surface", 1, lexical_surface, deterministic=True
+                )
+                self._memory_conn.create_function(
+                    "alfred_identity_variant_matches",
+                    2,
+                    identity_variant_matches,
+                    deterministic=True,
+                )
                 self._memory_conn.execute("PRAGMA foreign_keys = ON")
                 # WAL is a no-op for ``:memory:`` but the synchronous setting
                 # is harmless; keep the call shape symmetric with the disk
@@ -622,6 +645,13 @@ class SQLiteStore:
             return
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
+        conn.create_function("alfred_lexical_surface", 1, lexical_surface, deterministic=True)
+        conn.create_function(
+            "alfred_identity_variant_matches",
+            2,
+            identity_variant_matches,
+            deterministic=True,
+        )
         conn.execute("PRAGMA foreign_keys = ON")
         # WAL lets concurrent readers proceed while a writer holds the
         # database, and lets two short-lived writers from sibling firings
@@ -680,17 +710,11 @@ class SQLiteStore:
     ) -> list[Lesson]:
         """Return the most relevant lessons, most-recent first.
 
-        The local SQLite ledger uses literal substring matching on ``body`` when
-        ``query`` is given. Redis Agent Memory provides semantic recall in the
-        default runtime provider chain.
-
-        ``query`` is treated as a SOFT filter here: an issue-scoped query is a
-        long "title + body" blob that a literal ``body LIKE`` almost never
-        matches, so using it as a hard filter would starve the local fallback
-        (existing reviewed lessons vanish instead of surfacing recent ones).
-        Instead, literal matches are ranked first, then the result is backfilled
-        with recency-ordered scoped lessons up to ``limit`` so a query narrows
-        when it can but never drops below the recency baseline.
+        The local SQLite ledger ranks literal ``body`` or tag matches first,
+        then uses canonical exact-concept overlap for spelling variants such as
+        ``cold-start`` and ``cold start``. A miss returns no lesson instead of
+        backfilling recent scoped rows that do not match the task. Calling
+        without a query is the explicit recency-ordered listing operation.
 
         Either ``codename`` or ``repo`` may be ``None`` to widen the scope.
 
@@ -700,9 +724,30 @@ class SQLiteStore:
         default recall behaviour is unchanged.
         """
         limit = int(limit)
+        query_body = (query or "").strip() or None
+        query_surface = lexical_surface(query_body) if query_body is not None else None
+        token_groups = query_token_groups(query_surface) if query_surface is not None else []
+        query_tokens = [group[0] for group in token_groups]
+        literal_only_query = (
+            literal_fallback_query(query_surface)
+            if query_surface is not None and not query_tokens
+            else None
+        )
+        identity_only_group = (
+            token_groups[0]
+            if len(token_groups) == 1 and is_identity_token(token_groups[0][0])
+            else None
+        )
+        if query_body is not None and not query_tokens and literal_only_query is None:
+            return []
         now_iso = _to_iso(datetime.now(UTC))
+        tags_surface = (
+            "COALESCE((SELECT group_concat(alfred_lexical_surface(lt.tag), ' ') "
+            "FROM lesson_tags lt WHERE lt.lesson_id = lessons.id), '')"
+        )
+        searchable_columns = f"{_LESSON_COLUMNS}, {tags_surface}"
 
-        def _scoped(query_body: str | None) -> str:
+        def _scoped(search_text: str | None) -> str:
             wheres: list[str] = [
                 "superseded_by IS NULL",
                 "(valid_until IS NULL OR valid_until > ?)",
@@ -711,43 +756,145 @@ class SQLiteStore:
                 wheres.append("codename = ?")
             if repo:
                 wheres.append("repo = ?")
-            if query_body:
-                wheres.append("body LIKE ?")
+            if search_text:
+                if identity_only_group is not None:
+                    identity_clauses = [
+                        "(alfred_identity_variant_matches(body, ?) = 1 OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND alfred_identity_variant_matches(lt.tag, ?) = 1))"
+                        for _variant in identity_only_group
+                    ]
+                    wheres.append(f"({' OR '.join(identity_clauses)})")
+                else:
+                    wheres.append(
+                        "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                    )
             clause = "WHERE " + " AND ".join(wheres)
-            return (
-                f"SELECT {_LESSON_COLUMNS} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
-            )
+            columns = searchable_columns if search_text else _LESSON_COLUMNS
+            return f"SELECT {columns} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
 
-        def _scope_params(query_body: str | None) -> list[object]:
+        def _scope_params(search_text: str | None) -> list[object]:
             params: list[object] = [now_iso]
             if codename:
                 params.append(codename)
             if repo:
                 params.append(repo)
-            if query_body:
-                params.append(f"%{query_body}%")
-            params.append(limit)
+            if search_text:
+                if identity_only_group is not None:
+                    for variant in identity_only_group:
+                        params.extend([variant, variant])
+                else:
+                    pattern = f"%{escape_like_literal(search_text)}%"
+                    params.extend([pattern, pattern])
+            query_limit = (
+                min(max(0, limit), MAX_LITERAL_QUERY_CANDIDATES)
+                if literal_only_query is not None
+                else limit
+            )
+            params.append(query_limit)
             return params
 
         with self._connect() as conn:
-            if not query:
-                rows = conn.execute(_scoped(None), _scope_params(None)).fetchall()
-                return [self._row_to_lesson(conn, r) for r in rows]
-            # Literal matches first (most-recent among them), then backfill with
-            # recency-scoped lessons so injection never starves on a narrow query.
-            matched = conn.execute(_scoped(query), _scope_params(query)).fetchall()
-            lessons = [self._row_to_lesson(conn, r) for r in matched]
-            if len(lessons) < limit:
-                seen = {lesson.id for lesson in lessons}
-                recent = conn.execute(_scoped(None), _scope_params(None)).fetchall()
-                for r in recent:
-                    lesson = self._row_to_lesson(conn, r)
-                    if lesson.id in seen:
+            rows = conn.execute(_scoped(query_surface), _scope_params(query_surface)).fetchall()
+            if query_body is None:
+                return [self._row_to_lesson(conn, row) for row in rows]
+            if literal_only_query is not None:
+                return [self._row_to_lesson(conn, row[:-1]) for row in rows]
+
+            # Keep exact literal matches first. The explicit escape keeps LIKE
+            # metacharacters literal without disabling canonical fallback.
+            matched_rows = [
+                row
+                for row in rows
+                if has_meaningful_lexical_overlap(f"{row[3]} {row[-1]}", query_tokens)
+            ]
+            if len(matched_rows) >= limit:
+                return [self._row_to_lesson(conn, row[:-1]) for row in matched_rows]
+
+            # A literal miss can still be a spelling variant such as
+            # ``cold-start`` versus ``cold start``. Prefilter with bounded LIKE
+            # pages, then apply the shared exact-concept policy so substring
+            # false positives cannot crowd out a valid older lesson.
+            wheres = [
+                "superseded_by IS NULL",
+                "(valid_until IS NULL OR valid_until > ?)",
+            ]
+            params: list[object] = [now_iso]
+            if codename:
+                wheres.append("codename = ?")
+                params.append(codename)
+            if repo:
+                wheres.append("repo = ?")
+                params.append(repo)
+            like_clauses = []
+            for group in token_groups:
+                if is_identity_token(group[0]):
+                    variant_clauses = [
+                        "(alfred_identity_variant_matches(body, ?) = 1 OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND alfred_identity_variant_matches(lt.tag, ?) = 1))"
+                        for _variant in group
+                    ]
+                else:
+                    variant_clauses = [
+                        "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                        for _variant in group
+                    ]
+                like_clauses.append(f"({' OR '.join(variant_clauses)})")
+            like_score = " + ".join(f"CAST({clause} AS INTEGER)" for clause in like_clauses)
+            wheres.append(f"({like_score}) >= ?")
+            for group in token_groups:
+                for variant in group:
+                    pattern = (
+                        variant
+                        if is_identity_token(group[0])
+                        else f"%{escape_like_literal(variant)}%"
+                    )
+                    params.extend([pattern, pattern])
+            params.append(required_lexical_overlap(query_tokens))
+
+            seen = {str(row[0]) for row in matched_rows}
+            after: tuple[str, str] | None = None
+            for _page in range(_MAX_MEMORY_QUERY_PAGES):
+                page_wheres = list(wheres)
+                page_params = list(params)
+                if after is not None:
+                    created_at, lesson_id = after
+                    page_wheres.append("(created_at < ? OR (created_at = ? AND id > ?))")
+                    page_params.extend([created_at, created_at, lesson_id])
+                sql = (
+                    f"SELECT {searchable_columns} FROM lessons "
+                    f"WHERE {' AND '.join(page_wheres)} "
+                    "ORDER BY created_at DESC, id ASC LIMIT ?"
+                )
+                page_params.append(_MEMORY_QUERY_PAGE_SIZE)
+                candidate_rows = conn.execute(sql, page_params).fetchall()
+                if not candidate_rows:
+                    break
+                for row in candidate_rows:
+                    lesson_id = str(row[0])
+                    if lesson_id in seen:
                         continue
-                    lessons.append(lesson)
-                    if len(lessons) >= limit:
+                    if not has_meaningful_lexical_overlap(f"{row[3]} {row[-1]}", query_tokens):
+                        continue
+                    seen.add(lesson_id)
+                    matched_rows.append(row)
+                    if len(matched_rows) >= limit:
                         break
-            return lessons[:limit]
+                if len(matched_rows) >= limit:
+                    break
+                next_after = (str(candidate_rows[-1][6]), str(candidate_rows[-1][0]))
+                if next_after == after:
+                    break
+                after = next_after
+                if len(candidate_rows) < _MEMORY_QUERY_PAGE_SIZE:
+                    break
+
+            return [self._row_to_lesson(conn, row[:-1]) for row in matched_rows]
 
     def list_lessons(self, limit: int | None = None) -> list[Lesson]:
         sql = f"SELECT {_LESSON_COLUMNS} FROM lessons ORDER BY created_at DESC"
