@@ -78,12 +78,20 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
    ancestry, `VERSION`, and release notes before it creates the GitHub Release
    as a **draft**. It also prints the source tarball sha256 for Homebrew. The
    draft is not public yet, by design.
-4. Build the desktop packages from the tag in the trusted packaging
-   environment. Sign, notarize, and staple the macOS build. Upload the macOS
-   assets and Linux `.AppImage` / `.deb` assets to the draft release. The
-   release body claims a desktop download, so the assets must exist before
-   publication. The download page expects these stable names: `Alfred.dmg`,
-   `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
+4. Dispatch the Linux packaging workflow from protected `main`:
+
+   ```sh
+   gh workflow run package-linux.yml --repo luminik-io/alfred --ref main \
+     -f tag="v$(cat VERSION)"
+   ```
+
+   It verifies the tag and commit, builds with read-only repository access,
+   inspects both packages, then uploads `Alfred.AppImage` and `Alfred.deb` to
+   the existing draft from a separate write-scoped job. Build the macOS
+   packages from the same tag in the trusted signing environment. Sign,
+   notarize, and staple the macOS build, then upload `Alfred.dmg` and
+   `Alfred.app.zip`. The release body claims a desktop download, so all four
+   assets must exist before publication.
 5. Open the draft release, confirm the body and the attached assets, then press Publish. Publishing marks it as the latest release.
 6. Update `Formula/alfred-os.rb` with the printed source archive sha256.
 7. Set the release version in `Casks/alfred-os.rb` and update its sha256 from
