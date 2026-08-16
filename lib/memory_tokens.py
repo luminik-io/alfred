@@ -73,6 +73,7 @@ MAX_DENSE_QUERY_CANDIDATES = 400
 _IRREGULAR_ENGLISH_INFLECTIONS = {
     "analyses": "analysis",
     "appendices": "appendix",
+    "cookies": "cookie",
     "indices": "index",
     "matrices": "matrix",
     "statuses": "status",

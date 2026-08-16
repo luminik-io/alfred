@@ -434,6 +434,8 @@ def test_default_chain_canonicalizes_language_identity_contexts(
         ("vertices", "vertex"),
         ("appendix", "appendices"),
         ("appendices", "appendix"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
     ],
 )
 def test_default_chain_preserves_sibilant_inflection_variants(
@@ -843,6 +845,8 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("classes", "class"),
         ("bus", "buses"),
         ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
     ],
 )
 def test_fts_recall_preserves_inflection_retrieval_variants(
@@ -1142,6 +1146,8 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("classes", "class"),
         ("bus", "buses"),
         ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
     ],
 )
 def test_like_recall_preserves_inflection_retrieval_variants(
@@ -1846,6 +1852,7 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("branches", "branch"),
         ("classes", "class"),
         ("buses", "bus"),
+        ("cookies", "cookie"),
         ("statuses", "status"),
         ("analyses", "analysis"),
     ],
@@ -1878,6 +1885,16 @@ def test_technical_irregular_inflections_have_bounded_reverse_variants(
     assert token_mod._english_inflection_form(plural) == singular
     assert token_mod._english_plural_form(singular) == plural
     assert token_mod._retrieval_variants(plural, singular) == (singular, plural)
+
+
+def test_cookie_inflection_uses_one_explicit_symmetric_mapping() -> None:
+    assert token_mod._english_inflection_form("cookies") == "cookie"
+    assert token_mod._english_plural_form("cookie") == "cookies"
+    assert token_mod._retrieval_variants("cookies", "cookie") == ("cookie", "cookies")
+    assert token_mod._english_inflection_form("policies") == "policy"
+    assert token_mod._english_plural_form("policy") == "policies"
+    assert token_mod._english_inflection_form("movie") == "movie"
+    assert token_mod._english_plural_form("movie") == "movies"
 
 
 @pytest.mark.parametrize(

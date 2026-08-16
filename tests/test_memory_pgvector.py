@@ -1428,6 +1428,8 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("classes", "class"),
         ("bus", "buses"),
         ("buses", "bus"),
+        ("cookie", "cookies"),
+        ("cookies", "cookie"),
     ],
 )
 def test_lexical_like_fallback_preserves_inflection_retrieval_variants(
