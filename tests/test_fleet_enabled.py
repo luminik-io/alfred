@@ -710,7 +710,7 @@ def test_cli_auth_status_propagates_codex_status_failure(tmp_path):
     res = _run_cli("auth", "status", env_extra=env)
 
     assert res.returncode == 1
-    assert "Current routing for scheduled agents" in res.stdout
+    assert "claude readiness: missing" in res.stdout
     assert "codex: not found" in res.stderr
 
 

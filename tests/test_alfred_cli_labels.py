@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import os
@@ -1015,6 +1016,36 @@ def test_engine_doctor_renders_unsupported_version_remediation(
     assert "Installed version: Claude Code 2.1.40." in output
     assert "Minimum supported version: 2.1.41." in output
     assert "Upgrade Claude Code, then rerun `alfred engine doctor`." in output
+
+
+def test_auth_status_uses_scheduler_profile_claude_readiness(
+    cli_module,
+    capsys: pytest.CaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    selected_profile = tmp_path / ".claude-secondary"
+    received_environments: list[dict[str, str]] = []
+    signed_out = _engine_readiness(
+        cli_module,
+        "claude",
+        ready=False,
+        state="auth_required",
+        detail="Claude Code is installed but is not signed in.",
+    )
+    monkeypatch.setattr(cli_module, "_current_claude_dir", lambda: str(selected_profile))
+    monkeypatch.setattr(cli_module, "_claude_status", lambda: 0)
+    monkeypatch.setattr(cli_module, "_codex_status", lambda: 0)
+
+    def probe(_descriptor, **kwargs):
+        received_environments.append(dict(kwargs["environ"]))
+        return signed_out
+
+    monkeypatch.setattr(cli_module.agent_runner, "probe_engine", probe)
+
+    assert cli_module.cmd_auth(argparse.Namespace(auth_command="status")) == 1
+    assert received_environments[0]["CLAUDE_CONFIG_DIR"] == str(selected_profile)
+    assert "claude readiness: auth_required" in capsys.readouterr().out
 
 
 def test_launchctl_timeout_returns_controlled_status(cli_module, monkeypatch):

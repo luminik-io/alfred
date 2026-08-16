@@ -3747,6 +3747,16 @@ def _claude_status() -> int:
     return 0
 
 
+def _claude_readiness_status() -> int:
+    """Report Claude readiness for the scheduler-selected profile."""
+
+    ready, state, detail = _engine_mode_readiness("claude", {})
+    print(f"claude readiness: {state}")
+    if not ready:
+        print(f"claude: {detail}", file=sys.stderr)
+    return 0 if ready else 1
+
+
 def _set_claude_dir(path: Path, label: str) -> int:
     if scheduler.SCHEDULER not in {"launchd", "systemd"}:
         print(
@@ -3933,7 +3943,7 @@ def cmd_architect_setup(args: argparse.Namespace) -> int:
 def cmd_auth(args: argparse.Namespace) -> int:
     command = args.auth_command
     if command in ("status", ""):
-        claude_rc = _claude_status()
+        claude_rc = _claude_readiness_status()
         print("")
         codex_rc = _codex_status()
         return 0 if claude_rc == 0 and codex_rc == 0 else 1

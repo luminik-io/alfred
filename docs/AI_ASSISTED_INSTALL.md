@@ -314,8 +314,8 @@ Expected:
 
 - `alfred agents` lists the full engineering fleet, including gated agents and
   the memory harvest / auto-promote jobs.
-- `alfred auth status` shows Claude Code account routing and Codex status if
-  Codex is installed.
+- `alfred auth status` checks scheduler-selected Claude Code readiness and
+  Codex readiness.
 - `alfred doctor` reports the configured agents as pass, or names the exact missing
   binary/auth/env var before any agent burns model turns.
 
