@@ -36,6 +36,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.pgvector_provider as mod  # noqa: E402
+import memory_tokens as token_mod  # noqa: E402
 from agent_runner import memory_ranking  # noqa: E402
 from agent_runner.memory_runtime import load_runtime_memory  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
@@ -635,14 +636,16 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
         (
             "2001:db8::1",
             "[2001:db8::1]:443",
-            "address=[2001:0db8:0000:0000:0000:0000:0000:0001],",
-            r"(^|[^A-Za-z0-9:%])2001:db8::1($|[^A-Za-z0-9:%/\]]|\]($|[^:]))",
+            "address=[2001:0db8::1],",
+            None,
         ),
+        ("2001:db8::1", "[2001:db8::1]:https", "address=[2001:db8::1].", None),
+        ("2001:db8::1", "[2001:db8::1]:", "address=[2001:db8::1].", None),
         (
             "2001:db8::1",
             "2001:db8::10",
             "address=(2001:db8::1).",
-            r"(^|[^A-Za-z0-9:%])2001:db8::1($|[^A-Za-z0-9:%/\]]|\]($|[^:]))",
+            None,
         ),
         (
             "HTTP/2.1",
@@ -662,8 +665,10 @@ def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
     query: str,
     prefix_collision: str,
     matching_text: str,
-    expected_pattern: str,
+    expected_pattern: str | None,
 ) -> None:
+    if expected_pattern is None:
+        expected_pattern = mod._identity_regex_pattern(mod._query_token_groups(query)[0][0])
     prefix_rows = [
         (
             f"collision-{index:03}",
@@ -690,6 +695,7 @@ def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
                 raise AssertionError(f"unexpected SQL: {normalized}")
             self.candidate_calls += 1
             if expected_pattern in params:
+                assert re.search(expected_pattern, matching_text) is not None
                 return Cursor([("matching", matching_text, _NOW - timedelta(days=1))])
             page_size = int(params[-1])
             start = (self.candidate_calls - 1) * page_size
@@ -1187,8 +1193,7 @@ def test_lexical_like_fallback_requires_canonical_ipv6_identity() -> None:
             normalized = " ".join(sql.split())
             assert "body_tsv" not in normalized
             assert "FROM lessons l WHERE" in normalized
-            assert any("2001:db8::1" in str(param) for param in params)
-            assert any("2001:0db8:0000:0000:0000:0000:0000:0001" in str(param) for param in params)
+            assert mod._identity_regex_pattern("2001:db8::1") in params
             return Cursor()
 
     provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
@@ -1215,6 +1220,8 @@ def test_lexical_like_fallback_requires_canonical_ipv6_identity() -> None:
         ("2001:db8::2", False),
         ("2001:db8::10", False),
         ("[2001:db8::1]:443", False),
+        ("[2001:db8::1]:https", False),
+        ("[2001:db8::1]:", False),
         ("2001:db8::1/64", False),
         ("fe80::1%en0", False),
     ],
@@ -1229,6 +1236,44 @@ def test_ipv6_identity_regex_variants_preserve_exact_boundaries(
     ]
 
     assert any(re.search(pattern, text.casefold()) for pattern in patterns) is matches
+
+
+@pytest.mark.parametrize(
+    ("query", "canonical", "equivalent_forms"),
+    [
+        (
+            "2001:db8::1",
+            "2001:db8::1",
+            [
+                "2001:0db8::1",
+                "2001:db8:0:0:0:0:0:1",
+                "2001:db8:0::0:1",
+                "2001:0db8:0000:0000:0000:0000:0000:0001",
+            ],
+        ),
+        (
+            "::ffff:192.0.2.1",
+            "::ffff:c000:201",
+            [
+                "::ffff:192.0.2.1",
+                "::ffff:c000:201",
+                "0:0:0:0:0:ffff:192.0.2.1",
+                "0000:0000:0000:0000:0000:ffff:c000:0201",
+            ],
+        ),
+    ],
+)
+def test_ipv6_pg_regex_matches_every_representative_stdlib_equivalent(
+    query: str,
+    canonical: str,
+    equivalent_forms: list[str],
+) -> None:
+    assert mod._query_token_groups(query) == [(canonical,)]
+    pattern = mod._identity_regex_pattern(canonical)
+    assert len(pattern) <= 8_192
+    for form in equivalent_forms:
+        assert token_mod.identity_variant_matches(form, canonical)
+        assert re.search(pattern, form.casefold()) is not None
 
 
 @pytest.mark.parametrize(
@@ -2319,6 +2364,11 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
             "Connect 2001:db8::1 database",
             "connect 2001:db8::2 database",
             "connect 2001:0db8:0000:0000:0000:0000:0000:0001 database",
+        ),
+        (
+            "Connect ::ffff:192.0.2.1 database",
+            "connect ::ffff:192.0.2.2 database",
+            "connect ::ffff:c000:201 database",
         ),
     ],
 )

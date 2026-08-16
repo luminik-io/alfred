@@ -52,6 +52,7 @@ _IPV6_CANDIDATE_RE = re.compile(
     r"(?:[0-9A-Fa-f]{0,4}|(?:[0-9]{1,3}\.){3}[0-9]{1,3})"
     r"(?![A-Za-z0-9:%/]|\.[A-Za-z0-9])"
 )
+_MAX_IPV6_PORT_TOKEN_LENGTH = 64
 _MIN_MAJOR_VERSION_DIGITS = 1
 _MAX_MAJOR_VERSION_DIGITS = 2
 _CONTEXTUAL_MAJOR_VERSION_RE = re.compile(
@@ -176,14 +177,66 @@ def _is_ipv4_identity(token: str) -> bool:
 
 
 def _canonical_ipv6_identity(token: str) -> str | None:
-    """Return the compressed canonical form of one bounded IPv6 literal."""
+    """Return a runtime-independent compressed key for one IPv6 literal."""
 
     if _IPV6_CANDIDATE_RE.fullmatch(token) is None:
         return None
     try:
-        return IPv6Address(token).compressed.lower()
+        value = int(IPv6Address(token))
     except AddressValueError:
         return None
+    hextets = tuple((value >> (16 * (7 - index))) & 0xFFFF for index in range(8))
+    zero_start = -1
+    zero_length = 0
+    scan_start = 0
+    while scan_start < len(hextets):
+        if hextets[scan_start] != 0:
+            scan_start += 1
+            continue
+        scan_end = scan_start
+        while scan_end < len(hextets) and hextets[scan_end] == 0:
+            scan_end += 1
+        length = scan_end - scan_start
+        if length >= 2 and length > zero_length:
+            zero_start = scan_start
+            zero_length = length
+        scan_start = scan_end
+    parts = [f"{hextet:x}" for hextet in hextets]
+    if zero_start < 0:
+        return ":".join(parts)
+    left = ":".join(parts[:zero_start])
+    right = ":".join(parts[zero_start + zero_length :])
+    return f"{left}::{right}"
+
+
+def _is_bracketed_ipv6_host_port(text: str, match: re.Match[str]) -> bool:
+    return (
+        match.start() > 0
+        and text[match.start() - 1] == "["
+        and text[match.end() :].startswith("]:")
+    )
+
+
+def _blocked_ipv6_host_port_spans(text: str) -> list[tuple[int, int]]:
+    """Return bounded bracketed host-port spans excluded from token overlap."""
+
+    spans: list[tuple[int, int]] = []
+    for match in _IPV6_CANDIDATE_RE.finditer(text):
+        if _canonical_ipv6_identity(match.group(0)) is None or not _is_bracketed_ipv6_host_port(
+            text, match
+        ):
+            continue
+        end = match.end() + 2
+        port_length = 0
+        while (
+            end < len(text)
+            and port_length < _MAX_IPV6_PORT_TOKEN_LENGTH
+            and (text[end].isalnum() or text[end] in "_-")
+        ):
+            end += 1
+            port_length += 1
+        spans.append((match.start() - 1, end))
+    return spans
 
 
 def _iter_ipv6_matches(text: str) -> Iterator[re.Match[str]]:
@@ -192,13 +245,7 @@ def _iter_ipv6_matches(text: str) -> Iterator[re.Match[str]]:
     for match in _IPV6_CANDIDATE_RE.finditer(text):
         if _canonical_ipv6_identity(match.group(0)) is None:
             continue
-        suffix = text[match.end() :]
-        if (
-            match.start() > 0
-            and text[match.start() - 1] == "["
-            and suffix.startswith("]:")
-            and suffix[2:3].isdigit()
-        ):
+        if _is_bracketed_ipv6_host_port(text, match):
             continue
         yield match
 
@@ -318,8 +365,7 @@ def _retrieval_variants(raw: str, canonical: str) -> tuple[str, ...]:
 
     ipv6 = _canonical_ipv6_identity(canonical)
     if ipv6 is not None:
-        exploded = IPv6Address(ipv6).exploded.lower()
-        return (ipv6,) if exploded == ipv6 else (ipv6, exploded)
+        return (ipv6,)
     node_major = _CANONICAL_NODE_MAJOR_RE.fullmatch(canonical)
     if node_major is not None:
         major = node_major.group(1)
@@ -430,8 +476,20 @@ def meaningful_tokens(
     """
 
     text = lexical_surface(text)
-    compounds = _compound_matches(text)
-    unicode_words = [span for span in _unicode_word_spans(text) if not span[2].isascii()]
+    blocked_spans = _blocked_ipv6_host_port_spans(text)
+    compounds = [
+        match
+        for match in _compound_matches(text)
+        if not any(
+            match.end() > blocked_start and match.start() < blocked_end
+            for blocked_start, blocked_end in blocked_spans
+        )
+    ]
+    token_text = list(text)
+    for start, end in blocked_spans:
+        token_text[start:end] = " " * (end - start)
+    visible_text = "".join(token_text)
+    unicode_words = [span for span in _unicode_word_spans(visible_text) if not span[2].isascii()]
     for match in compounds:
         compound = re.sub(r"\s+", " ", match.group(0))
         compound = _canonical_ipv6_identity(compound) or compound
@@ -441,11 +499,11 @@ def meaningful_tokens(
             if companion is not None:
                 yield companion
 
-    yield from _unicode_concepts(text)
+    yield from _unicode_concepts(visible_text)
 
     compound_index = 0
     unicode_word_index = 0
-    for match in _WORD_RE.finditer(text):
+    for match in _WORD_RE.finditer(visible_text):
         while compound_index < len(compounds) and compounds[compound_index].end() <= match.start():
             compound_index += 1
         if (
@@ -542,10 +600,58 @@ def escape_like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _ipv6_hextet_regex(value: int) -> str:
+    digits = f"{value:x}"
+    if value == 0:
+        return r"0{1,4}"
+    leading_zeroes = 4 - len(digits)
+    return digits if leading_zeroes == 0 else rf"0{{0,{leading_zeroes}}}{digits}"
+
+
+def _ipv6_layout_regexes(
+    hextets: tuple[int, ...],
+    *,
+    tail: str | None = None,
+) -> list[str]:
+    """Return every bounded spelling for explicit and compressed zero runs."""
+
+    atoms = [_ipv6_hextet_regex(value) for value in hextets]
+    if tail is not None:
+        atoms.append(tail)
+    layouts = [":".join(atoms)]
+    for start in range(len(hextets)):
+        for end in range(start + 1, len(hextets) + 1):
+            if any(hextets[index] != 0 for index in range(start, end)):
+                break
+            left = ":".join(atoms[:start])
+            right = ":".join(atoms[end:])
+            layouts.append(f"{left}::{right}")
+    return layouts
+
+
+def _ipv6_identity_regex(value: str) -> str:
+    """Return a bounded regex for every stdlib-equivalent IPv6 spelling."""
+
+    address = IPv6Address(value)
+    numeric = int(address)
+    hextets = tuple((numeric >> (16 * (7 - index))) & 0xFFFF for index in range(8))
+    ipv4_tail = str(IPv4Address((hextets[6] << 16) | hextets[7])).replace(".", r"\.")
+    layouts = _ipv6_layout_regexes(hextets)
+    layouts.extend(_ipv6_layout_regexes(hextets[:6], tail=ipv4_tail))
+    alternatives = "|".join(dict.fromkeys(layouts))
+    return (
+        rf"(^|[^A-Za-z0-9:%])(?:{alternatives})"
+        rf"($|[^A-Za-z0-9:%/\]]|\]($|[^:]))"
+    )
+
+
 def identity_regex_pattern(value: str) -> str:
     """Return a PostgreSQL-compatible regex with canonical identity bounds."""
 
     value = lexical_surface(value)
+    canonical_ipv6 = _canonical_ipv6_identity(value)
+    if canonical_ipv6 is not None:
+        return _ipv6_identity_regex(canonical_ipv6)
     metacharacters = frozenset(r"\.^$|?*+(){}[]")
     literal = "".join(f"\\{char}" if char in metacharacters else char for char in value)
     if _LANGUAGE_STANDARD_BASE_RE.fullmatch(value):
@@ -555,11 +661,6 @@ def identity_regex_pattern(value: str) -> str:
         return (
             rf"(^|[^A-Za-z0-9./:]){literal}"
             rf"($|[^A-Za-z0-9/:.]|\.$|\.[^A-Za-z0-9])"
-        )
-    if _canonical_ipv6_identity(value) is not None:
-        return (
-            rf"(^|[^A-Za-z0-9:%]){literal}"
-            rf"($|[^A-Za-z0-9:%/\]]|\]($|[^:]))"
         )
     if _DOTTED_VERSION_RE.fullmatch(value):
         return (

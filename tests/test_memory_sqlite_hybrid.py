@@ -998,8 +998,10 @@ def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
         (
             "2001:db8::1",
             "[2001:db8::1]:443",
-            "address=[2001:0db8:0000:0000:0000:0000:0000:0001],",
+            "address=[2001:0db8::1],",
         ),
+        ("2001:db8::1", "[2001:db8::1]:https", "address=[2001:db8::1]."),
+        ("2001:db8::1", "[2001:db8::1]:", "address=[2001:db8::1]."),
         ("2001:db8::1", "2001:db8::10", "address=(2001:db8::1)."),
         ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
         ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
@@ -2234,9 +2236,7 @@ def test_ipv6_is_a_canonical_bounded_mandatory_identity() -> None:
     assert "2001" not in query_tokens
     assert "db8" not in query_tokens
     assert token_mod.is_identity_token("2001:db8::1")
-    assert token_mod.query_token_groups(expanded) == [
-        ("2001:db8::1", "2001:0db8:0000:0000:0000:0000:0000:0001")
-    ]
+    assert token_mod.query_token_groups(expanded) == [("2001:db8::1",)]
     assert not mod._has_meaningful_lexical_overlap(
         "Connect 2001:db8::2 database guidance",
         query_tokens,
@@ -2267,6 +2267,8 @@ def test_ipv6_identity_accepts_sentence_boundaries_and_brackets(text: str) -> No
         "2001:db8::1/64",
         "fe80::1%en0",
         "[2001:db8::1]:443",
+        "[2001:db8::1]:https",
+        "[2001:db8::1]:",
         "host2001:db8::1",
         "2001:db8::1host",
     ],
@@ -2283,6 +2285,14 @@ def test_ipv6_identity_rejects_invalid_and_unsupported_compounds(
         token_mod.is_identity_token(token)
         for token in mod._tokenize(f"Connect {invalid_or_compound} database")
     )
+
+
+@pytest.mark.parametrize("port", ["443", "https", ""])
+def test_ipv6_bracketed_host_port_suppresses_address_and_port_fragments(port: str) -> None:
+    assert mod._tokenize(f"Connect [2001:db8::1]:{port} database") == [
+        "connect",
+        "database",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -2813,6 +2823,11 @@ def test_dense_requested_but_sqlite_vec_missing_falls_back_to_lexical(
             "Connect 2001:db8::1 database",
             "Connect 2001:db8::2 database",
             "Connect 2001:0db8:0000:0000:0000:0000:0000:0001 database",
+        ),
+        (
+            "Connect ::ffff:192.0.2.1 database",
+            "Connect ::ffff:192.0.2.2 database",
+            "Connect ::ffff:c000:201 database",
         ),
     ],
 )

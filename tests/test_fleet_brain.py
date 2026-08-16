@@ -701,8 +701,10 @@ def test_recall_query_requires_canonical_ipv6_identity(brain: FleetBrain) -> Non
         (
             "2001:db8::1",
             "[2001:db8::1]:443",
-            "address=[2001:0db8:0000:0000:0000:0000:0000:0001],",
+            "address=[2001:0db8::1],",
         ),
+        ("2001:db8::1", "[2001:db8::1]:https", "address=[2001:db8::1]."),
+        ("2001:db8::1", "[2001:db8::1]:", "address=[2001:db8::1]."),
         ("2001:db8::1", "2001:db8::10", "address=(2001:db8::1)."),
         ("HTTP/2.1", "HTTP/2.1/path", "protocol [HTTP/2.1],"),
         ("HTTP/2.1", "HTTP/2.1.next", "protocol [HTTP/2.1]"),
