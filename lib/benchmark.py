@@ -1,8 +1,8 @@
 """Reproducible benchmark harness for the autonomous fleet.
 
 This module answers one operator question honestly: *is the fleet getting
-better or worse at shipping code, and at what cost to my subscription
-quota?* It does that by HARNESSING TELEMETRY THE FLEET ALREADY CAPTURES,
+better or worse at shipping code, and how efficiently does it use each
+turn?* It does that by HARNESSING TELEMETRY THE FLEET ALREADY CAPTURES,
 never by adding new instrumentation or fabricating numbers.
 
 The four metric families, and where each number comes from:
@@ -39,12 +39,10 @@ Design contract:
   timestamp, or a firing with no PR is skipped, never raised. The
   operator runs this to learn *what shipped*, not to validate disk
   layout.
-* Config-driven. The seed repo, the suite file, the state dir, and the
-  quota plan are all overridable; nothing is hard-coded to one machine.
-* Honest framing. Cost is expressed as a share of the operator's
-  subscription quota (turns burned vs. plan budget), NOT as a
-  dollar-per-PR figure, because subscription-backed Claude Code does not
-  bill per token. See :func:`quota_cost_for_report`.
+* Config-driven. The seed repo, the suite file, and the state dir are all
+  overridable; nothing is hard-coded to one machine.
+* Honest framing. The report emits observed turns and tokens per PR. It does
+  not infer provider plan limits or convert them into throughput claims.
 """
 
 from __future__ import annotations
@@ -52,7 +50,6 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import os
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -873,98 +870,3 @@ def __getattr__(name: str) -> Any:
 
         return getattr(memory_benchmark, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-# --------------------------------------------------------------------------
-# Subscription-quota cost framing
-#
-# Cost is reported as a SHARE OF SUBSCRIPTION QUOTA, never $/PR.
-# Subscription-backed Claude Code draws from a shared usage pool, not
-# per-token API billing (see docs/CLAUDE_CODE.md "Cost model"). The honest
-# unit an operator cares about is "what fraction of my Claude Max / Codex
-# Pro budget does one PR cost". The turn budgets below reuse the empirical
-# turn-burn numbers from docs/CLAUDE_CODE.md and are config-overridable.
-# --------------------------------------------------------------------------
-
-# Per-plan daily turn budgets, sized from the empirical turn-burn numbers in
-# docs/CLAUDE_CODE.md: a continuous fleet (Lucius alone) averages 2000-3500
-# turns/day and exceeds Pro in a day once several codenames fire. These are
-# SIZING ESTIMATES for the % framing, not provider billing guarantees;
-# Anthropic/OpenAI own the real reset behaviour. Override via env.
-DEFAULT_PLAN_DAILY_TURN_BUDGET: dict[str, int] = {
-    "claude_pro": 2_000,
-    "claude_max_5x": 10_000,
-    "claude_max_20x": 40_000,
-    "codex_pro": 4_000,
-}
-
-_PLAN_BUDGET_ENV_PREFIX = "ALFRED_BENCHMARK_TURN_BUDGET_"
-
-
-def plan_daily_turn_budgets(
-    env: dict[str, str] | None = None,
-) -> dict[str, int]:
-    """Return the per-plan daily turn budgets, env-overridable.
-
-    For each known plan, ``ALFRED_BENCHMARK_TURN_BUDGET_<PLAN>`` (upper-case,
-    e.g. ``ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_MAX_5X``) overrides the
-    default. A non-numeric or non-positive override is ignored so a typo
-    cannot zero a budget and divide-by-zero the framing.
-    """
-    source = env if env is not None else os.environ
-    budgets = dict(DEFAULT_PLAN_DAILY_TURN_BUDGET)
-    for plan in list(budgets):
-        raw = source.get(f"{_PLAN_BUDGET_ENV_PREFIX}{plan.upper()}")
-        if raw is None:
-            continue
-        try:
-            value = int(str(raw).strip())
-        except (TypeError, ValueError):
-            continue
-        if value > 0:
-            budgets[plan] = value
-    return budgets
-
-
-@dataclass
-class QuotaCostRow:
-    """One plan's quota-cost framing for a benchmark run."""
-
-    plan: str
-    daily_turn_budget: int
-    turns_per_pr: float | None
-    pct_quota_per_pr: float | None
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-def quota_cost_for_report(
-    report: BenchmarkReport,
-    *,
-    env: dict[str, str] | None = None,
-) -> list[QuotaCostRow]:
-    """Frame the run's per-PR turn cost as a share of each plan's quota.
-
-    ``pct_quota_per_pr`` is ``turns_per_pr / daily_turn_budget * 100``: the
-    fraction of a plan's daily turn budget one merged-or-opened PR consumes.
-    ``None`` when the run opened no PR (no per-PR figure to frame). This is
-    the SUBSCRIPTION framing the launch strategy asks for: "% of your Claude
-    Max / Codex Pro quota per PR", not dollars per PR.
-    """
-    budgets = plan_daily_turn_budgets(env)
-    turns_per_pr = report.efficiency.turns_per_pr
-    rows: list[QuotaCostRow] = []
-    for plan, budget in budgets.items():
-        pct: float | None = None
-        if turns_per_pr is not None and budget > 0:
-            pct = round(turns_per_pr / budget * 100, 2)
-        rows.append(
-            QuotaCostRow(
-                plan=plan,
-                daily_turn_budget=budget,
-                turns_per_pr=round(turns_per_pr, 1) if turns_per_pr is not None else None,
-                pct_quota_per_pr=pct,
-            )
-        )
-    return rows

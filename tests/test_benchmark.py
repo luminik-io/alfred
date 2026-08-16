@@ -4,8 +4,8 @@ The harness reader is pure: it never calls an LLM and never touches the
 network or the real disk outside ``tmp_path``. These tests build a
 synthetic state tree (spend ledger + typed event logs + stream-JSON
 transcripts with ``message.usage`` blocks), then assert the four metric
-families and the subscription-quota framing. A "fired suite" here is
-entirely mocked telemetry: no model runs, no quota burns.
+families and the observed efficiency framing. A "fired suite" here is
+entirely mocked telemetry: no model runs and no subscription usage.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 
+import alfred_config  # noqa: E402
 import benchmark  # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -338,38 +339,16 @@ def test_merge_rate_never_exceeds_one(tmp_path: Path):
     assert report.quality.merge_rate == pytest.approx(1.0)
 
 
-# --------------------------------------------------------------------------
-# Quota-cost framing
-# --------------------------------------------------------------------------
-
-
-def test_quota_cost_uses_turns_per_pr(tmp_path: Path):
-    _seed_two_pr_run(tmp_path)
-    report = benchmark.run_report(tmp_path)
-    rows = benchmark.quota_cost_for_report(report)
-    by_plan = {r.plan: r for r in rows}
-    assert "claude_pro" in by_plan
-    # turns_per_pr = 60; claude_pro budget = 2000 -> 3.0%
-    assert by_plan["claude_pro"].turns_per_pr == pytest.approx(60.0)
-    assert by_plan["claude_pro"].pct_quota_per_pr == pytest.approx(3.0)
-
-
-def test_quota_cost_none_when_no_pr(tmp_path: Path):
-    report = benchmark.run_report(tmp_path)
-    rows = benchmark.quota_cost_for_report(report)
-    assert all(r.pct_quota_per_pr is None for r in rows)
-
-
-def test_plan_budgets_env_override():
-    env = {"ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_PRO": "500"}
-    budgets = benchmark.plan_daily_turn_budgets(env)
-    assert budgets["claude_pro"] == 500
-
-
-def test_plan_budgets_ignore_bad_override():
-    env = {"ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_PRO": "notanumber"}
-    budgets = benchmark.plan_daily_turn_budgets(env)
-    assert budgets["claude_pro"] == benchmark.DEFAULT_PLAN_DAILY_TURN_BUDGET["claude_pro"]
+def test_fixed_plan_quota_estimates_are_not_part_of_the_contract():
+    removed_symbols = (
+        "DEFAULT_PLAN_DAILY_TURN_BUDGET",
+        "plan_daily_turn_budgets",
+        "QuotaCostRow",
+        "quota_cost_for_report",
+    )
+    assert all(not hasattr(benchmark, name) for name in removed_symbols)
+    assert alfred_config.get_var("ALFRED_BENCHMARK_TURN_BUDGET_CLAUDE_MAX_5X") is None
+    assert "ALFRED_BENCHMARK_TURN_BUDGET_" not in alfred_config.NON_VAR_TOKENS
 
 
 # --------------------------------------------------------------------------
@@ -396,7 +375,11 @@ def test_cli_report_table(tmp_path: Path, capsys):
     assert "alfred-benchmark" in out
     assert "Throughput" in out
     assert "Reliability" in out
-    assert "% quota/PR" in out
+    assert "turns per PR ............. 60" in out
+    assert "subscription quota" not in out
+    assert "% quota/PR" not in out
+    assert "claude_pro" not in out
+    assert "codex_pro" not in out
     assert "SELF-benchmark" in out
 
 
@@ -407,8 +390,9 @@ def test_cli_report_json(tmp_path: Path, capsys):
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["throughput"]["prs_opened"] == 2
-    assert "quota_cost" in payload
     assert payload["efficiency"]["turns"] == 120
+    assert payload["efficiency"]["turns_per_pr"] == pytest.approx(60.0)
+    assert "quota_cost" not in payload
 
 
 def test_cli_report_is_default_subcommand(tmp_path: Path, capsys):

@@ -70,7 +70,7 @@ Subcommands today:
                               artifacts.
   alfred benchmark            Reproducible self-benchmark from existing
                               telemetry: throughput, quality, reliability,
-                              efficiency, and % of plan quota per PR.
+                              and observed efficiency, including turns per PR.
   alfred logs <codename>      Inspect stream-JSON transcripts for one agent:
                               recent firings, tool-call summary, or a full
                               pretty-printed dump of one firing.
