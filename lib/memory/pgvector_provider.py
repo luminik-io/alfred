@@ -79,6 +79,7 @@ from memory_tokens import (
 from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
 from memory_tokens import query_token_groups as _query_token_groups
+from memory_tokens import required_identities_match as _required_identities_match
 from memory_tokens import (
     required_lexical_overlap as _required_lexical_overlap,
 )
@@ -1068,6 +1069,7 @@ class PgvectorProvider:
         cap = max(1, int(limit))
         has_query = bool((query or "").strip())
         text = (query or "").strip()
+        query_tokens = _tokenize(text) if has_query else []
         try:
             anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
             with self._connect() as conn:
@@ -1078,8 +1080,9 @@ class PgvectorProvider:
                     else []
                 )
                 dense: list[str] = []
-                if has_query and _tokenize(text) and self._vec_ok:
+                if has_query and query_tokens and self._vec_ok:
                     dense = self._dense_ids(conn, text, codename=codename, repo=repo, now=now)
+                    dense = self._filter_dense_identity_ids(conn, dense, query_tokens)
                 if not lexical and not dense and not has_query:
                     fused_ids = self._recency_ids(
                         conn, codename=codename, repo=repo, limit=cap, now=now
@@ -1215,6 +1218,25 @@ class PgvectorProvider:
         except Exception as exc:
             _LOG.debug("memory.pgvector: dense KNN failed: %s", exc)
             return []
+
+    def _filter_dense_identity_ids(
+        self,
+        conn: Any,
+        ids: list[str],
+        query_tokens: list[str],
+    ) -> list[str]:
+        if not ids:
+            return []
+        rows = conn.execute(
+            f"SELECT id, lexical_text FROM {self._lessons} WHERE id = ANY(%s)",
+            (ids,),
+        ).fetchall()
+        text_by_id = {str(row[0]): str(row[1]) for row in rows}
+        return [
+            lesson_id
+            for lesson_id in ids
+            if _required_identities_match(text_by_id.get(lesson_id, ""), query_tokens)
+        ]
 
     def _recency_ids(
         self,

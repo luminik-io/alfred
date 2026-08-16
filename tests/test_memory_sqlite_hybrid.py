@@ -369,6 +369,14 @@ def test_default_chain_canonicalizes_language_identity_contexts(
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
     ],
 )
 def test_default_chain_preserves_sibilant_inflection_variants(
@@ -764,6 +772,14 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -977,6 +993,14 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -1586,6 +1610,10 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("aliases", "alias"),
         ("biases", "bias"),
         ("focuses", "focus"),
+        ("indices", "index"),
+        ("matrices", "matrix"),
+        ("vertices", "vertex"),
+        ("appendices", "appendix"),
         ("patches", "patch"),
         ("branches", "branch"),
         ("classes", "class"),
@@ -1602,6 +1630,26 @@ def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
 
     assert query_tokens == [singular]
     assert mod._has_meaningful_lexical_overlap(singular, query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("singular", "plural"),
+    [
+        ("index", "indices"),
+        ("matrix", "matrices"),
+        ("vertex", "vertices"),
+        ("appendix", "appendices"),
+        ("analysis", "analyses"),
+        ("status", "statuses"),
+    ],
+)
+def test_technical_irregular_inflections_have_bounded_reverse_variants(
+    singular: str,
+    plural: str,
+) -> None:
+    assert token_mod._english_inflection_form(plural) == singular
+    assert token_mod._english_plural_form(singular) == plural
+    assert token_mod._retrieval_variants(plural, singular) == (singular, plural)
 
 
 @pytest.mark.parametrize(
@@ -2291,6 +2339,55 @@ def test_dense_requested_but_sqlite_vec_missing_falls_back_to_lexical(
     out = prov.recall(query="gateway", codename="c", repo="r")
     assert out and out[0].body.startswith("gateway degrades")
     assert prov.health()["dense"] is False
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_body", "matching_body"),
+    [
+        ("Fix C++ compiler warnings", "C# compiler warnings", "C++ compiler warnings"),
+        ("Fix C compiler warnings", "R compiler warnings", "C language warnings"),
+        ("Fix TLS 1.3 configuration", "TLS 1.2 configuration", "TLS 1.3 configuration"),
+        ("Fix NodeJS 22 runtime", "Node.js 20 runtime", "Node 22 runtime"),
+    ],
+)
+def test_dense_recall_requires_matching_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_body: str,
+    matching_body: str,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), dense=True, pool=2)
+    wrong = provider.reflect(codename="c", repo="r", body=wrong_body)
+    matching = provider.reflect(codename="c", repo="r", body=matching_body)
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        provider,
+        "_dense_ids",
+        lambda *args, **kwargs: [wrong.id, matching.id],
+    )
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [matching.id]
+
+
+def test_dense_recall_keeps_semantic_candidates_without_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), dense=True, pool=1)
+    semantic = provider.reflect(
+        codename="c",
+        repo="r",
+        body="Throttle requests per tenant before dispatch",
+    )
+    monkeypatch.setattr(provider, "_dense_active", lambda _conn: True)
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_dense_ids", lambda *args, **kwargs: [semantic.id])
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [semantic.id]
 
 
 # ---------------------------------------------------------------------------

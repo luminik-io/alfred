@@ -59,7 +59,14 @@ _MAX_INFLECTION_TOKEN_LENGTH = 64
 MAX_LITERAL_QUERY_CANDIDATES = 400
 _IRREGULAR_ENGLISH_INFLECTIONS = {
     "analyses": "analysis",
+    "appendices": "appendix",
+    "indices": "index",
+    "matrices": "matrix",
     "statuses": "status",
+    "vertices": "vertex",
+}
+_IRREGULAR_ENGLISH_PLURALS = {
+    singular: plural for plural, singular in _IRREGULAR_ENGLISH_INFLECTIONS.items()
 }
 _AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS = {
     "aliases": "alias",
@@ -213,10 +220,9 @@ def _english_plural_form(token: str) -> str:
         or token in _NO_ENGLISH_PLURAL_VARIANT
     ):
         return token
-    if token == "analysis":
-        return "analyses"
-    if token == "status":
-        return "statuses"
+    irregular = _IRREGULAR_ENGLISH_PLURALS.get(token)
+    if irregular is not None:
+        return irregular
     if token.endswith("y") and token[-2] not in "aeiou":
         return f"{token[:-1]}ies"
     if token.endswith(("ss", "x", "z", "ch", "sh")):
@@ -450,20 +456,51 @@ def requires_exact_lexical_tokens(tokens: list[str]) -> bool:
     return any(not token.isalnum() or len(token) == 1 for token in tokens)
 
 
+def _required_identity_tokens(query_tokens: list[str]) -> set[str]:
+    return {_english_inflection_form(token) for token in query_tokens if _is_identity_token(token)}
+
+
+def _canonical_tokens_match_required_identities(
+    tokens: set[str],
+    query_tokens: list[str],
+) -> bool:
+    return _required_identity_tokens(query_tokens) <= tokens
+
+
+def required_identities_match(text: str, query_tokens: list[str]) -> bool:
+    """Return whether text contains every mandatory query identity.
+
+    Dense semantic candidates use this narrower gate. Ordinary query concepts
+    do not have to overlap, but explicit technical identities cannot drift.
+    """
+
+    required = _required_identity_tokens(query_tokens)
+    if not required:
+        return True
+    matched: set[str] = set()
+    for token in meaningful_tokens(text):
+        token = _english_inflection_form(token)
+        if token not in required:
+            continue
+        matched.add(token)
+        if required <= matched:
+            return True
+    return False
+
+
 def has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
     """Return whether text satisfies the canonical exact-concept threshold."""
 
     required = required_lexical_overlap(query_tokens)
     query_token_set = {_english_inflection_form(token) for token in query_tokens}
-    required_identity_tokens = {
-        _english_inflection_form(token) for token in query_tokens if _is_identity_token(token)
-    }
     matched: set[str] = set()
     for token in meaningful_tokens(text):
         token = _english_inflection_form(token)
         if token not in query_token_set:
             continue
         matched.add(token)
-        if len(matched) >= required and required_identity_tokens <= matched:
+        if len(matched) >= required and _canonical_tokens_match_required_identities(
+            matched, query_tokens
+        ):
             return True
     return False

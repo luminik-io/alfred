@@ -1212,6 +1212,14 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("index", "indices"),
+        ("indices", "index"),
+        ("matrix", "matrices"),
+        ("matrices", "matrix"),
+        ("vertex", "vertices"),
+        ("vertices", "vertex"),
+        ("appendix", "appendices"),
+        ("appendices", "appendix"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -1912,6 +1920,7 @@ class _FakePgConn:
     def __init__(self) -> None:
         self.closed = False
         self.lessons: dict[str, dict[str, Any]] = {}
+        self.lexical_texts: dict[str, str] = {}
         self.anchors: list[dict[str, Any]] = []
         self.reuse: dict[str, int] = {}
 
@@ -1934,6 +1943,8 @@ class _FakePgConn:
     def execute(self, sql: str, params: tuple[Any, ...] | list[Any] = ()) -> _FakeCursor:
         s = " ".join(sql.split())
         p = list(params)
+        if s.startswith("SELECT id, lexical_text FROM lessons WHERE id = ANY"):
+            return _FakeCursor([(lesson_id, self.lexical_texts[lesson_id]) for lesson_id in p[0]])
         if s.startswith("SELECT provenance, codename, repo FROM lessons WHERE id ="):
             row = self.lessons.get(p[0])
             rows = [(row["provenance"], row["codename"], row["repo"])] if row else []
@@ -2001,6 +2012,57 @@ def _fake_provider() -> tuple[PgvectorProvider, _FakePgConn]:
     provider._conn = fake
     provider._schema_ready = True
     return provider, fake
+
+
+@pytest.mark.parametrize(
+    ("query", "wrong_text", "matching_text"),
+    [
+        ("Fix C++ compiler warnings", "c# compiler warnings", "c++ compiler warnings"),
+        ("Fix C compiler warnings", "r compiler warnings", "c language warnings"),
+        ("Fix TLS 1.3 configuration", "tls 1.2 configuration", "tls 1.3 configuration"),
+        ("Fix NodeJS 22 runtime", "node.js 20 runtime", "node 22 runtime"),
+    ],
+)
+def test_dense_recall_requires_matching_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    wrong_text: str,
+    matching_text: str,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    provider.pool = 2
+    fake.lexical_texts = {"wrong": wrong_text, "matching": matching_text}
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        provider,
+        "_dense_ids",
+        lambda *args, **kwargs: ["wrong", "matching"],
+    )
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert out == ["matching"]
+
+
+def test_dense_recall_keeps_semantic_candidates_without_query_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider, fake = _fake_provider()
+    provider.dense = True
+    provider._vec_ok = True
+    fake.lexical_texts = {"semantic": "throttle requests per tenant before dispatch"}
+    monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    monkeypatch.setattr(provider, "_dense_ids", lambda *args, **kwargs: ["semantic"])
+    monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
+
+    out = provider.recall(query="gateway fairness", codename="c", repo="r")
+
+    assert out == ["semantic"]
 
 
 def test_query_miss_does_not_backfill_recent_lessons(monkeypatch: pytest.MonkeyPatch) -> None:
