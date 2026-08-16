@@ -18,7 +18,7 @@ The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
 currently has no pending changes.
 
-## 0.7.1 (2026-08-16)
+## 0.7.1 (2026-08-17)
 
 Version 0.7.1 unifies engine checks, tightens memory recall, and refreshes the
 Desktop workflow.
@@ -41,7 +41,7 @@ Desktop workflow.
   rejects escaped newline markers and automated attribution.
 
 Read the complete
-[`0.7.1` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#071---2026-08-16).
+[`0.7.1` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#071---2026-08-17).
 
 ## 0.6.0 (2026-07-10)
 
