@@ -524,25 +524,84 @@ def _unexpected_probe_failure(
     )
 
 
+def _process_group_member_pids(group_id: int) -> tuple[int, ...]:
+    """Return a best-effort snapshot of one POSIX process group."""
+
+    members: set[int] = set()
+    proc_root = Path("/proc")
+    if proc_root.is_dir():
+        for stat_path in proc_root.glob("[0-9]*/stat"):
+            try:
+                raw = stat_path.read_text(encoding="utf-8")
+                fields = raw[raw.rfind(")") + 2 :].split()
+                if len(fields) >= 3 and int(fields[2]) == group_id:
+                    members.add(int(stat_path.parent.name))
+            except (OSError, ValueError):
+                continue
+        return tuple(sorted(members))
+
+    try:
+        completed = subprocess.run(
+            ["ps", "-axo", "pid=,pgid="],
+            capture_output=True,
+            text=True,
+            timeout=1,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ()
+    for line in completed.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2:
+            continue
+        try:
+            pid, process_group = (int(value) for value in fields)
+        except ValueError:
+            continue
+        if process_group == group_id:
+            members.add(pid)
+    return tuple(sorted(members))
+
+
 def _terminate_probe_process_group(process: subprocess.Popen[str]) -> None:
     """Kill a timed-out probe and every helper process it started, then reap it."""
 
-    try:
-        if os.name == "nt":
+    if os.name == "nt":
+        with contextlib.suppress(ProcessLookupError, OSError):
             process.kill()
-        else:
-            os.killpg(process.pid, signal.SIGKILL)
-    except (ProcessLookupError, OSError):
-        if process.poll() is None:
+    else:
+        parent_stopped = False
+        try:
+            os.kill(process.pid, signal.SIGSTOP)
+            parent_stopped = True
+        except (ProcessLookupError, OSError):
+            pass
+        if parent_stopped:
+            for pid in _process_group_member_pids(process.pid):
+                if pid == process.pid:
+                    continue
+                with contextlib.suppress(ProcessLookupError, OSError):
+                    os.kill(pid, signal.SIGKILL)
             with contextlib.suppress(ProcessLookupError, OSError):
-                process.kill()
+                os.kill(process.pid, signal.SIGCONT)
+        else:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                os.killpg(process.pid, signal.SIGKILL)
     try:
         process.communicate(timeout=1)
     except (subprocess.TimeoutExpired, OSError, ValueError):
         with contextlib.suppress(ProcessLookupError, OSError):
-            process.kill()
-        with contextlib.suppress(subprocess.TimeoutExpired, OSError):
-            process.wait(timeout=1)
+            process.terminate()
+        try:
+            process.communicate(timeout=1)
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            if os.name != "nt":
+                with contextlib.suppress(ProcessLookupError, OSError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            with contextlib.suppress(ProcessLookupError, OSError):
+                process.kill()
+            with contextlib.suppress(subprocess.TimeoutExpired, OSError):
+                process.wait(timeout=1)
         for pipe in (process.stdout, process.stderr):
             if pipe is not None:
                 with contextlib.suppress(OSError):

@@ -722,6 +722,49 @@ def test_inventory_keeps_a_ready_engine_when_another_probe_stalls(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Alfred schedules agents on macOS and Linux")
+def test_probe_timeout_stops_parent_and_reaps_helpers_before_parent(
+    fresh_agent_runner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_runner import engine_registry as registry
+
+    events: list[tuple[str, int, int] | tuple[str]] = []
+
+    class ProbeProcess:
+        pid = 100
+        stdout = None
+        stderr = None
+
+        def poll(self):
+            return None
+
+        def communicate(self, *, timeout: float):
+            assert timeout == 1
+            events.append(("communicate",))
+            return ("", "")
+
+        def kill(self):
+            events.append(("kill",))
+
+    monkeypatch.setattr(registry, "_process_group_member_pids", lambda _group: (100, 101, 102))
+    monkeypatch.setattr(
+        registry.os,
+        "kill",
+        lambda pid, sig: events.append(("signal", pid, sig)),
+    )
+
+    registry._terminate_probe_process_group(ProbeProcess())
+
+    assert events == [
+        ("signal", 100, signal.SIGSTOP),
+        ("signal", 101, signal.SIGKILL),
+        ("signal", 102, signal.SIGKILL),
+        ("signal", 100, signal.SIGCONT),
+        ("communicate",),
+    ]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Alfred schedules agents on macOS and Linux")
 def test_production_probe_timeout_terminates_helper_process_group(
     fresh_agent_runner,
     tmp_path: Path,
