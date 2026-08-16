@@ -40,6 +40,9 @@ def _iso(day: int) -> str:
 def _fake_gh(pr_rows, issue_rows):
     def _impl(args, **kwargs):
         if args[0] == "pr":
+            if len(args) > 1 and args[1] == "view":
+                number = int(args[2])
+                return next((row for row in pr_rows if row.get("number") == number), None)
             return pr_rows
         if args[0] == "issue":
             return issue_rows
@@ -181,6 +184,80 @@ def test_pr_cards_include_verifiable_github_evidence(monkeypatch):
         "commit_count_incomplete": False,
         "latest_reviews": [{"author": "reviewer", "state": "COMMENTED"}],
     }
+
+
+def test_pr_list_keeps_nested_evidence_out_of_the_collection_query(monkeypatch):
+    calls = []
+    prs = [
+        {
+            "number": 1,
+            "title": "ship it",
+            "url": "u1",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": False,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": "senior-dev/ship-it",
+        }
+    ]
+
+    def fake_gh(args, **kwargs):
+        calls.append(args)
+        if args[:2] == ["pr", "list"]:
+            return prs
+        if args[:2] == ["pr", "view"]:
+            return {"headRefOid": "a" * 40}
+        if args[0] == "issue":
+            return []
+        return None
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+
+    card = sb.build_board(["acme/api"], now=NOW)["columns"]["in_progress"][0]
+
+    list_call = next(args for args in calls if args[:2] == ["pr", "list"])
+    list_fields = list_call[list_call.index("--json") + 1]
+    assert "statusCheckRollup" not in list_fields
+    assert "files" not in list_fields
+    assert "commits" not in list_fields
+    assert "latestReviews" not in list_fields
+    assert any(args[:3] == ["pr", "view", "1"] for args in calls)
+    assert card["github_evidence"]["head_sha"] == "a" * 40
+
+
+def test_pr_evidence_failure_keeps_the_work_card(monkeypatch):
+    prs = [
+        {
+            "number": 1,
+            "title": "ship it",
+            "url": "u1",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": False,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": "senior-dev/ship-it",
+        }
+    ]
+
+    def fake_gh(args, **kwargs):
+        if args[:2] == ["pr", "list"]:
+            return prs
+        if args[:2] == ["pr", "view"]:
+            return None
+        if args[0] == "issue":
+            return []
+        return None
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+
+    board = sb.build_board(["acme/api"], now=NOW)
+
+    assert [card["number"] for card in board["columns"]["in_progress"]] == [1]
+    assert board["errors"] == ["acme/api"]
 
 
 def test_github_evidence_marks_capped_connections_without_guessing_totals():

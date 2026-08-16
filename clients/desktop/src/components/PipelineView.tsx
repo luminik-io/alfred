@@ -94,7 +94,20 @@ export function PipelineView({
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showLowSignal, setShowLowSignal] = useState(false);
   const inspectorCloseRef = useRef<HTMLButtonElement>(null);
+  const inspectorOpenerRef = useRef<HTMLElement>(null);
   const dockInspector = useMediaQuery("(min-width: 1280px)");
+
+  const openInspector = (next: Selection) => {
+    if (document.activeElement instanceof HTMLElement) {
+      inspectorOpenerRef.current = document.activeElement;
+    }
+    setSelection(next);
+  };
+
+  const closeDockedInspector = () => {
+    inspectorOpenerRef.current?.focus();
+    setSelection(null);
+  };
 
   const loading = state === "loading";
   const columns = board?.columns;
@@ -293,7 +306,7 @@ export function PipelineView({
                 revisions={entry.revisions}
                 busyPlanAction={busyPlanAction}
                 selected={selection?.kind === "plan" && selection.id === entry.plan.plan_id}
-                onSelect={() => setSelection({ kind: "plan", id: entry.plan.plan_id })}
+                onSelect={() => openInspector({ kind: "plan", id: entry.plan.plan_id })}
                 onDecision={onDecision}
                 onDiscardPlan={onDiscardPlan}
               />
@@ -304,7 +317,7 @@ export function PipelineView({
                 card={card}
                 column="awaiting_approval"
                 selected={selection?.kind === "card" && selection.key === cardKey(card)}
-                onSelect={() => setSelection({ kind: "card", key: cardKey(card) })}
+                onSelect={() => openInspector({ kind: "card", key: cardKey(card) })}
                 canQueue={canQueue}
                 busyQueue={busyQueue}
                 onQueueAction={onQueueAction}
@@ -335,7 +348,9 @@ export function PipelineView({
                         revisions={entry.revisions}
                         busyPlanAction={busyPlanAction}
                         selected={selection?.kind === "plan" && selection.id === entry.plan.plan_id}
-                        onSelect={() => setSelection({ kind: "plan", id: entry.plan.plan_id })}
+                        onSelect={() =>
+                          openInspector({ kind: "plan", id: entry.plan.plan_id })
+                        }
                         onDecision={onDecision}
                         onDiscardPlan={onDiscardPlan}
                       />
@@ -359,7 +374,9 @@ export function PipelineView({
                       card={card}
                       column={col.key}
                       selected={selection?.kind === "card" && selection.key === cardKey(card)}
-                      onSelect={() => setSelection({ kind: "card", key: cardKey(card) })}
+                      onSelect={() =>
+                        openInspector({ kind: "card", key: cardKey(card) })
+                      }
                       canQueue={canQueue}
                       busyQueue={busyQueue}
                       onQueueAction={onQueueAction}
@@ -387,7 +404,7 @@ export function PipelineView({
                   size="icon-sm"
                   type="button"
                   aria-label="Close inspector"
-                  onClick={() => setSelection(null)}
+                  onClick={closeDockedInspector}
                 >
                   <X size={16} aria-hidden="true" />
                 </Button>

@@ -49,6 +49,10 @@ _GH_EXTRA_PATH = (
 DEFAULT_LOOKBACK_DAYS = 14
 _PER_REPO_LIMIT = 50
 _DEMO_FILENAME = "setup-demo-cards.json"
+_PR_LIST_FIELDS = "number,title,url,author,state,createdAt,mergedAt,isDraft,labels,headRefName"
+_PR_EVIDENCE_FIELDS = (
+    "headRefOid,reviewDecision,statusCheckRollup,changedFiles,files,commits,latestReviews"
+)
 
 # Open issues carrying any of these label substrings are NOT genuine queue
 # work: they are already represented by an open PR, or parked for human /
@@ -428,6 +432,33 @@ def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> 
     }
 
 
+def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
+    """Load bounded evidence for one PR without risking the collection query.
+
+    GitHub expands each nested connection requested by ``gh pr list`` for every
+    row in that list. Fetch evidence only after a lightweight row qualifies for
+    the board. A failed evidence request leaves the card intact and marks the
+    repository response partial.
+    """
+    number = pr.get("number")
+    if not isinstance(number, int):
+        return pr, False
+    evidence = _gh_json(
+        [
+            "pr",
+            "view",
+            str(number),
+            "--repo",
+            repo,
+            "--json",
+            _PR_EVIDENCE_FIELDS,
+        ]
+    )
+    if not isinstance(evidence, dict):
+        return pr, True
+    return {**pr, **evidence}, False
+
+
 def _fetch_repo(
     repo: str, *, cutoff: float, now: datetime, limit: int
 ) -> tuple[str, list[dict], list[dict], list[dict], list[dict], bool]:
@@ -454,8 +485,7 @@ def _fetch_repo(
             "--limit",
             str(limit),
             "--json",
-            "number,title,url,author,state,createdAt,mergedAt,isDraft,labels,headRefName,"
-            "headRefOid,reviewDecision,statusCheckRollup,changedFiles,files,commits,latestReviews",
+            _PR_LIST_FIELDS,
         ]
     )
     if prs is None:
@@ -465,11 +495,15 @@ def _fetch_repo(
             if pr.get("state") == "OPEN" and (
                 not _in_progress_requires_agent_evidence() or _pr_is_agent_shipped(pr)
             ):
-                in_progress.append(_card(repo, pr, kind="pr", ts_field="createdAt", now=now))
+                enriched, evidence_error = _with_pr_evidence(repo, pr)
+                errored = errored or evidence_error
+                in_progress.append(_card(repo, enriched, kind="pr", ts_field="createdAt", now=now))
             elif pr.get("mergedAt"):
                 merged = _parse_ts(pr.get("mergedAt"))
                 if merged and merged.timestamp() >= cutoff and _pr_is_agent_shipped(pr):
-                    shipped.append(_card(repo, pr, kind="pr", ts_field="mergedAt", now=now))
+                    enriched, evidence_error = _with_pr_evidence(repo, pr)
+                    errored = errored or evidence_error
+                    shipped.append(_card(repo, enriched, kind="pr", ts_field="mergedAt", now=now))
 
     issues = _gh_json(
         [

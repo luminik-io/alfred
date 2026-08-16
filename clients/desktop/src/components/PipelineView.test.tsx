@@ -817,7 +817,7 @@ describe("PipelineView", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("moves focus into the docked inspector when it opens", async () => {
+  it("moves focus into the docked inspector and restores it when closed", async () => {
     const user = userEvent.setup();
     renderPipeline({
       board: board({
@@ -830,13 +830,18 @@ describe("PipelineView", () => {
       }),
     });
 
-    await user.click(screen.getByRole("button", { name: /ready issue/i }));
+    const opener = screen.getByRole("button", { name: /ready issue/i });
+    await user.click(opener);
 
-    expect(
-      within(
-        screen.getByRole("complementary", { name: "Work item inspector" }),
-      ).getByRole("button", { name: "Close inspector" }),
-    ).toHaveFocus();
+    const close = within(
+      screen.getByRole("complementary", { name: "Work item inspector" }),
+    ).getByRole("button", { name: "Close inspector" });
+    expect(close).toHaveFocus();
+
+    await user.click(close);
+
+    expect(opener).toHaveFocus();
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
   });
 
   it("uses a sheet instead of compressing the board at compact viewport widths", async () => {
