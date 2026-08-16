@@ -364,6 +364,8 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
         ("aliases", "alias"),
         ("bias", "biases"),
         ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),

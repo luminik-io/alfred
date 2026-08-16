@@ -25,6 +25,7 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
 import memory.sqlite_hybrid as mod  # noqa: E402
+import memory_tokens as token_mod  # noqa: E402
 from fleet_brain import FleetBrain, Lesson, MemoryPromotionError  # noqa: E402
 from memory import MemoryProvider  # noqa: E402
 from memory.config import load_lesson_writer, load_provider  # noqa: E402
@@ -366,6 +367,8 @@ def test_default_chain_canonicalizes_language_identity_contexts(
         ("aliases", "alias"),
         ("bias", "biases"),
         ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
     ],
 )
 def test_default_chain_preserves_sibilant_inflection_variants(
@@ -759,6 +762,8 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("aliases", "alias"),
         ("bias", "biases"),
         ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -970,6 +975,8 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("aliases", "alias"),
         ("bias", "biases"),
         ("biases", "bias"),
+        ("focus", "focuses"),
+        ("focuses", "focus"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -1578,6 +1585,7 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("boxes", "box"),
         ("aliases", "alias"),
         ("biases", "bias"),
+        ("focuses", "focus"),
         ("patches", "patch"),
         ("branches", "branch"),
         ("classes", "class"),
@@ -1606,6 +1614,7 @@ def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
         ("Redis", "redis", "redi"),
         ("alias", "alias", "alia"),
         ("bias", "bias", "bia"),
+        ("focus", "focus", "focu"),
         ("caches", "cache", "cach"),
         ("news", "news", "new"),
         ("series", "series", "serie"),
@@ -1621,6 +1630,25 @@ def test_overlap_does_not_strip_technical_s_endings(
 
     assert query_tokens == [expected]
     assert not mod._has_meaningful_lexical_overlap(damaged_form, query_tokens)
+
+
+@pytest.mark.parametrize(
+    ("singular", "plural"),
+    [
+        ("base", "bases"),
+        ("case", "cases"),
+        ("use", "uses"),
+        ("cause", "causes"),
+        ("release", "releases"),
+        ("response", "responses"),
+    ],
+)
+def test_regular_ses_inflections_keep_the_full_singular(
+    singular: str,
+    plural: str,
+) -> None:
+    assert token_mod._english_inflection_form(singular) == singular
+    assert token_mod._english_inflection_form(plural) == singular
 
 
 def test_tokenize_bounds_inflection_normalization_by_token_length() -> None:

@@ -66,6 +66,7 @@ _AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS = {
     "biases": "bias",
     "buses": "bus",
     "caches": "cache",
+    "focuses": "focus",
 }
 _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
     {
@@ -74,6 +75,7 @@ _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
         "bias",
         "class",
         "css",
+        "focus",
         "news",
         "redis",
         "series",
@@ -201,6 +203,8 @@ def _english_plural_form(token: str) -> str:
         return "biases"
     if token == "bus":
         return "buses"
+    if token == "focus":
+        return "focuses"
     if (
         len(token) < 4
         or len(token) > _MAX_INFLECTION_TOKEN_LENGTH
