@@ -584,6 +584,11 @@ def _from_iso(s: str) -> datetime:
     return datetime.fromisoformat(s)
 
 
+def _escape_like_literal(value: str) -> str:
+    """Escape SQLite LIKE metacharacters for literal substring matching."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @dataclass
 class SQLiteStore:
     """SQLite-backed :class:`Store` implementation.
@@ -708,7 +713,7 @@ class SQLiteStore:
             if repo:
                 wheres.append("repo = ?")
             if query_body:
-                wheres.append("body LIKE ?")
+                wheres.append("body LIKE ? ESCAPE '\\'")
             clause = "WHERE " + " AND ".join(wheres)
             return (
                 f"SELECT {_LESSON_COLUMNS} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
@@ -721,7 +726,7 @@ class SQLiteStore:
             if repo:
                 params.append(repo)
             if query_body:
-                params.append(f"%{query_body}%")
+                params.append(f"%{_escape_like_literal(query_body)}%")
             params.append(limit)
             return params
 

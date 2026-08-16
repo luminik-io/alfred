@@ -313,6 +313,27 @@ def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain
     assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
 
 
+@pytest.mark.parametrize(
+    ("query", "matching_body"),
+    [
+        ("%", "Keep 100% of the evidence"),
+        ("_", "Use the task_id field"),
+        (r"\\", r"Use C:\\work as the fixture path"),
+    ],
+)
+def test_recall_query_treats_like_metacharacters_as_literals(
+    brain: FleetBrain,
+    query: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="unrelated recent lesson")
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
 def test_recall_limit_is_clamped(brain: FleetBrain) -> None:
     for i in range(5):
         brain.reflect(codename="lucius", repo="org/api", body=f"body-{i}")
