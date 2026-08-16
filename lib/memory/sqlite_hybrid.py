@@ -71,6 +71,8 @@ from memory_tokens import escape_like_literal as _escape_like_literal
 from memory_tokens import (
     has_meaningful_lexical_overlap as _has_meaningful_lexical_overlap,
 )
+from memory_tokens import identity_glob_pattern as _identity_glob_pattern
+from memory_tokens import is_identity_token as _is_identity_token
 from memory_tokens import lexical_surface as _lexical_surface
 from memory_tokens import literal_fallback_query as _literal_fallback_query
 from memory_tokens import query_token_groups as _query_token_groups
@@ -784,9 +786,13 @@ class SqliteHybridProvider:
         like_params: list[Any] = []
         clauses: list[str] = []
         for group in token_groups:
-            group_clauses = ["l.lexical_text LIKE ?" for _variant in group]
+            if _is_identity_token(group[0]):
+                group_clauses = ["(' ' || l.lexical_text || ' ') GLOB ?" for _variant in group]
+                like_params.extend(_identity_glob_pattern(variant) for variant in group)
+            else:
+                group_clauses = ["l.lexical_text LIKE ? ESCAPE '\\'" for _variant in group]
+                like_params.extend(f"%{_escape_like_literal(variant)}%" for variant in group)
             clauses.append(f"({' OR '.join(group_clauses)})")
-            like_params.extend(f"%{variant}%" for variant in group)
         like_score_sql = " + ".join(f"CAST({clause} AS INTEGER)" for clause in clauses)
         base_params = [*like_params, _required_lexical_overlap(tokens), *scope_params]
         out: list[str] = []

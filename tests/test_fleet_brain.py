@@ -366,6 +366,8 @@ def test_recall_query_does_not_require_ordinary_slash_path(brain: FleetBrain) ->
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),
@@ -662,6 +664,58 @@ def test_recall_query_requires_ipv4_identity(brain: FleetBrain) -> None:
         repo="org/api",
         query="Connect 192.168.1.2 database",
     )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "prefix_collision", "matching_body"),
+    [
+        ("192.168.1.2", "192.168.1.20", "address=(192.168.1.2),"),
+        ("Node 2", "Node 20", "runtime [Node 2]."),
+    ],
+)
+def test_recall_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
+    brain: FleetBrain,
+    query: str,
+    prefix_collision: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(
+        codename="lucius",
+        repo="org/api",
+        body=matching_body,
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    for index in range(401):
+        brain.reflect(
+            codename="lucius",
+            repo="org/api",
+            body=f"{prefix_collision} collision {index}",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    ("query", "matching_body"),
+    [
+        ("192.168.1.2", "192.168.1.2 starts the lesson"),
+        ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("Node 2", "use (Node 2), then verify"),
+    ],
+)
+def test_recall_identity_boundary_accepts_start_end_and_punctuation(
+    brain: FleetBrain,
+    query: str,
+    matching_body: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
 
     assert [lesson.body for lesson in out] == [matching_body]
 

@@ -407,7 +407,13 @@ def test_lexical_like_fallback_applies_overlap_before_candidate_limit() -> None:
     )
 
     where, _, order = sql.partition("ORDER BY")
-    assert where.count("CAST((l.lexical_text ILIKE %s OR l.lexical_text ILIKE %s) AS INTEGER)") == 2
+    assert (
+        where.count(
+            "CAST((l.lexical_text ILIKE %s ESCAPE '\\' OR "
+            "l.lexical_text ILIKE %s ESCAPE '\\') AS INTEGER)"
+        )
+        == 2
+    )
     assert ") >= %s" in where
     assert "LIMIT %s" in order
     assert "OFFSET" not in order
@@ -594,6 +600,76 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
 
 
 @pytest.mark.parametrize(
+    ("query", "prefix_collision", "matching_text"),
+    [
+        ("192.168.1.2", "192.168.1.20", "address=(192.168.1.2),"),
+        ("Node 2", "Node 20", "runtime [node 2]."),
+    ],
+)
+def test_lexical_like_identity_boundary_avoids_prefix_candidate_crowd_out(
+    query: str,
+    prefix_collision: str,
+    matching_text: str,
+) -> None:
+    prefix_rows = [
+        (
+            f"collision-{index:03}",
+            f"{prefix_collision.casefold()} collision {index}",
+            _NOW - timedelta(seconds=index),
+        )
+        for index in range(401)
+    ]
+
+    class Cursor:
+        def __init__(self, rows: list[tuple[Any, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return self.rows
+
+    class Connection:
+        def __init__(self) -> None:
+            self.candidate_calls = 0
+
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" not in normalized:
+                raise AssertionError(f"unexpected SQL: {normalized}")
+            self.candidate_calls += 1
+            if "l.lexical_text ~ %s" in normalized:
+                return Cursor([("matching", matching_text, _NOW - timedelta(days=1))])
+            page_size = int(params[-1])
+            start = (self.candidate_calls - 1) * page_size
+            return Cursor(prefix_rows[start : start + page_size])
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=1)
+    provider._fts_ok = False
+    conn = Connection()
+
+    ids = provider._lexical_ids(conn, query, codename="c", repo="r", now=_NOW)
+
+    assert ids == ["matching"]
+    assert conn.candidate_calls == 1
+
+
+def test_lexical_like_identity_regex_preserves_boundaries_and_escapes_metacharacters() -> None:
+    sql, params = _lexical_like_query(
+        [("c++",), ("192.168.1.2",)],
+        table="lessons",
+        codename="c",
+        repo="r",
+        pool=2,
+        now=_NOW,
+    )
+
+    assert sql.count("l.lexical_text ~ %s") == 2
+    assert params[:2] == [
+        r"(^|[^A-Za-z0-9])c\+\+([^A-Za-z0-9]|$)",
+        r"(^|[^A-Za-z0-9])192\.168\.1\.2([^A-Za-z0-9]|$)",
+    ]
+
+
+@pytest.mark.parametrize(
     "query",
     [
         "C compiler",
@@ -622,7 +698,12 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
         def execute(self, sql: str, params: list[Any]) -> Cursor:
             normalized = " ".join(sql.split())
             if "FROM lessons l WHERE" in normalized:
-                assert f"%{query.casefold()}%" in params
+                expected_patterns = {
+                    mod._identity_regex_pattern(variant)
+                    for group in mod._query_token_groups(query)
+                    for variant in group
+                }
+                assert expected_patterns.intersection(params)
                 return Cursor([("match", f"prefer {query.casefold()} for this case.", _NOW)])
             raise AssertionError(f"unexpected SQL: {normalized}")
 
@@ -821,7 +902,7 @@ def test_lexical_like_fallback_requires_dotted_version_identity(
             normalized = " ".join(sql.split())
             assert "body_tsv" not in normalized
             assert "FROM lessons l WHERE" in normalized
-            assert f"%{version}%" in params
+            assert mod._identity_regex_pattern(version) in params
             return Cursor()
 
     provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
@@ -875,7 +956,7 @@ def test_lexical_like_fallback_requires_atomic_language_standard_identity(
             normalized = " ".join(sql.split())
             assert "body_tsv" not in normalized
             assert "FROM lessons l WHERE" in normalized
-            assert f"%{identity}%" in params
+            assert mod._identity_regex_pattern(identity) in params
             return Cursor()
 
     provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=3)
@@ -939,7 +1020,7 @@ def test_lexical_like_fallback_requires_contextual_major_version_identity(
             normalized = " ".join(sql.split())
             assert "body_tsv" not in normalized
             assert "FROM lessons l WHERE" in normalized
-            assert f"%{identity}%" in params
+            assert mod._identity_regex_pattern(identity) in params
             return Cursor()
 
     provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
@@ -1287,6 +1368,8 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),

@@ -78,6 +78,7 @@ _AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS = {
     "biases": "bias",
     "buses": "bus",
     "caches": "cache",
+    "canvases": "canvas",
     "focuses": "focus",
 }
 _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
@@ -85,6 +86,7 @@ _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
         "analysis",
         "alias",
         "bias",
+        "canvas",
         "class",
         "css",
         "focus",
@@ -183,7 +185,7 @@ def _compound_matches(text: str) -> list[re.Match[str]]:
     return sorted(matches, key=lambda match: (match.start(), match.end()))
 
 
-def _is_identity_token(token: str) -> bool:
+def is_identity_token(token: str) -> bool:
     """Return whether a query concept must match rather than only add rank."""
 
     return (
@@ -243,6 +245,8 @@ def _english_plural_form(token: str) -> str:
         return "biases"
     if token == "bus":
         return "buses"
+    if token == "canvas":
+        return "canvases"
     if token == "focus":
         return "focuses"
     if (
@@ -486,6 +490,22 @@ def escape_like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def identity_glob_pattern(value: str) -> str:
+    """Return a SQLite GLOB pattern for one boundary-delimited identity."""
+
+    escapes = {"*": "[*]", "?": "[?]", "[": "[[]", "]": "[]]"}
+    literal = "".join(escapes.get(char, char) for char in value)
+    return f"*[^A-Za-z0-9]{literal}[^A-Za-z0-9]*"
+
+
+def identity_regex_pattern(value: str) -> str:
+    """Return a PostgreSQL regex for one boundary-delimited identity."""
+
+    metacharacters = frozenset(r"\.^$|?*+(){}[]")
+    literal = "".join(f"\\{char}" if char in metacharacters else char for char in value)
+    return rf"(^|[^A-Za-z0-9]){literal}([^A-Za-z0-9]|$)"
+
+
 def required_lexical_overlap(query_tokens: list[str]) -> int:
     """Require one concept for one-term queries and two for longer queries."""
 
@@ -500,7 +520,7 @@ def requires_exact_lexical_tokens(tokens: list[str]) -> bool:
 
 
 def _required_identity_tokens(query_tokens: list[str]) -> set[str]:
-    return {_english_inflection_form(token) for token in query_tokens if _is_identity_token(token)}
+    return {token for token in query_tokens if is_identity_token(token)}
 
 
 def _canonical_tokens_match_required_identities(

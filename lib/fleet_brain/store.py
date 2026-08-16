@@ -26,6 +26,8 @@ from memory_tokens import (
     MAX_LITERAL_QUERY_CANDIDATES,
     escape_like_literal,
     has_meaningful_lexical_overlap,
+    identity_glob_pattern,
+    is_identity_token,
     lexical_surface,
     literal_fallback_query,
     query_token_groups,
@@ -719,6 +721,11 @@ class SQLiteStore:
             if query_surface is not None and not query_tokens
             else None
         )
+        identity_only_group = (
+            token_groups[0]
+            if len(token_groups) == 1 and is_identity_token(token_groups[0][0])
+            else None
+        )
         if query_body is not None and not query_tokens and literal_only_query is None:
             return []
         now_iso = _to_iso(datetime.now(UTC))
@@ -738,11 +745,20 @@ class SQLiteStore:
             if repo:
                 wheres.append("repo = ?")
             if search_text:
-                wheres.append(
-                    "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
-                    "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
-                    "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
-                )
+                if identity_only_group is not None:
+                    identity_clauses = [
+                        "((' ' || alfred_lexical_surface(body) || ' ') GLOB ? OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND (' ' || alfred_lexical_surface(lt.tag) || ' ') GLOB ?))"
+                        for _variant in identity_only_group
+                    ]
+                    wheres.append(f"({' OR '.join(identity_clauses)})")
+                else:
+                    wheres.append(
+                        "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                    )
             clause = "WHERE " + " AND ".join(wheres)
             columns = searchable_columns if search_text else _LESSON_COLUMNS
             return f"SELECT {columns} FROM lessons {clause} ORDER BY created_at DESC LIMIT ?"
@@ -754,8 +770,13 @@ class SQLiteStore:
             if repo:
                 params.append(repo)
             if search_text:
-                pattern = f"%{escape_like_literal(search_text)}%"
-                params.extend([pattern, pattern])
+                if identity_only_group is not None:
+                    for variant in identity_only_group:
+                        pattern = identity_glob_pattern(variant)
+                        params.extend([pattern, pattern])
+                else:
+                    pattern = f"%{escape_like_literal(search_text)}%"
+                    params.extend([pattern, pattern])
             query_limit = (
                 min(max(0, limit), MAX_LITERAL_QUERY_CANDIDATES)
                 if literal_only_query is not None
@@ -798,18 +819,30 @@ class SQLiteStore:
                 params.append(repo)
             like_clauses = []
             for group in token_groups:
-                variant_clauses = [
-                    "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
-                    "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
-                    "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
-                    for _variant in group
-                ]
+                if is_identity_token(group[0]):
+                    variant_clauses = [
+                        "((' ' || alfred_lexical_surface(body) || ' ') GLOB ? OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND (' ' || alfred_lexical_surface(lt.tag) || ' ') GLOB ?))"
+                        for _variant in group
+                    ]
+                else:
+                    variant_clauses = [
+                        "(alfred_lexical_surface(body) LIKE ? ESCAPE '\\' OR EXISTS ("
+                        "SELECT 1 FROM lesson_tags lt WHERE lt.lesson_id = lessons.id "
+                        "AND alfred_lexical_surface(lt.tag) LIKE ? ESCAPE '\\'))"
+                        for _variant in group
+                    ]
                 like_clauses.append(f"({' OR '.join(variant_clauses)})")
             like_score = " + ".join(f"CAST({clause} AS INTEGER)" for clause in like_clauses)
             wheres.append(f"({like_score}) >= ?")
             for group in token_groups:
                 for variant in group:
-                    pattern = f"%{escape_like_literal(variant)}%"
+                    pattern = (
+                        identity_glob_pattern(variant)
+                        if is_identity_token(group[0])
+                        else f"%{escape_like_literal(variant)}%"
+                    )
                     params.extend([pattern, pattern])
             params.append(required_lexical_overlap(query_tokens))
 

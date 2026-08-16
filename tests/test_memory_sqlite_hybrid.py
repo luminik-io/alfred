@@ -421,6 +421,8 @@ def test_default_chain_canonicalizes_language_identity_contexts(
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),
@@ -824,6 +826,8 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),
@@ -954,6 +958,68 @@ def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
 
 
 @pytest.mark.parametrize(
+    ("query", "prefix_collision", "matching_body"),
+    [
+        ("192.168.1.2", "192.168.1.20", "address=(192.168.1.2),"),
+        ("Node 2", "Node 20", "runtime [Node 2]."),
+    ],
+)
+def test_identity_boundary_prefilter_avoids_prefix_candidate_crowd_out(
+    query: str,
+    prefix_collision: str,
+    matching_body: str,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=1)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body=matching_body,
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    for index in range(401):
+        provider.reflect(
+            codename="c",
+            repo="r",
+            body=f"{prefix_collision} collision {index}",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+        )
+    assert provider._memory_conn is not None
+    statements: list[str] = []
+    provider._memory_conn.set_trace_callback(statements.append)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    fallback_queries = [
+        statement
+        for statement in statements
+        if statement.startswith("SELECT l.id, l.lexical_text, l.created_at FROM lessons l")
+    ]
+    assert [lesson.id for lesson in out] == [relevant.id]
+    assert len(fallback_queries) == 1
+    assert "GLOB" in fallback_queries[0]
+
+
+@pytest.mark.parametrize(
+    ("query", "matching_body"),
+    [
+        ("192.168.1.2", "192.168.1.2 starts the lesson"),
+        ("192.168.1.2", "the lesson ends at 192.168.1.2"),
+        ("Node 2", "use (Node 2), then verify"),
+    ],
+)
+def test_identity_boundary_prefilter_accepts_start_end_and_punctuation(
+    query: str,
+    matching_body: str,
+) -> None:
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=1)
+    relevant = provider.reflect(codename="c", repo="r", body=matching_body)
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
     "query",
     [
         "C compiler",
@@ -1045,6 +1111,8 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("biases", "bias"),
         ("focus", "focuses"),
         ("focuses", "focus"),
+        ("canvas", "canvases"),
+        ("canvases", "canvas"),
         ("index", "indices"),
         ("indices", "index"),
         ("matrix", "matrices"),
@@ -1737,6 +1805,14 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
     assert all(1 <= len(group) <= 2 for group in groups)
 
 
+def test_identity_glob_pattern_escapes_sql_wildcards() -> None:
+    conn = sqlite3.connect(":memory:")
+    pattern = token_mod.identity_glob_pattern("x[*?]y")
+
+    assert conn.execute("SELECT (' x[*?]y ') GLOB ?", (pattern,)).fetchone() == (1,)
+    assert conn.execute("SELECT (' xABCy ') GLOB ?", (pattern,)).fetchone() == (0,)
+
+
 @pytest.mark.parametrize(
     ("plural", "singular"),
     [
@@ -1748,6 +1824,7 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("aliases", "alias"),
         ("biases", "bias"),
         ("focuses", "focus"),
+        ("canvases", "canvas"),
         ("indices", "index"),
         ("matrices", "matrix"),
         ("vertices", "vertex"),
@@ -1801,6 +1878,7 @@ def test_technical_irregular_inflections_have_bounded_reverse_variants(
         ("alias", "alias", "alia"),
         ("bias", "bias", "bia"),
         ("focus", "focus", "focu"),
+        ("canvas", "canvas", "canva"),
         ("caches", "cache", "cach"),
         ("news", "news", "new"),
         ("series", "series", "serie"),
