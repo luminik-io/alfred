@@ -136,7 +136,7 @@ engine or changing GitHub, Slack, git, the scheduler, or project files. See the
 
 ## What ships
 
-### Supervised engineering workflow
+### Autonomous engineering workflow
 
 - The planner turns a request into bounded implementation work.
 - The architect can split an approved change across several repositories.
@@ -146,6 +146,10 @@ engine or changing GitHub, Slack, git, the scheduler, or project files. See the
 - Agent PRs include verification evidence by default so another person can
   check what ran and what did not.
 - Alfred leaves merge authority with a person or an explicit repository policy.
+
+After work enters the queue, the agents continue through implementation,
+testing, review, and fixes without waiting for another prompt. Configured
+controls stop only the actions that need a decision.
 
 GitHub issues, labels, branches, comments, and pull requests form the shared
 coordination layer. Slack is optional. It supports planning, status, and trusted

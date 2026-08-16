@@ -49,6 +49,9 @@ def test_public_entrypoints_do_not_use_the_infrastructure_led_tagline() -> None:
         "supervised local agent fleet",
         "supervised agent fleet",
         "supervised engineering fleet",
+        "supervised coding agents",
+        "one supervised team",
+        "coordination and supervision layer",
     ]
     for path in PUBLIC_COPY:
         content = path.read_text().casefold()
