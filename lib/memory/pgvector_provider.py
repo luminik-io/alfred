@@ -86,6 +86,7 @@ from .sqlite_hybrid import (
     _env_flag,
     _env_int,
     _from_iso,
+    _has_meaningful_lexical_overlap,
     _OllamaEmbedder,
     _reciprocal_rank_fusion,
     _tokenize,
@@ -905,16 +906,21 @@ class PgvectorProvider:
         so the chained provider falls through without breaking a firing.
         """
         cap = max(1, int(limit))
-        text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
+        has_query = bool((query or "").strip())
+        text = (query or "").strip()
         try:
             anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
             with self._connect() as conn:
                 now = datetime.now(UTC)
-                lexical = self._lexical_ids(conn, text, codename=codename, repo=repo, now=now)
+                lexical = (
+                    self._lexical_ids(conn, text, codename=codename, repo=repo, now=now)
+                    if has_query
+                    else []
+                )
                 dense: list[str] = []
-                if self._vec_ok:
+                if has_query and self._vec_ok:
                     dense = self._dense_ids(conn, text, codename=codename, repo=repo, now=now)
-                if not lexical and not dense and not (query or "").strip():
+                if not lexical and not dense and not has_query:
                     fused_ids = self._recency_ids(
                         conn, codename=codename, repo=repo, limit=cap, now=now
                     )
@@ -973,7 +979,8 @@ class PgvectorProvider:
                 now=now,
             )
             try:
-                return [r[0] for r in conn.execute(sql, params).fetchall()]
+                ids = [r[0] for r in conn.execute(sql, params).fetchall()]
+                return self._filter_lexical_ids(conn, ids, tokens)
             except Exception as exc:
                 _LOG.debug("memory.pgvector: full-text query failed, using ILIKE: %s", exc)
         sql, params = _lexical_like_query(
@@ -984,7 +991,27 @@ class PgvectorProvider:
             pool=self.pool,
             now=now,
         )
-        return [r[0] for r in conn.execute(sql, params).fetchall()]
+        ids = [r[0] for r in conn.execute(sql, params).fetchall()]
+        return self._filter_lexical_ids(conn, ids, tokens)
+
+    def _filter_lexical_ids(
+        self,
+        conn: Any,
+        ids: list[str],
+        query_tokens: list[str],
+    ) -> list[str]:
+        if not ids:
+            return []
+        rows = conn.execute(
+            f"SELECT id, body, tags_json FROM {self._lessons} WHERE id = ANY(%s)",
+            (list(ids),),
+        ).fetchall()
+        text_by_id = {row[0]: f"{row[1]} {row[2]}" for row in rows}
+        return [
+            lesson_id
+            for lesson_id in ids
+            if _has_meaningful_lexical_overlap(text_by_id.get(lesson_id, ""), query_tokens)
+        ]
 
     def _dense_ids(
         self,

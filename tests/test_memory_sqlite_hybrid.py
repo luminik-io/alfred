@@ -104,6 +104,17 @@ def test_recall_no_query_returns_recency_baseline(provider: SqliteHybridProvider
     assert len(out) == 2
 
 
+def test_unfiltered_recall_does_not_search_with_scope_text(
+    provider: SqliteHybridProvider,
+) -> None:
+    older = provider.reflect(codename="c", repo="acme/api", body="acme api legacy lesson")
+    newer = provider.reflect(codename="c", repo="acme/api", body="newest scoped lesson")
+
+    out = provider.recall(codename="c", repo="acme/api", limit=5)
+
+    assert [lesson.id for lesson in out] == [newer.id, older.id]
+
+
 def test_recall_query_miss_does_not_inject_unrelated_recent_lessons(
     provider: SqliteHybridProvider,
 ) -> None:
@@ -126,6 +137,25 @@ def test_recall_ignores_shared_low_signal_query_words(
     )
 
     assert out == []
+
+
+def test_recall_requires_two_meaningful_terms_for_multiword_queries(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="The schema uses the fixture factory")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="The GraphQL schema loader caches nested unions",
+    )
+
+    out = provider.recall(
+        query="Fix the GraphQL schema loader so nested unions resolve on cold start",
+        codename="c",
+        repo="r",
+    )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
 
 
 def test_tokenize_drops_low_signal_words_and_keeps_domain_terms() -> None:

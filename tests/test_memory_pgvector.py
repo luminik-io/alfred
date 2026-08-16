@@ -728,11 +728,18 @@ def test_unfiltered_recall_uses_recent_lessons(monkeypatch: pytest.MonkeyPatch) 
     provider, _ = _fake_provider()
     provider._vec_ok = False
     monkeypatch.setattr(provider, "_anchor_ids", lambda *args, **kwargs: [])
-    monkeypatch.setattr(provider, "_lexical_ids", lambda *args, **kwargs: [])
+    lexical_calls: list[bool] = []
+
+    def track_lexical(*args: Any, **kwargs: Any) -> list[str]:
+        lexical_calls.append(True)
+        return []
+
+    monkeypatch.setattr(provider, "_lexical_ids", track_lexical)
     monkeypatch.setattr(provider, "_recency_ids", lambda *args, **kwargs: ["recent"])
     monkeypatch.setattr(provider, "_hydrate", lambda _conn, ids: list(ids))
 
     assert provider.recall(repo="acme/api") == ["recent"]
+    assert lexical_calls == []
 
 
 def test_union_reuse_counts_moves_and_clears() -> None:

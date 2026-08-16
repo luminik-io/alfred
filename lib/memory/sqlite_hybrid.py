@@ -659,12 +659,14 @@ class SqliteHybridProvider:
         """
         cap = max(1, int(limit))
         has_query = bool((query or "").strip())
-        text = (query or " ".join(x for x in (codename, repo) if x) or "").strip()
+        text = (query or "").strip()
         anchored_ids = self._anchor_ids(anchor_refs, repo=repo, limit=cap)
         with self._connect() as conn:
-            lexical = self._lexical_ids(conn, text, codename=codename, repo=repo)
+            lexical = (
+                self._lexical_ids(conn, text, codename=codename, repo=repo) if has_query else []
+            )
             dense: list[str] = []
-            if self._dense_active(conn):
+            if has_query and self._dense_active(conn):
                 dense = self._dense_ids(conn, text, codename=codename, repo=repo)
             if not lexical and not dense:
                 # An intentionally unfiltered view gets a recency baseline. A
@@ -752,7 +754,7 @@ class SqliteHybridProvider:
             params: list[Any] = [match, *scope_params, self.pool]
             try:
                 rows = conn.execute(sql, params).fetchall()
-                return [r[0] for r in rows]
+                return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)
             except sqlite3.OperationalError as exc:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
         # LIKE fallback (SQLite build without FTS5): any-token substring match,
@@ -772,7 +774,27 @@ class SqliteHybridProvider:
         )
         params = [*like_params, *scope_params, self.pool]
         rows = conn.execute(sql, params).fetchall()
-        return [r[0] for r in rows]
+        return self._filter_lexical_ids(conn, [r[0] for r in rows], tokens)
+
+    def _filter_lexical_ids(
+        self,
+        conn: sqlite3.Connection,
+        ids: list[str],
+        query_tokens: list[str],
+    ) -> list[str]:
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            f"SELECT id, body, tags_json FROM lessons WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        text_by_id = {row[0]: f"{row[1]} {row[2]}" for row in rows}
+        return [
+            lesson_id
+            for lesson_id in ids
+            if _has_meaningful_lexical_overlap(text_by_id.get(lesson_id, ""), query_tokens)
+        ]
 
     def _dense_ids(
         self,
@@ -1249,6 +1271,13 @@ def _tokenize(text: str) -> list[str]:
         if len(out) >= _MAX_QUERY_TOKENS:
             break
     return out
+
+
+def _has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
+    """Require one term for a single-term query and two for a longer query."""
+    required = 1 if len(query_tokens) == 1 else 2
+    lesson_tokens = set(_tokenize(text))
+    return len(lesson_tokens.intersection(query_tokens)) >= required
 
 
 def _scope_clause(codename: str | None, repo: str | None, *, alias: str) -> tuple[str, list[Any]]:
