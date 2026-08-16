@@ -753,8 +753,8 @@ class SqliteHybridProvider:
                 _LOG.debug("memory.sqlite: FTS query failed, falling back to LIKE: %s", exc)
         # LIKE fallback (SQLite build without FTS5): require enough token
         # substrings before each bounded candidate page, then enforce exact
-        # token overlap on the returned body+tags rows. Keyset pagination avoids
-        # increasingly expensive OFFSET scans. The fixed page and page-count
+        # token overlap on the returned canonical lexical surface. Keyset
+        # pagination avoids increasingly expensive OFFSET scans. The fixed page and page-count
         # caps above bound this fallback to 400 inspected candidates and eight
         # SQL queries even if the corpus contains only substring false matches.
         # Match the same canonical body+tags surface the FTS arm indexes via
@@ -778,21 +778,21 @@ class SqliteHybridProvider:
                 cursor_sql = "AND (l.created_at < ? OR (l.created_at = ? AND l.id > ?)) "
                 cursor_params = [created_at, created_at, lesson_id]
             sql = (
-                "SELECT l.id, l.body, l.tags_json, l.created_at FROM lessons l "
+                "SELECT l.id, l.lexical_text, l.created_at FROM lessons l "
                 f"WHERE ({like_score_sql}) >= ? {scope_sql} {cursor_sql}"
                 "ORDER BY l.created_at DESC, l.id ASC LIMIT ?"
             )
             rows = conn.execute(sql, [*base_params, *cursor_params, page_size]).fetchall()
             if not rows:
                 break
-            for lesson_id, body, tags_json, _created_at in rows:
-                if _has_meaningful_lexical_overlap(f"{body} {tags_json}", tokens):
+            for lesson_id, lexical_text, _created_at in rows:
+                if _has_meaningful_lexical_overlap(str(lexical_text), tokens):
                     out.append(str(lesson_id))
                 if len(out) >= self.pool:
                     break
             if len(out) >= self.pool:
                 break
-            next_after = (str(rows[-1][3]), str(rows[-1][0]))
+            next_after = (str(rows[-1][2]), str(rows[-1][0]))
             if next_after == after:
                 break
             after = next_after
@@ -810,10 +810,10 @@ class SqliteHybridProvider:
             return []
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(
-            f"SELECT id, body, tags_json FROM lessons WHERE id IN ({placeholders})",
+            f"SELECT id, lexical_text FROM lessons WHERE id IN ({placeholders})",
             ids,
         ).fetchall()
-        text_by_id = {row[0]: f"{row[1]} {row[2]}" for row in rows}
+        text_by_id = {row[0]: str(row[1]) for row in rows}
         return [
             lesson_id
             for lesson_id in ids

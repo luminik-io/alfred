@@ -369,6 +369,30 @@ def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridPr
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+@pytest.mark.parametrize("force_like_fallback", [False, True])
+def test_recall_matches_unicode_subject_stored_only_in_tag(
+    monkeypatch: pytest.MonkeyPatch,
+    force_like_fallback: bool,
+) -> None:
+    if force_like_fallback:
+        monkeypatch.setattr(
+            mod.SqliteHybridProvider,
+            "_try_create_fts",
+            lambda self, conn: False,
+        )
+    provider = SqliteHybridProvider(db_path=Path(":memory:"), pool=2)
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="API billing guidance",
+        tags=["課金"],
+    )
+
+    out = provider.recall(query="API 課金", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 def test_like_fallback_applies_overlap_before_candidate_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
