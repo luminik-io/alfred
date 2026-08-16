@@ -124,6 +124,8 @@ def recall_planning_memory(
     if provider is None or getattr(provider, "name", "") == "null" or limit <= 0:
         return ()
     query = _planning_memory_query(draft)
+    if query is None:
+        return ()
     repos: list[str | None] = [repo for repo in draft.repos if repo]
     if not repos:
         repos = [None]

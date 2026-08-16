@@ -316,9 +316,9 @@ def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain
 @pytest.mark.parametrize(
     ("query", "matching_body"),
     [
-        ("%", "Keep 100% of the evidence"),
-        ("_", "Use the task_id field"),
-        (r"\\", r"Use C:\\work as the fixture path"),
+        ("100%", "Keep 100% of the evidence"),
+        ("task_id", "Use the task_id field"),
+        (r"C:\\work", r"Use C:\\work as the fixture path"),
     ],
 )
 def test_recall_query_treats_like_metacharacters_as_literals(

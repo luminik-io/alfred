@@ -589,6 +589,20 @@ def _escape_like_literal(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _has_meaningful_memory_query(value: str) -> bool:
+    """Apply the embedded memory provider's canonical low-signal query gate.
+
+    The import stays on the read path because :mod:`memory` imports FleetBrain's
+    public types. Loading it at module import time would create an import cycle.
+    Keeping token policy in the hybrid provider prevents the two SQLite-backed
+    recall paths from acquiring separate stop-word lists.
+    """
+
+    from memory.sqlite_hybrid import _tokenize
+
+    return bool(_tokenize(value))
+
+
 @dataclass
 class SQLiteStore:
     """SQLite-backed :class:`Store` implementation.
@@ -701,6 +715,9 @@ class SQLiteStore:
         default recall behaviour is unchanged.
         """
         limit = int(limit)
+        query_body = (query or "").strip() or None
+        if query_body is not None and not _has_meaningful_memory_query(query_body):
+            return []
         now_iso = _to_iso(datetime.now(UTC))
 
         def _scoped(query_body: str | None) -> str:
@@ -731,7 +748,6 @@ class SQLiteStore:
             return params
 
         with self._connect() as conn:
-            query_body = (query or "").strip() or None
             rows = conn.execute(_scoped(query_body), _scope_params(query_body)).fetchall()
             return [self._row_to_lesson(conn, row) for row in rows]
 

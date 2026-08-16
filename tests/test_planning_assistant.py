@@ -308,6 +308,25 @@ def test_recall_planning_memory_keeps_query_miss_empty() -> None:
     assert all(query is not None for _repo, query, _limit in provider.calls)
 
 
+def test_recall_planning_memory_skips_empty_draft_instead_of_listing_recent() -> None:
+    class Provider:
+        name = "test"
+
+        def __init__(self) -> None:
+            self.calls = []
+
+        def recall(self, *, repo=None, query=None, limit=3):
+            self.calls.append((repo, query, limit))
+            return [{"repo": repo, "body": "Unfiltered recent lesson."}]
+
+    provider = Provider()
+
+    memory = recall_planning_memory(IssueDraft(title=""), provider)
+
+    assert memory == ()
+    assert provider.calls == []
+
+
 def test_recall_planning_memory_swallows_provider_errors_without_retry() -> None:
     class Provider:
         name = "test"
