@@ -16,8 +16,8 @@ shipped work. The canonical source is
 
 ### Launch quality
 
-- Publish v0.7.0 with signed packages, concise release notes, and a verified
-  clean-install path.
+- Publish v0.7.0 with signed and notarized macOS packages, Linux packages,
+  concise release notes, and a verified clean-install path.
 - Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.

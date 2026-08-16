@@ -17,6 +17,22 @@ Use this before tagging a public Alfred release.
   # expected: workflow
   ```
 
+- Confirm immutable releases are enabled:
+
+  ```sh
+  gh api -H 'X-GitHub-Api-Version: 2026-03-10' \
+    repos/luminik-io/alfred/immutable-releases --jq '.enabled'
+  # expected: true
+  ```
+
+- Confirm the active `Protect Release Tags` ruleset targets tags:
+
+  ```sh
+  gh api repos/luminik-io/alfred/rulesets \
+    --jq '.[] | select(.name == "Protect Release Tags") | [.target, .enforcement]'
+  # expected: ["tag","active"]
+  ```
+
 - Run the local gates:
 
   ```sh
@@ -48,10 +64,20 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
 
    ```sh
    git tag -s "v$(cat VERSION)" -m "v$(cat VERSION)"
-   git push origin main --tags
+   git push origin "v$(cat VERSION)"
    ```
 
-3. Watch the `Release` workflow. It verifies `VERSION`, extracts notes from `CHANGELOG.md`, creates the GitHub Release as a **draft**, and prints the source tarball sha256 for Homebrew. The draft is not public yet, by design.
+3. Dispatch the release workflow from protected `main`, then watch it:
+
+   ```sh
+   gh workflow run release.yml --repo luminik-io/alfred --ref main \
+     -f tag="v$(cat VERSION)"
+   ```
+
+   It verifies the annotated tag, signed tag object, signed commit, main-branch
+   ancestry, `VERSION`, and release notes before it creates the GitHub Release
+   as a **draft**. It also prints the source tarball sha256 for Homebrew. The
+   draft is not public yet, by design.
 4. Build the desktop packages from the tag in the trusted packaging
    environment. Sign, notarize, and staple the macOS build. Upload the macOS
    assets and Linux `.AppImage` / `.deb` assets to the draft release. The
@@ -59,15 +85,18 @@ Keep example secrets obviously fake, for example `xoxb-...` or `https://hooks.sl
    publication. The download page expects these stable names: `Alfred.dmg`,
    `Alfred.app.zip`, `Alfred.AppImage`, and `Alfred.deb`.
 5. Open the draft release, confirm the body and the attached assets, then press Publish. Publishing marks it as the latest release.
-6. Update `Formula/alfred-os.rb` with the printed sha256 before publishing the tap update.
-7. Re-run the `Site` workflow and verify the live docs page:
+6. Update `Formula/alfred-os.rb` with the printed source archive sha256.
+7. Set the release version in `Casks/alfred-os.rb` and update its sha256 from
+   the published `Alfred.dmg`. Do not use the source archive checksum for the
+   Cask. Land both Homebrew changes in a signed follow-up PR.
+8. Re-run the `Site` workflow and verify the live docs page:
 
    ```sh
    gh workflow run site.yml --repo luminik-io/alfred --ref main
    curl -fsSL https://alfred.luminik.io/ | grep -E 'Alfred|Starlight'
    ```
 
-8. Smoke-test the published install path from a fresh directory.
+9. Smoke-test the published CLI and Cask install paths from a fresh directory.
 
 The full tag-to-publish flow, and why the draft gate keeps the download claim
 accurate, is in [`RELEASING.md`](RELEASING.md).

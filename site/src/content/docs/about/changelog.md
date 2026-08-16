@@ -16,10 +16,29 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-lists changes merged since v0.6.0. It currently includes per-role model
-controls, the shared Claude and Codex engine registry, the new desktop themes,
-trusted code-memory scope, safer memory promotion and recall, an optional
-Graphify battery, and Work inspector evidence.
+currently has no pending changes.
+
+## 0.7.0 (2026-08-16)
+
+Version 0.7.0 unifies engine checks, tightens memory recall, and refreshes the
+Desktop workflow.
+
+- One capability registry now controls engine discovery, authentication,
+  routing, setup, diagnostics, scheduled roles, Slack, and Desktop.
+- Signal Edge, The Category Standard, and Linked Fold provide coordinated
+  light and dark desktop themes. The Work inspector shows checks, reviews,
+  files, commits, and unavailable GitHub evidence.
+- Query-bearing memory recall now keeps misses empty. SQLite, pgvector, and
+  FleetBrain use one bounded lexical policy for technical symbols, Unicode
+  text, tags, scope, and result limits.
+- Code-memory indexing requires explicit repository scope and a trusted binary.
+  Each resolved scope has a separate graph cache.
+- Behavior-changing memory is held for review by default.
+- The release removes Mac Mini CI, retired proof assets, and fixed subscription
+  quota estimates from benchmark output.
+
+Read the complete
+[`0.7.0` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#070---2026-08-16).
 
 ## 0.6.0 (2026-07-10)
 

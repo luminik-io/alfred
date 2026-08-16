@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
@@ -18,23 +15,61 @@ jobs:
   release:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+      - name: Verify dispatch source
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Release workflow must run from main, not $GITHUB_REF"
+            exit 1
+          fi
 
       - name: Determine tag
         id: tag
+        env:
+          RELEASE_INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          tag="$RELEASE_INPUT_TAG"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag: $tag"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Verify reviewed and signed release source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          git fetch --no-tags origin \
+            "refs/heads/main:refs/remotes/origin/main"
+          git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+          tag_commit="$(bin/release-source-gate.sh "$tag" origin/main)"
+          tag_object="$(git rev-parse "refs/tags/${tag}")"
+          tag_verified="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}" \
+              --jq '.verification.verified'
+          )"
+          commit_verified="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${tag_commit}" \
+              --jq '.commit.verification.verified'
+          )"
+          if [ "$tag_verified" != "true" ]; then
+            echo "::error::Release tag $tag is not verified"
+            exit 1
+          fi
+          if [ "$commit_verified" != "true" ]; then
+            echo "::error::Release commit $tag_commit is not verified"
+            exit 1
           fi
 
       - name: Verify VERSION matches tag
         run: |
           tag="${{ steps.tag.outputs.tag }}"
-          version_in_file="$(cat VERSION | tr -d '[:space:]')"
+          version_in_file="$(git show "${tag}:VERSION" | tr -d '[:space:]')"
           tag_no_v="${tag#v}"
           if [ "$tag_no_v" != "$version_in_file" ]; then
             echo "::error::Tag $tag does not match VERSION file ($version_in_file)"
@@ -47,31 +82,9 @@ jobs:
           tag="${{ steps.tag.outputs.tag }}"
           tag_no_v="${tag#v}"
           repo="${{ github.repository }}"
-          # The published release body leads with just the version's
-          # "### Highlights" subsection (the short, human-facing summary), not
-          # the full Added/Changed/Fixed lists. Walk into the "## [<version>]"
-          # section, then capture from its "### Highlights" heading up to the
-          # next "###" heading. A "Full changelog" pointer to CHANGELOG.md at
-          # this tag is appended so readers can reach every entry.
-          # Capture the Highlights body, then strip leading and trailing blank
-          # lines so the appended pointer sits exactly one blank line below it.
-          awk -v ver="$tag_no_v" '
-            $0 ~ "^## \\[" ver "\\]([[:space:]]|$)" { in_ver=1; next }
-            in_ver && /^## \[/ { exit }
-            in_ver && /^### [Hh]ighlights[[:space:]]*$/ { in_hl=1; next }
-            in_hl && /^### / { exit }
-            in_hl {
-              if (NF == 0) { if (started) blanks++; next }
-              while (blanks-- > 0) print ""
-              blanks = 0
-              started = 1
-              print
-            }
-          ' CHANGELOG.md > /tmp/release-notes.md
-          if [ ! -s /tmp/release-notes.md ]; then
-            echo "::warning::No Highlights subsection found for $tag; using a stub."
-            echo "Release $tag" > /tmp/release-notes.md
-          fi
+          git show "${tag}:CHANGELOG.md" > /tmp/tag-changelog.md
+          bin/release-notes.sh "$tag_no_v" /tmp/tag-changelog.md \
+            > /tmp/release-notes.md
           {
             echo
             echo "Full changelog: [CHANGELOG.md](https://github.com/${repo}/blob/${tag}/CHANGELOG.md)"
@@ -83,25 +96,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.tag.outputs.tag }}"
-          # Create the release as a DRAFT. The release body is the changelog
-          # Highlights, which claim a signed native desktop download. Those
-          # signed .dmg/.AppImage/.deb assets are attached later from the
-          # trusted signing environment. Keeping the
-          # release a draft means the download claim is never public until a
-          # human has attached the desktop assets and pressed Publish. Do NOT add
-          # --latest here: --latest publishes, which defeats the draft gate.
+          # Create the release as a DRAFT. The release body contains the
+          # matching changelog Highlights.
+          # The signed macOS assets and unsigned Linux assets are attached later
+          # from the trusted packaging environment. Keep the release as a draft
+          # until a human has checked the notes and attached the required assets.
+          # Do not add --latest here: --latest publishes and defeats the draft gate.
           #
-          # On the EDIT path we deliberately do NOT pass --draft. A rerun
-          # (workflow_dispatch / re-tag) after a human has attached the signed
-          # assets and published the release must not re-hide the live release
-          # and its assets. Omitting --draft preserves whatever state the
-          # release is currently in: a still-unpublished release stays a draft,
-          # an already-published release stays published.
+          # A rerun can update an existing draft. It never edits a published
+          # release, including a legacy release that predates immutability.
           if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release edit "$tag" \
-              --repo "${{ github.repository }}" \
-              --title "$tag" \
-              --notes-file "${{ steps.notes.outputs.notes_file }}"
+            release_state="$(
+              gh release view "$tag" \
+                --repo "${{ github.repository }}" \
+                --json isDraft,isImmutable \
+                --jq '[.isDraft, .isImmutable] | @tsv'
+            )"
+            IFS=$'\t' read -r is_draft is_immutable <<< "$release_state"
+            if [ "$is_draft" = "true" ]; then
+              gh release edit "$tag" \
+                --repo "${{ github.repository }}" \
+                --title "$tag" \
+                --notes-file "${{ steps.notes.outputs.notes_file }}"
+            else
+              echo "::notice::Release $tag is already published; no update made (immutable=$is_immutable)"
+            fi
           else
             gh release create "$tag" \
               --repo "${{ github.repository }}" \

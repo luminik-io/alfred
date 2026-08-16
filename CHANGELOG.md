@@ -6,6 +6,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+No changes are pending.
+
+## [0.7.0] - 2026-08-16
+
+### Highlights
+
+- Added one capability registry for Claude Code and Codex across setup,
+  diagnostics, scheduled roles, Slack, and Desktop.
+- Added three desktop themes and a Work inspector that shows pull-request
+  evidence without treating unavailable data as zero.
+- Made memory query misses stay empty and aligned SQLite, pgvector, and
+  FleetBrain on one bounded lexical policy.
+- Required explicit trusted scope for code-memory indexing and isolated each
+  resolved repository scope in its own graph cache.
+- Held behavior-changing memory for review by default.
+- Removed the Mac Mini CI path, retired proof assets, and fixed benchmark copy
+  that inferred subscription quotas from fixed estimates.
+
 ### Added
 
 - A shared engine registry for Claude Code and Codex. Setup, diagnostics,
@@ -49,6 +67,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- The Mac Mini self-hosted CI workflow, runner, CLI, tests, and configuration.
 - The retired proof workflow and its generated assets.
 - Older desktop themes replaced by the current theme system.
 

@@ -18,8 +18,8 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Launch quality
 
-- Publish v0.7.0 with signed packages, concise release notes, and a verified
-  clean-install path.
+- Publish v0.7.0 with signed and notarized macOS packages, Linux packages,
+  concise release notes, and a verified clean-install path.
 - Add a complete scratch-home test. It must install Alfred, configure a fleet,
   start the local API, exercise the desktop-ready setup path, verify optional
   battery status, and remove its temporary state.
