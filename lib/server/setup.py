@@ -40,15 +40,18 @@ import threading
 import time
 import urllib.parse
 from collections.abc import Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from datetime import UTC, datetime
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import batteries
 import skill_packs
 from envflags import FALSY_VALUES
+
+from server import runtime_facade
 
 logger = logging.getLogger(__name__)
 
@@ -119,10 +122,6 @@ class RepoCheckoutValidationError(ValueError):
         self.rows = rows
 
 
-# Engine CLIs Alfred rides. Detected by presence on PATH only (no version
-# spawn): the golden path needs at least one of these signed-in subscription
-# CLIs, never an API key paste.
-_ENGINE_BINS = ("claude", "codex")
 _FALSEY = FALSY_VALUES | {""}
 _CODE_MEMORY_BIN_NAME = "codebase-memory-mcp"
 _CODE_MEMORY_LAUNCHER = Path(__file__).resolve().parents[2] / "bin" / "code-memory-mcp"
@@ -253,6 +252,17 @@ def _runtime_config_env() -> dict[str, str]:
         protected.update(key for key in RUNTIME_SETUP_MANAGED_ENV_KEYS if key in os.environ)
     _load_launcher_env_file(runtime_env_path, env, protected_keys=protected)
     return env
+
+
+def _runtime_env_file_value(name: str, runtime_env: dict[str, str]) -> str:
+    """Read one value from Alfred's runtime file without shell inheritance."""
+
+    file_env: dict[str, str] = {}
+    home = runtime_env.get("HOME", "").strip()
+    if home:
+        file_env["HOME"] = home
+    _load_launcher_env_file(_env_path(runtime_env), file_env)
+    return file_env.get(name, "").strip()
 
 
 def _alfred_init_managed_scope_patterns(path: Path) -> frozenset[str]:
@@ -745,32 +755,127 @@ def _parse_gh_account(text: str) -> str | None:
     return None
 
 
-def engine_clis() -> list[dict[str, Any]]:
-    """Detect the engine CLIs Alfred rides (claude / codex) on PATH.
+def engine_clis(
+    *,
+    deadline: float | None = None,
+    environment: Literal["scheduler", "process"] = "scheduler",
+) -> list[dict[str, Any]]:
+    """Check supported engines and detect candidate harness executables."""
 
-    Server-side detection: presence-only via the augmented search path the gh
-    resolver uses, so a launchd-bare-PATH server still finds Homebrew installs.
-    The native client may also probe deeper (``alfred auth status``); this is
-    the in-browser-capable fallback so the runtime checks work without Tauri.
-    Honours ``CLAUDE_BIN`` / ``CODEX_BIN`` overrides via config.
-    """
-    search = _join_search_path(_engine_search_path(os.environ), os.environ.get("PATH", ""))
-    out: list[dict[str, Any]] = []
-    for name in _ENGINE_BINS:
-        configured = _setup_config_value(f"{name.upper()}_BIN")
-        resolved = (
-            configured
-            if configured and (os.path.isabs(configured) or shutil.which(configured, path=search))
-            else shutil.which(name, path=search)
-        )
-        out.append(
-            {
-                "name": name,
-                "installed": bool(resolved),
-                "path": resolved,
-            }
-        )
-    return out
+    runtime_env = _runtime_config_env()
+    search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
+    if environment == "process":
+        probe_env = dict(os.environ)
+    elif environment == "scheduler":
+        probe_env = dict(os.environ)
+        probe_env.update(runtime_env)
+    else:  # pragma: no cover - Literal callers are statically constrained
+        raise ValueError(f"unknown engine environment: {environment}")
+    probe_env["PATH"] = search
+    remaining = None if deadline is None else deadline - time.monotonic()
+    profile_lookup_failed = False
+    if environment == "scheduler":
+        static_profile = _runtime_env_file_value("CLAUDE_CONFIG_DIR", runtime_env)
+        if static_profile:
+            probe_env["CLAUDE_CONFIG_DIR"] = static_profile
+        else:
+            probe_env.pop("CLAUDE_CONFIG_DIR", None)
+        if remaining is None or remaining > 0:
+            profile_lookup = runtime_facade.scheduler_environment_lookup(
+                "CLAUDE_CONFIG_DIR",
+                timeout=2.0 if remaining is None else min(2.0, remaining),
+            )
+            if profile_lookup.available:
+                if profile_lookup.value:
+                    probe_env["CLAUDE_CONFIG_DIR"] = profile_lookup.value
+            elif profile_lookup.supported:
+                profile_lookup_failed = True
+        else:
+            profile_lookup_failed = runtime_facade.scheduler_supported()
+    deadline_seconds = 8.0
+    if deadline is not None:
+        deadline_seconds = max(0.0, deadline - time.monotonic())
+    engines = runtime_facade.engine_inventory(
+        environ=probe_env,
+        search_path=search,
+        deadline_seconds=deadline_seconds,
+    )
+    if profile_lookup_failed:
+        for engine in engines:
+            if engine.get("name") != "claude" or not engine.get("installed"):
+                continue
+            engine.update(
+                {
+                    "ready": False,
+                    "state": "probe_failed",
+                    "detail": (
+                        "Alfred could not read the scheduler-selected Claude profile. Retry setup."
+                    ),
+                    "failures": ["profile_lookup_failed"],
+                }
+            )
+    return engines
+
+
+def engine_cli_path(engine: str) -> str | None:
+    """Resolve one engine through the setup search path without probing it."""
+
+    runtime_env = _runtime_config_env()
+    search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
+    return runtime_facade.engine_binary(
+        engine,
+        environ=runtime_env,
+        search_path=search,
+    )
+
+
+_DEFAULT_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
+_SETUP_ENGINE_MODES = frozenset({"claude", "codex", "hybrid"})
+
+
+def _configured_engine_mode(env: Mapping[str, str]) -> str:
+    """Return the fleet engine mode that setup must evaluate."""
+
+    mode = env.get("ALFRED_ENGINE", "").strip().lower()
+    if not mode:
+        return "hybrid"
+    return mode if mode in _SETUP_ENGINE_MODES else "disabled"
+
+
+def _engine_route_status(
+    engines: list[dict[str, Any]],
+    *,
+    mode: str = "hybrid",
+) -> tuple[bool, str]:
+    """Evaluate setup engines against one normalized fleet route."""
+
+    if mode == "disabled":
+        return False, "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
+    by_name = {str(engine.get("name")): engine for engine in engines}
+    claude = by_name.get("claude")
+    codex = by_name.get("codex")
+    if mode != "hybrid":
+        selected = by_name.get(mode)
+        display_name = "Claude Code" if mode == "claude" else "Codex"
+        if selected and selected.get("ready"):
+            return True, f"Ready via configured {display_name} route."
+        state = str(selected.get("state") if selected else "missing")
+        return False, f"The configured {display_name} route is not ready ({state})."
+    if claude and claude.get("ready"):
+        return True, "Ready via Claude Code."
+    claude_state = str(claude.get("state") if claude else "missing")
+    if claude_state in _DEFAULT_ENGINE_FALLBACK_STATES and codex and codex.get("ready"):
+        return True, "Ready via Codex fallback."
+    if claude and claude_state not in _DEFAULT_ENGINE_FALLBACK_STATES:
+        return False, f"Claude Code blocks the default hybrid route ({claude_state})."
+    detected = [
+        str(engine.get("display_name") or engine.get("name"))
+        for engine in engines
+        if engine.get("installed") and not engine.get("ready")
+    ]
+    if detected:
+        return False, f"Detected but not ready: {', '.join(detected)}."
+    return False, "No compatible coding engine was found."
 
 
 def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -1717,24 +1822,29 @@ def _has_graph_artifact(path: Path) -> bool:
     return False
 
 
-def bootstrap_status() -> dict[str, Any]:
+def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     """One read the client turns into the Set up checklist.
 
     Surfaces what is connected vs missing with a next action per row:
-    GitHub auth, at least one engine CLI, the watched-repo selection, and a
+    GitHub auth, a working default engine route, the watched-repo selection, and a
     demo-present flag. ``ready`` is the golden-path gate: gh authed + at least
     one engine + at least one board-visible repo selected and covered by queue
     scope (no AWS / Slack required).
     """
-    gh = gh_auth_status()
-    engines = engine_clis()
+    deadline = time.monotonic() + max(0.0, deadline_seconds)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        gh_future = pool.submit(gh_auth_status, deadline=deadline)
+        engines_future = pool.submit(engine_clis, deadline=deadline)
+        gh = gh_future.result()
+        engines = engines_future.result()
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
     queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
-    any_engine = any(e["installed"] for e in engines)
-    repo_checkouts = _selected_repo_local_paths(repos, runtime_env)
+    engine_mode = _configured_engine_mode(runtime_env)
+    engine_route_ready, _ = _engine_route_status(engines, mode=engine_mode)
+    repo_checkouts = _selected_repo_local_paths(repos, runtime_env, deadline=deadline)
     code_memory = code_memory_status(runtime_env)
     code_memory_coverage = _code_memory_coverage(
         repos, code_memory, runtime_env, resolved=repo_checkouts
@@ -1756,7 +1866,7 @@ def bootstrap_status() -> dict[str, Any]:
     return {
         "github": gh,
         "engines": engines,
-        "engine_ready": any_engine,
+        "engine_ready": engine_route_ready,
         "code_memory": code_memory,
         "code_memory_coverage": code_memory_coverage,
         "capability_plane": capability_plane,
@@ -1775,7 +1885,9 @@ def bootstrap_status() -> dict[str, Any]:
         "demo": {"present": any(load_demo_cards().values())},
         "install": install,
         "first_run": first_run,
-        "ready": bool(gh["ok"] and any_engine and repos and queue_repos and queue_covers_selected),
+        "ready": bool(
+            gh["ok"] and engine_route_ready and repos and queue_repos and queue_covers_selected
+        ),
     }
 
 
@@ -1800,7 +1912,10 @@ def first_run_readiness_status(
 
     checks = [
         _github_readiness_check(gh),
-        _engine_readiness_check(engines),
+        _engine_readiness_check(
+            engines,
+            mode=_configured_engine_mode(runtime_env),
+        ),
         _repo_scope_readiness_check(repos),
         _queue_readiness_check(repos, queue_repos, queue_missing),
         _repo_local_paths_readiness_check(repos, runtime_env, resolved=repo_checkouts),
@@ -1881,20 +1996,30 @@ def _github_readiness_check(gh: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _engine_readiness_check(engines: list[dict[str, Any]]) -> dict[str, Any]:
-    installed = [str(engine.get("name")) for engine in engines if engine.get("installed")]
+def _engine_readiness_check(
+    engines: list[dict[str, Any]],
+    *,
+    mode: str = "hybrid",
+) -> dict[str, Any]:
+    ready, detail = _engine_route_status(engines, mode=mode)
+    if mode == "disabled":
+        action = "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+    elif mode == "claude":
+        action = "Install and sign in to Claude Code, then recheck setup."
+    elif mode == "codex":
+        action = "Install and sign in to Codex, then recheck setup."
+    elif "blocks the default hybrid route" in detail:
+        action = "Sign in to Claude Code or select Codex, then recheck setup."
+    else:
+        action = "Install and sign in to a supported coding engine, then recheck setup."
     return _readiness_check(
         "engine_clis",
-        "Claude or Codex CLI",
+        "Coding engine",
         category="engines",
         tier="required",
-        ready=bool(installed),
-        detail=(
-            f"Found {', '.join(installed)}."
-            if installed
-            else "No Claude or Codex CLI was found on PATH."
-        ),
-        action="Install and sign in to Claude Code or Codex CLI, then recheck setup.",
+        ready=ready,
+        detail=detail,
+        action=action,
     )
 
 

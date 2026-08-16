@@ -127,7 +127,7 @@ memory_auto_promote_stop_control_active() {
   token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
   [ -n "$token" ] || return 1
   case "$key" in
-    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
       memory_auto_promote_value_is_enabled "$token" && return 1
       return 0
       ;;
@@ -438,7 +438,7 @@ PY
 }
 
 configured_agents() {
-  local conf=""
+  local conf="" launch_dir systemd_user_dir
   if [ -f "$ALFRED_HOME/launchd/agents.conf" ]; then
     conf="$ALFRED_HOME/launchd/agents.conf"
   elif [ -f "$REPO_DIR/launchd/agents.conf" ]; then
@@ -456,9 +456,10 @@ configured_agents() {
     return 0
   fi
 
-  if [ -d "$HOME/Library/LaunchAgents" ]; then
+  launch_dir="${ALFRED_LAUNCH_DIR:-$HOME/Library/LaunchAgents}"
+  if [ -d "$launch_dir" ]; then
     {
-      python3 - "$HOME/Library/LaunchAgents" <<'PY'
+      python3 - "$launch_dir" <<'PY'
 from pathlib import Path
 import plistlib
 import sys
@@ -556,9 +557,49 @@ for row in rows:
 PY
 }
 
+configured_enabled_agents() {
+  local label script_name codename implementation enabled_file
+  enabled_file="$ALFRED_HOME/state/fleet/enabled.txt"
+  while IFS=$'\t' read -r label script_name; do
+    [ -n "$label" ] || continue
+    [ -n "$script_name" ] || continue
+    codename="${label##*.}"
+    implementation="$(basename "$script_name" .py)"
+    case "$implementation" in
+      architect|spec-planner)
+        [ -f "$enabled_file" ] || continue
+        if ! awk -v wanted="$codename" '
+          {
+            sub(/#.*/, "", $0)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+            if ($0 == wanted) found = 1
+          }
+          END { exit found ? 0 : 1 }
+        ' "$enabled_file"; then
+          continue
+        fi
+        ;;
+    esac
+    printf '%s\t%s\n' "$label" "$script_name"
+  done < <(configured_agents)
+}
+
 echo "doctor: checking configured agents"
 echo "        ALFRED_HOME=$ALFRED_HOME"
 echo "        WORKSPACE_ROOT=$WORKSPACE_ROOT"
+echo
+
+# Engine presence is covered again by each runner's ordinary preflight below.
+# This canonical probe closes the deeper gap: selected engines must also expose
+# Alfred's required version, protocol flags, and authenticated CLI session.
+engine_readiness_fail=0
+engine_doctor_args=(engine doctor)
+if [ "$DEV_MODE" -eq 1 ]; then
+  engine_doctor_args+=(--dev)
+fi
+if ! "$SCRIPT_DIR/alfred" "${engine_doctor_args[@]}"; then
+  engine_readiness_fail=1
+fi
 echo
 
 # --------------------------------------------------------------------------
@@ -590,7 +631,7 @@ fi
 echo
 
 pass=0
-fail=$venv_deps_fail
+fail=$((venv_deps_fail + engine_readiness_fail))
 while IFS=$'\t' read -r label script_name; do
   [ -n "$label" ] || continue
   [ -n "$script_name" ] || continue
@@ -670,7 +711,7 @@ while IFS=$'\t' read -r label script_name; do
     echo "$output" | head -5 | sed 's/^/      /'
     fail=$((fail + 1))
   fi
-done < <(configured_agents | sort -u)
+done < <(configured_enabled_agents | sort -u)
 
 echo
 echo "doctor: $pass passed, $fail failed"

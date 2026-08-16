@@ -30,7 +30,6 @@ Design notes:
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -144,7 +143,10 @@ def retry_turn() -> OnboardingTurn:
 
 def engine_from_env() -> str:
     """Resolve the engine driving onboarding, or "" when none is set."""
-    return (os.environ.get(ENGINE_ENV) or cc.converse_engine_from_env()).strip()
+    configured = cc.configured_engine_from_env(ENGINE_ENV)
+    if configured:
+        return configured
+    return cc.converse_engine_from_env().strip()
 
 
 def prompt_relative_path() -> Path:

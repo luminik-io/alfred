@@ -37,7 +37,7 @@ import {
   supportsNativeActions,
 } from "./api";
 import type { ConverseRequest } from "./types";
-import { loadSetupRepos, saveSetupRepos } from "./api/setup";
+import { loadSetupRepos, loadSetupStatus, saveSetupRepos } from "./api/setup";
 
 // In jsdom (no __TAURI_INTERNALS__) the api layer goes through global fetch, so
 // we can drive every endpoint's outcome by stubbing fetch per URL.
@@ -89,6 +89,20 @@ describe("base URL normalization", () => {
     window.localStorage.setItem("alfred-desktop.base-url", "http://127.0.0.1:7010");
 
     expect(hasStoredBaseUrl()).toBe(true);
+  });
+});
+
+describe("privileged setup status", () => {
+  it("uses the token-bearing native bridge command", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    invokeMock.mockResolvedValueOnce(JSON.stringify({ ready: false, engines: [] }));
+
+    await loadSetupStatus(DEFAULT_BASE_URL);
+
+    expect(invokeMock).toHaveBeenCalledWith("fetch_alfred_json_with_token", {
+      baseUrl: DEFAULT_BASE_URL,
+      path: "/api/setup/status",
+    });
   });
 });
 

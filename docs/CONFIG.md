@@ -7,8 +7,8 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **390**
-- Operator-facing (in `.env.example`): **72**
+- Declared variables: **391**
+- Operator-facing (in `.env.example`): **73**
 - Internal / experimental: **318**
 
 Operator-facing vars also appear, with their defaults, in
@@ -395,6 +395,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_SHIPPED_QUEUE_INCLUDE_LABELS` | list |  | internal | Labels a shipped item must have to be included (* for all). |
 | `ALFRED_SHIPPED_QUEUE_EXCLUDE_LABELS` | list |  | internal | Labels that exclude an item from the shipped queue. |
 | `ALFRED_AUTO_PROMOTE` | bool | `1` | internal | Enable memory auto-promotion; 0 disables save/skip decisions. |
+| `ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES` | bool | `0` | operator | Allow memory auto-promotion to save behavior-changing lessons without human review. |
 | `ALFRED_AUTO_PROMOTE_KILL` | bool | `0` | internal | Kill switch that fails auto-promotion closed. |
 | `ALFRED_AUTO_PROMOTE_LLM_JUDGE` | bool | `1` | internal | Use the LLM judge for auto-promotion; falsy disables it. |
 | `ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT` | int | `120` | internal | Timeout in seconds for the auto-promote judge call. |

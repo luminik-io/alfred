@@ -53,6 +53,7 @@ from compose_converse import (
     INTENT_CONVERSATION,
     ConverseMessage,
     ConverseTurn,
+    configured_engine_from_env,
 )
 from envflags import FALSY_VALUES, truthy
 
@@ -141,6 +142,7 @@ class SlackConverseConfig:
 
     @classmethod
     def from_env(cls) -> SlackConverseConfig:
+        engine = configured_engine_from_env(ENV_ENGINE, ENV_FALLBACK_ENGINE)
         return cls(
             # Conversation is Alfred's default Slack surface. Converse is ON by
             # default and only stands down when the operator explicitly disables
@@ -151,9 +153,7 @@ class SlackConverseConfig:
             # every mention fell through to a planning draft.
             enabled=_env_flag(ENV_ENABLED, default=True),
             channels=frozenset(_parse_channels(os.environ.get(ENV_CHANNELS))),
-            engine=(
-                os.environ.get(ENV_ENGINE) or os.environ.get(ENV_FALLBACK_ENGINE) or ""
-            ).strip(),
+            engine=engine,
             timeout=_env_int(ENV_TIMEOUT, DEFAULT_TIMEOUT),
             thread_context=_env_int(ENV_THREAD_CONTEXT, DEFAULT_THREAD_CONTEXT),
             throttle=_env_float(ENV_THROTTLE, DEFAULT_THROTTLE),

@@ -21,13 +21,24 @@ private fleet mounted.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 # A prompt loader reads a prompt file and renders its ``${VAR}`` placeholders.
 # Signature: ``(path, *, extra_vars=None) -> str`` (see
 # ``agent_runner.metadata.load_prompt``).
 PromptLoader = Callable[..., str]
+
+
+@dataclass(frozen=True)
+class SchedulerEnvironmentLookup:
+    """One scheduler lookup with absence distinct from an unavailable query."""
+
+    value: str = ""
+    available: bool = False
+    supported: bool = True
 
 
 def prompt_loader() -> PromptLoader | None:
@@ -75,6 +86,65 @@ def repo_to_local() -> dict[str, str]:
         return repo_to_local_map(launcher_env())
     except Exception:  # pragma: no cover - defensive
         return {}
+
+
+def engine_inventory(
+    *,
+    environ: Mapping[str, str],
+    search_path: str | None,
+    deadline_seconds: float = 8.0,
+) -> list[dict[str, Any]]:
+    """Return bounded readiness checks and candidate-harness detection."""
+
+    from agent_runner.engine_registry import DEFAULT_ENGINE_REGISTRY
+
+    return DEFAULT_ENGINE_REGISTRY.inventory(
+        environ=environ,
+        search_path=search_path,
+        deadline_seconds=deadline_seconds,
+    )
+
+
+def engine_binary(
+    engine: str,
+    *,
+    environ: Mapping[str, str],
+    search_path: str | None,
+) -> str | None:
+    """Resolve one engine executable without running its readiness probes."""
+
+    from agent_runner.engine_registry import DEFAULT_ENGINE_REGISTRY
+
+    return DEFAULT_ENGINE_REGISTRY.resolve_binary(
+        engine,
+        environ=environ,
+        search_path=search_path,
+    )
+
+
+def scheduler_environment_lookup(
+    name: str,
+    *,
+    timeout: float,
+) -> SchedulerEnvironmentLookup:
+    """Read one scheduler-selected value without collapsing query failures."""
+
+    import scheduler
+
+    lookup = scheduler.manager_environment_lookup(name, timeout=timeout)
+    return SchedulerEnvironmentLookup(
+        value=lookup.value,
+        available=lookup.available,
+        supported=lookup.supported,
+    )
+
+
+def scheduler_supported() -> bool:
+    """Return whether this host has a supported scheduler integration."""
+
+    import scheduler
+
+    return scheduler.supported()
 
 
 def model_providers() -> frozenset[str]:

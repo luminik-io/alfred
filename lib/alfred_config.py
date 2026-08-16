@@ -2235,6 +2235,14 @@ _VARS: tuple[ConfigVar, ...] = (
         "Enable memory auto-promotion; 0 disables save/skip decisions.",
     ),
     V(
+        "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES",
+        "bool",
+        "0",
+        "agents",
+        "Allow memory auto-promotion to save behavior-changing lessons without human review.",
+        operator=True,
+    ),
+    V(
         "ALFRED_AUTO_PROMOTE_KILL",
         "bool",
         "0",

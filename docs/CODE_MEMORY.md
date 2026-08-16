@@ -6,7 +6,7 @@ Alfred's memory has three layers, each answering a different question:
 |---|---|---|
 | Semantic lessons | "What did a past firing learn about this repo?" | Embedded SQLite hybrid memory by default |
 | Operational graph | "What relations has the fleet recorded?" | FleetBrain / AGE graph |
-| **Code structure** | "Where is this symbol, who calls it, what breaks if I change it, who owns it?" | **codebase-memory-mcp** |
+| **Code structure** | "Where is this symbol, who calls it, and what can this change affect?" | **codebase-memory-mcp** |
 
 This doc covers the third layer. The first two are in
 [MEMORY_PROVIDERS.md](MEMORY_PROVIDERS.md) and [FLEET_BRAIN.md](FLEET_BRAIN.md).
@@ -20,10 +20,10 @@ attaches it as an MCP server on Claude-engine firings only (Codex-routed firings
 get no MCP), so the fleet agents get code-structure tools the model can call on
 demand:
 
-- **search** the code graph for symbols, definitions, and references
-- **call graph** for a function (callers and callees)
-- **impact / blast radius** for a proposed change
-- **who-owns** a file or symbol
+- **search** the graph and source for symbols, definitions, and references
+- **trace** callers and callees for a function
+- **detect** changed symbols and their graph impact
+- **query** the graph schema, snippets, and architecture summary
 
 The binary is **never vendored** into this repository. Alfred invokes it as an
 external process, so the alfred-os tree stays clean and passes `scrub-check`.
@@ -49,7 +49,7 @@ it at a binary you installed yourself.
   entries that resolve to git repositories. The
   installed `code-map-refresh` agent keeps Alfred's lightweight local JSON code map
   current. The `code-memory-mcp` launcher refreshes the MCP graph separately so
-  search, call-graph, impact, and who-owns queries track git changes without a
+  graph search, call traces, change detection, and architecture queries track git changes without a
   full rebuild.
 - **Stable local export.** `alfred code-map export` converts
   `$ALFRED_HOME/state/code-map.json` into the stable `alfred-codegraph@1`

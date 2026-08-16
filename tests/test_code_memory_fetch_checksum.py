@@ -54,7 +54,10 @@ def _launcher_env(tmp_path: Path, **updates: str) -> dict[str, str]:
     home.mkdir(exist_ok=True)
     env = {
         "HOME": str(home),
-        "PATH": os.environ.get("PATH", ""),
+        # Keep host-installed code-memory binaries from changing launcher
+        # resolution tests. Individual cases add their own fake bin directory
+        # when PATH discovery is the behavior under test.
+        "PATH": "/usr/bin:/bin",
     }
     env.update(updates)
     return env

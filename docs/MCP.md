@@ -166,10 +166,19 @@ upstream tool cannot silently widen agent capability without a code change in
 
 | Tool | What it does | Read-only |
 |---|---|---|
+| `index_status` | Report index readiness and state | yes |
+| `list_projects` | List graphs available in Alfred's isolated code-memory home | yes |
+| `search_graph` | Find graph symbols by name and relationship filters | yes |
 | `search_code` | Search the code graph for symbols, definitions, and references | yes |
-| `call_graph` | Callers and callees for a function | yes |
-| `impact_analysis` | Blast radius of a proposed change | yes |
-| `who_owns` | Ownership of a file or symbol | yes |
+| `trace_path` | Trace callers or callees for a function | yes |
+| `detect_changes` | Map the current git diff to affected symbols | yes |
+| `query_graph` | Run bounded graph queries | yes |
+| `get_graph_schema` | Read the graph node and relationship schema | yes |
+| `get_code_snippet` | Read source for a specific graph symbol | yes |
+| `get_architecture` | Read the indexed architecture summary | yes |
+
+Index creation, project deletion, ADR writes, and trace ingestion are not
+allowlisted during agent firings.
 
 For indexing, scope configuration, and the local `alfred-codegraph@1` fallback,
 see [CODE_MEMORY.md](CODE_MEMORY.md).

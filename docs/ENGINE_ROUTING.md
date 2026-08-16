@@ -6,6 +6,20 @@ Alfred is the scheduler and guardrail layer. The actual LLM work is done by the 
 
 This page covers the three modes, the precedence chain, the fallback behavior, the default routing matrix for the shipped fleet, and where the multi-engine roadmap is going.
 
+## Readiness is a verified contract
+
+Finding an executable on `PATH` is not enough. Alfred calls an engine ready only
+after bounded local probes verify the CLI version, the non-interactive flags the
+runtime depends on, and a signed-in account. Probe output is discarded so account
+details cannot leak into setup status or logs. A changed or expired CLI fails
+closed and onboarding tells the operator what needs attention.
+
+The desktop app may detect additional harnesses under **Advanced: engine probe**.
+Setup checks only whether an OpenCode or Cline executable is present. Setup does
+not run these candidate harnesses. Alfred does not dispatch work to them. Each
+harness needs a runtime adapter and a temporary-worktree test suite before Alfred
+can support it. Detection is not support.
+
 ## Three modes
 
 | Mode | Behavior |
@@ -79,8 +93,8 @@ state files, so simultaneous updates cannot overwrite each other.
 Hybrid mode tries Claude first. Every invocation outcome is run through one classifier (`classify_result`) that maps it to one of three failure classes, and the class decides what happens next:
 
 - **TRANSIENT** (`error_rate_limit`, `error_overloaded`, `error_timeout`, `error_api`, connection resets, context-overflow): a temporary provider or transport fault the same engine is likely to clear. The runner retries the SAME engine with exponential backoff and full jitter, honouring any server `Retry-After` hint (it waits `max(Retry-After, backoff)`). It does NOT fall back. A single transient 429 on the fallback engine no longer kills a task that would have succeeded on retry.
-- **FATAL** (`error_authentication`, `error_budget`, 401/403/422): a problem retrying cannot fix. The runner surfaces it honestly and never burns the fallback. For auth, the credentials remedy is the one the scheduled-firing preflight already names; falling back to Codex would only hide it.
-- **CAPABILITY** (`error_max_turns`, `parse-failed`, `error_loop_detected`, or any failure we cannot place): the engine ran and returned cleanly but produced nothing useful. This is the only class that triggers the Claude->Codex fallback, because a different engine may have the capability this one lacked.
+- **FATAL** (`error_authentication`, `error_budget`, `error_engine_probe`, 401/403/422): a problem that a same-firing retry cannot fix safely. A failed readiness probe stops that firing. The next scheduled firing can probe again.
+- **CAPABILITY** (`error_engine_unavailable`, `error_max_turns`, `parse-failed`, `error_loop_detected`, or any failure we cannot place): the selected engine cannot complete the work. This is the only class that triggers the Claude-to-Codex fallback because a different engine may have the required capability.
 
 The core rule: **the fallback fires only on a capability gap, not on a transient blip.** This is the single biggest reliability change from earlier versions, where any rate-limit or auth subtype dropped straight to Codex.
 
@@ -139,22 +153,35 @@ These are starting points, not laws. If you have a Claude Max plan and abundant 
 Alfred's default posture is to use the local CLI subscription auth you have already paid for. It does not need API keys for normal operation.
 
 - Claude Code with a Pro or Max plan: keep `ANTHROPIC_API_KEY` unset. Claude Code gives env-var API keys priority over subscription auth, which silently moves a firing onto API billing.
-- Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset unless you intentionally want API-key billing.
+- Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset. Alfred never treats a generic SDK key as proof that the Codex CLI can run.
 - AWS: only used when an agent needs Secrets Manager, and only with per-agent IAM (see [AWS setup](./AWS_SETUP.md)).
 
-The shipped fleet is designed to run on subscriptions you already have. No double billing. If you want to add API-key fallback for redundancy, set the env vars deliberately and document what you did in `$ALFRED_HOME/.env`.
+The shipped fleet is designed to run on subscriptions you already have. No double billing. Alfred accepts Codex's own login state or its documented `CODEX_ACCESS_TOKEN` automation context. A generic `OPENAI_API_KEY` value alone is not an authentication contract and never makes the engine ready.
 
-## Multi-engine roadmap
+## Multi-engine contract
 
-The current engine surface is two: Claude Code and Codex. The runtime contract is engine-agnostic. `AgentResult` carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and `result_text` regardless of which engine produced it. Adding a third engine means writing a new `<engine>_invoke()` that returns the same shape.
+Claude Code and Codex are dispatchable today. The registry also knows how to
+identify OpenCode and Cline without pretending they are ready. `AgentResult`
+carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and
+`result_text` regardless of which engine produced it.
 
-On the roadmap:
+Claude Code 2.1.41 or newer is required because Alfred's readiness contract
+uses `claude auth status`, introduced in that release. Alfred uses the stable
+version command for compatibility because Claude's top-level help is
+intentionally incomplete and cannot prove that a documented flag is absent.
 
-- **Gemini CLI**: when Google ships a stable non-interactive `gemini -p` equivalent with a structured result. Useful as a third independent reviewer or as a hedge against Anthropic and OpenAI both being down at once.
-- **Ollama and other local engines**: for operators who want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
-- **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
+A new engine needs all of the following before it can join a fleet:
 
-Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and subtype entries in the `classify_result` table so the retry/breaker/fallback policy knows how to treat its failures.
+1. A stable, deterministic, non-interactive command with structured output.
+2. Explicit repository read and worktree write boundaries.
+3. A bounded cancellation contract and a reliable process exit code.
+4. Auth and model-selection probes that do not expose credentials.
+5. Hermetic mutation tests plus one opt-in live smoke test.
+6. Failure mappings for retry, breaker, and fallback classification.
+
+The registry reports inventory and readiness. It is not a runtime adapter. A new
+harness also needs a command builder, an output parser, cancellation behavior,
+and failure mapping before Alfred can dispatch work to it.
 
 ## See also
 

@@ -48,13 +48,31 @@ def _contains_private_home_path(text: str) -> bool:
     return False
 
 
-def metadata_findings(title: str, body: str) -> list[str]:
+def is_trusted_dependabot_pr(
+    *,
+    author: str,
+    head_ref: str,
+    head_repo: str,
+    repository: str,
+) -> bool:
+    """Return whether GitHub identifies a same-repository Dependabot PR."""
+    return (
+        author == "dependabot[bot]"
+        and head_ref.startswith("dependabot/")
+        and bool(repository)
+        and head_repo == repository
+    )
+
+
+def metadata_findings(title: str, body: str, *, allow_oversized: bool = False) -> list[str]:
     """Return public-safe finding labels without repeating matched content."""
     text = f"{title}\n{body}"
     findings: list[str] = []
     if _contains_private_home_path(text) or _LOCAL_WORKSPACE_PATH.search(text):
         findings.append("local filesystem path")
-    if len(body) > MAX_BODY_CHARS or len(body.splitlines()) > MAX_BODY_LINES:
+    if not allow_oversized and (
+        len(body) > MAX_BODY_CHARS or len(body.splitlines()) > MAX_BODY_LINES
+    ):
         findings.append("oversized PR description")
     if any(pattern.search(text) for pattern in _RAW_OUTPUT):
         findings.append("raw command, test, compiler, or stack output")
@@ -113,7 +131,13 @@ def main() -> int:
         print("public-metadata-check: PR_TITLE is required", file=sys.stderr)
         return 2
 
-    findings = metadata_findings(title, body)
+    allow_oversized = is_trusted_dependabot_pr(
+        author=os.environ.get("PR_AUTHOR", ""),
+        head_ref=os.environ.get("PR_HEAD_REF", ""),
+        head_repo=os.environ.get("PR_HEAD_REPO", ""),
+        repository=os.environ.get("GITHUB_REPOSITORY", ""),
+    )
+    findings = metadata_findings(title, body, allow_oversized=allow_oversized)
     findings.extend(commit_findings(commits))
     if _existing_scrub_rejects(title, body):
         findings.append("blocked private identifier or secret")

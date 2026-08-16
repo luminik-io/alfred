@@ -164,6 +164,7 @@ def test_allowlist_scopes_to_listed_channels() -> None:
 def test_from_env_parses_flags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(sc.ENV_ENABLED, "true")
     monkeypatch.setenv(sc.ENV_ENGINE, "claude")
+    monkeypatch.setenv("CLAUDE_BIN", "")
     monkeypatch.setenv(sc.ENV_CHANNELS, "C1, C2  C3")
     monkeypatch.setenv(sc.ENV_THREAD_CONTEXT, "5")
     monkeypatch.setenv(sc.ENV_THROTTLE, "2.5")
@@ -181,9 +182,27 @@ def test_from_env_falls_back_to_compose_engine(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.delenv(sc.ENV_ENGINE, raising=False)
     monkeypatch.setenv(sc.ENV_ENABLED, "1")
     monkeypatch.setenv(sc.ENV_FALLBACK_ENGINE, "codex")
+    monkeypatch.setenv("CODEX_BIN", "")
     config = sc.SlackConverseConfig.from_env()
     assert config.engine == "codex"
     assert config.engages("Cx") is True
+
+
+def test_from_env_resolves_explicit_engine_through_shared_path_hydration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[str, ...]] = []
+    monkeypatch.setenv(sc.ENV_ENGINE, "codex")
+    monkeypatch.setattr(
+        sc,
+        "configured_engine_from_env",
+        lambda *names: captured.append(names) or "codex",
+    )
+
+    config = sc.SlackConverseConfig.from_env()
+
+    assert config.engine == "codex"
+    assert captured == [(sc.ENV_ENGINE, sc.ENV_FALLBACK_ENGINE)]
 
 
 # ---------------------------------------------------------------------------

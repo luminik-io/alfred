@@ -1,9 +1,9 @@
 import type { TabKey } from "../../lib/uiTypes";
 
 // The steps of the first-run takeover (DESIGN_SPEC section 7). Each is a
-// view with a Maya path (guided, no terminal) and a Dev shortcut.
+// view with a guided path (no terminal) and an operator shortcut.
 //   welcome   -> mental model + "Get started" / "I have a server running"
-//   engine    -> detect installed Claude / Codex CLIs (no API keys)
+//   engine    -> verify a compatible, signed-in coding CLI (no API keys)
 //   github    -> reuse the gh sign-in
 //   repos     -> pick repos by name + description
 //   batteries -> optional local enhancements (memory, compression, code graph)

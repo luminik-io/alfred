@@ -297,9 +297,8 @@ build the candidate queue automatically without expanding prompt recall silently
 
 ## Autonomous capture and save
 
-The intent is that memory captures AND saves itself through the LLMs, rather
-than waiting on a human review queue. `alfred brain auto-promote`
-(`FleetBrain.auto_promote_candidates`) makes the LLM the primary save decision.
+`alfred brain auto-promote` (`FleetBrain.auto_promote_candidates`) lets the LLM
+judge save evidenced factual lessons without waiting for routine human review.
 It is enabled by default when `ALFRED_AUTO_PROMOTE` is unset, blank, or a
 recognized truthy value (`1`, `true`, `yes`, `on`, `enabled`). Set
 `ALFRED_AUTO_PROMOTE=0` for a normal opt-out, or `ALFRED_AUTO_PROMOTE_KILL=1`
@@ -314,11 +313,11 @@ safety judge (`lib/memory_judge.py`, default ON, gated by
 `ALFRED_AUTO_PROMOTE_LLM_JUDGE`). The judge reads the candidate's
 topic/body/evidence and:
 
-- saves both safe and behavior-changing lessons. Behavior-changing lessons are
-  the most actionable kind, so they are auto-saved too (recorded with a distinct
-  note and counted under `auto_saved_behavior_change`) rather than held for a
-  human. Every auto-save is reversible with `alfred brain forget`, which is the
-  safety net.
+- saves an evidenced factual lesson that clears the confidence gate.
+- holds a lesson that it classifies as behavior-changing. The candidate stays
+  in the review queue and nothing is written to active recall. Set
+  `ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=1` only if you want the judge to save
+  this class without operator approval.
 - holds a candidate it calls a duplicate, so dedup owns merging without the
   lesson re-entering the harvest loop.
 - only ever lowers the score: the run takes `min(structural, judge)` confidence,
@@ -334,6 +333,12 @@ candidates are not promoted with no model or human review. Each run is bounded
 by a per-run promotion cap (`ALFRED_AUTO_PROMOTE_MAX_PER_RUN`, default 5), a
 judge-call budget (`ALFRED_AUTO_PROMOTE_MAX_JUDGE_CALLS`, default 25, floored by
 the cap), and the candidate-side conflict check.
+
+The behavior gate depends on the judge's classification. A false negative can
+still pass the ordinary confidence gate. Disabling the judge removes this
+classification step, and `ALFRED_MEMORY_REFLECTION_MODE=direct` bypasses the
+candidate review loop. Keep the judge and candidate mode enabled when operator
+approval for behavior changes is required.
 
 A saved candidate is promoted through the same `promote_memory_candidate` path
 as a manual promotion, recorded with `reviewer="auto"` so the batch stays
