@@ -104,7 +104,20 @@ def test_lexical_recall_keeps_compound_single_character_terms(
 
 @pytest.mark.parametrize(
     "query",
-    ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C#",
+        "F#",
+        "N+12",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+    ],
 )
 def test_default_chain_round_trips_symbolic_technical_terms(
     tmp_path: Path,
@@ -125,6 +138,35 @@ def test_default_chain_round_trips_symbolic_technical_terms(
     out = load_provider(env).recall(query=query, codename="c", repo="r")
 
     assert [item.id for item in out] == [lesson.id]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Rename column C in GraphQL schema",
+        "Rename field R in GraphQL schema",
+        "Rename variable R in GraphQL schema",
+    ],
+)
+def test_default_chain_does_not_require_one_letter_labels(
+    tmp_path: Path,
+    query: str,
+) -> None:
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred-home"),
+        "ALFRED_MEMORY_SQLITE_DB": str(tmp_path / "memory.db"),
+    }
+    writer = load_lesson_writer(env)
+    assert writer is not None
+    relevant = writer.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL schema renaming guidance",
+    )
+
+    out = load_provider(env).recall(query=query, codename="c", repo="r")
+
+    assert [item.id for item in out] == [relevant.id]
 
 
 def test_default_chain_requires_symbolic_query_identity(tmp_path: Path) -> None:
@@ -469,7 +511,20 @@ def test_default_chain_preserves_plural_retrieval_variant(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize(
     "query",
-    ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C#",
+        "F#",
+        "N+12",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+    ],
 )
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,
@@ -752,7 +807,8 @@ def test_symbolic_identity_bypasses_fts_candidate_crowd_out() -> None:
 @pytest.mark.parametrize(
     "query",
     [
-        "C",
+        "C compiler",
+        "R package",
         "C++",
         "C++17",
         "N+12",
@@ -876,13 +932,40 @@ def test_like_retrieval_variants_count_as_one_concept(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
-def test_recall_requires_one_character_language_identity(
+def test_recall_requires_language_compound_identity(
     provider: SqliteHybridProvider,
 ) -> None:
     provider.reflect(codename="c", repo="r", body="Fix R compiler warnings")
     relevant = provider.reflect(codename="c", repo="r", body="Fix C compiler warnings")
 
     out = provider.recall(query="Fix C compiler warnings", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Rename column C in GraphQL schema", "Rename field R in GraphQL schema"],
+)
+def test_fts_recall_does_not_require_one_letter_labels(
+    provider: SqliteHybridProvider,
+    query: str,
+) -> None:
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema renaming guidance")
+
+    out = provider.recall(query=query, codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_like_recall_does_not_require_one_letter_variable_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mod.SqliteHybridProvider, "_try_create_fts", lambda self, conn: False)
+    provider = SqliteHybridProvider(db_path=Path(":memory:"))
+    relevant = provider.reflect(codename="c", repo="r", body="GraphQL schema renaming guidance")
+
+    out = provider.recall(query="Rename variable R in GraphQL schema", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -1601,9 +1684,13 @@ def test_tokenize_does_not_treat_arbitrary_big_o_prose_as_symbolic() -> None:
     assert "o(ready)" not in mod._tokenize("O(ready)")
 
 
-def test_tokenize_preserves_only_explicit_one_character_languages() -> None:
-    assert mod._tokenize("Fix C compiler warnings") == ["c", "compiler", "warning"]
-    assert mod._tokenize("Use R") == ["r"]
+def test_tokenize_requires_language_shaped_context_for_single_letter_languages() -> None:
+    assert mod._tokenize("Fix C compiler warnings") == ["c compiler", "warning"]
+    assert mod._tokenize("R package") == ["r package"]
+    assert mod._tokenize("R script") == ["r script"]
+    assert mod._tokenize("Use R") == []
+    assert "c" not in mod._tokenize("Rename column C in GraphQL schema")
+    assert "r" not in mod._tokenize("Rename variable R in GraphQL schema")
     assert mod._tokenize("A I X Q") == []
 
 

@@ -43,7 +43,11 @@ _CONTEXTUAL_MAJOR_VERSION_RE = re.compile(
     re.IGNORECASE,
 )
 _NODE_JS_MAJOR_PREFIX = "node.js "
-_ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
+_LANGUAGE_IDENTITY_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:(?:c|r)[ \t]+(?:compiler|language)|r[ \t]+(?:package|script))"
+    r"(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
 _MAX_QUERY_TOKENS = 24
 _MAX_RETRIEVAL_VARIANTS_PER_CONCEPT = 2
 _MAX_INFLECTION_TOKEN_LENGTH = 64
@@ -129,6 +133,7 @@ def _compound_matches(text: str) -> list[re.Match[str]]:
         *_SYMBOLIC_TECHNICAL_TERM_RE.finditer(text),
         *_DOTTED_VERSION_RE.finditer(text),
         *_CONTEXTUAL_MAJOR_VERSION_RE.finditer(text),
+        *_LANGUAGE_IDENTITY_RE.finditer(text),
     ]
     return sorted(matches, key=lambda match: (match.start(), match.end()))
 
@@ -137,10 +142,10 @@ def _is_identity_token(token: str) -> bool:
     """Return whether a query concept must match rather than only add rank."""
 
     return (
-        token in _ONE_CHAR_TECHNICAL_TOKENS
-        or bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
+        bool(_SYMBOLIC_TECHNICAL_TERM_RE.fullmatch(token))
         or bool(_DOTTED_VERSION_RE.fullmatch(token))
         or bool(_CONTEXTUAL_MAJOR_VERSION_RE.fullmatch(token))
+        or bool(_LANGUAGE_IDENTITY_RE.fullmatch(token))
     )
 
 
@@ -332,9 +337,7 @@ def meaningful_tokens(text: str) -> Iterator[str]:
             continue
         raw = match.group(0)
         token = raw
-        if (
-            len(raw) > 1 or token in _ONE_CHAR_TECHNICAL_TOKENS
-        ) and token not in _LOW_SIGNAL_QUERY_TOKENS:
+        if len(raw) > 1 and token not in _LOW_SIGNAL_QUERY_TOKENS:
             yield token
 
 

@@ -397,7 +397,20 @@ def test_recall_query_counts_inflection_variants_as_one_concept(brain: FleetBrai
 
 @pytest.mark.parametrize(
     "query",
-    ["C", "R", "N+12", "C++", "C#", "F#", "HTTP/2.1", "O(n)", "O(log n)", "O(42)", "I/O", "A/B"],
+    [
+        "C compiler",
+        "R package",
+        "N+12",
+        "C++",
+        "C#",
+        "F#",
+        "HTTP/2.1",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "I/O",
+        "A/B",
+    ],
 )
 def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query: str) -> None:
     matching_body = f"Use {query} carefully in this code path."
@@ -408,7 +421,7 @@ def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query:
     assert [lesson.body for lesson in out] == [matching_body]
 
 
-def test_recall_query_requires_one_character_language_identity(brain: FleetBrain) -> None:
+def test_recall_query_requires_language_compound_identity(brain: FleetBrain) -> None:
     brain.reflect(codename="lucius", repo="org/api", body="Fix R compiler warnings")
     matching_body = "Fix C compiler warnings"
     brain.reflect(codename="lucius", repo="org/api", body=matching_body)
@@ -418,6 +431,22 @@ def test_recall_query_requires_one_character_language_identity(brain: FleetBrain
         repo="org/api",
         query="Fix C compiler warnings",
     )
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Rename column C in GraphQL schema", "Rename field R in GraphQL schema"],
+)
+def test_recall_query_does_not_require_one_letter_labels(
+    brain: FleetBrain,
+    query: str,
+) -> None:
+    matching_body = "GraphQL schema renaming guidance"
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
 
     assert [lesson.body for lesson in out] == [matching_body]
 

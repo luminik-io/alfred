@@ -496,7 +496,20 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
 
 @pytest.mark.parametrize(
     "query",
-    ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
+    [
+        "C compiler",
+        "R package",
+        "C++",
+        "C#",
+        "F#",
+        "N+12",
+        "O(n)",
+        "O(log n)",
+        "O(42)",
+        "HTTP/2.1",
+        "I/O",
+        "A/B",
+    ],
 )
 def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> None:
     class Cursor:
@@ -528,7 +541,7 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
     assert ids == ["match"]
 
 
-def test_lexical_like_fallback_requires_one_character_language_identity() -> None:
+def test_lexical_like_fallback_requires_language_compound_identity() -> None:
     class Cursor:
         def fetchall(self) -> list[tuple[Any, ...]]:
             return [
@@ -555,6 +568,35 @@ def test_lexical_like_fallback_requires_one_character_language_identity() -> Non
     )
 
     assert ids == ["c"]
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["Rename column C in GraphQL schema", "Rename variable R in GraphQL schema"],
+)
+def test_lexical_like_fallback_does_not_require_one_letter_labels(query: str) -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [("relevant", "graphql schema renaming guidance", _NOW)]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        query,
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
 
 
 def test_lexical_like_fallback_requires_symbolic_identity() -> None:
