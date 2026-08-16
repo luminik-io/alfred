@@ -317,29 +317,35 @@ def _lexical_query(
 ) -> tuple[str, list[Any]]:
     """Full-text arm: bounded English-lexeme overlap ranked by ``ts_rank``.
 
-    The OR query keeps the GIN-index candidate path broad. Per-token English
-    queries then enforce the shared one-or-two-term overlap before ``LIMIT``.
-    This keeps PostgreSQL stemming authoritative and prevents high-ranked weak
-    matches from crowding out a lower-ranked valid match. ``ts_rank`` over the
-    maintained ``body_tsv`` column is the relevance signal; ties fall back to
-    recency. Scope + validity stay in the same ``WHERE``.
+    The OR query keeps the GIN-index candidate path broad. A CTE asks
+    PostgreSQL to normalize, drop stop words from, and de-duplicate the query's
+    English lexemes. A correlated count then enforces one match when only one
+    distinct lexeme remains, or two matches otherwise, before ``LIMIT``. This
+    keeps PostgreSQL stemming authoritative and prevents duplicate stems or
+    high-ranked weak matches from passing the overlap gate. ``ts_rank`` over
+    the maintained ``body_tsv`` column is the relevance signal; ties fall back
+    to recency. Scope + validity stay in the same ``WHERE``.
     """
     scope_sql, scope_params = _scope_clause(codename, repo, alias="l", now=now)
     tsquery = " | ".join(tokens)
-    term_match = "l.body_tsv @@ plainto_tsquery('english', %s)"
-    overlap_score_sql = " + ".join(f"CAST({term_match} AS INTEGER)" for _ in tokens)
     sql = (
+        "WITH query_lexemes AS ("
+        "SELECT DISTINCT plainto_tsquery('english', token) AS lexeme_query "
+        "FROM unnest(%s::text[]) AS raw(token) "
+        "WHERE numnode(plainto_tsquery('english', token)) > 0"
+        ") "
         f"SELECT l.id FROM {table} l "
         "WHERE l.body_tsv @@ to_tsquery('english', %s) "
-        f"AND ({overlap_score_sql}) >= %s "
+        "AND (SELECT COUNT(*) FROM query_lexemes q "
+        "WHERE l.body_tsv @@ q.lexeme_query) "
+        ">= LEAST(2, (SELECT COUNT(*) FROM query_lexemes)) "
         f"{scope_sql} "
         "ORDER BY ts_rank(l.body_tsv, to_tsquery('english', %s)) DESC, l.created_at DESC "
         "LIMIT %s"
     )
     params = [
+        list(tokens),
         tsquery,
-        *tokens,
-        _required_lexical_overlap(tokens),
         *scope_params,
         tsquery,
         pool,

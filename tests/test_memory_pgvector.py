@@ -112,13 +112,13 @@ def test_lexical_query_or_joins_tokens_and_scopes() -> None:
     assert "ts_rank(l.body_tsv" in sql
     assert "l.codename = %s" in sql
     # OR-of-tokens tsquery, like the SQLite FTS arm.
-    assert params[0] == "gateway | rate"
+    assert params[:2] == [["gateway", "rate"], "gateway | rate"]
     assert params[-1] == 5
 
 
-def test_lexical_query_applies_english_lexeme_overlap_before_candidate_limit() -> None:
+def test_lexical_query_deduplicates_english_lexemes_before_candidate_limit() -> None:
     sql, params = _lexical_query(
-        ["caching", "invalidations"],
+        ["caching", "cached", "responses"],
         table="lessons",
         codename="c",
         repo="r",
@@ -127,24 +127,26 @@ def test_lexical_query_applies_english_lexeme_overlap_before_candidate_limit() -
     )
 
     where, _, order = sql.partition("ORDER BY")
+    assert "WITH query_lexemes AS" in where
+    assert "SELECT DISTINCT plainto_tsquery('english', token) AS lexeme_query" in where
+    assert "FROM unnest(%s::text[]) AS raw(token)" in where
+    assert "numnode(plainto_tsquery('english', token)) > 0" in where
     assert "l.body_tsv @@ to_tsquery('english', %s)" in where
-    assert where.count("CAST(l.body_tsv @@ plainto_tsquery('english', %s) AS INTEGER)") == 2
-    assert ") >= %s" in where
+    assert "SELECT COUNT(*) FROM query_lexemes q WHERE l.body_tsv @@ q.lexeme_query" in where
+    assert ">= LEAST(2, (SELECT COUNT(*) FROM query_lexemes))" in where
     assert "LIMIT %s" in order
     assert params == [
-        "caching | invalidations",
-        "caching",
-        "invalidations",
-        2,
+        ["caching", "cached", "responses"],
+        "caching | cached | responses",
         _NOW,
         "c",
         "r",
-        "caching | invalidations",
+        "caching | cached | responses",
         2,
     ]
 
 
-def test_fts_lexical_ids_preserve_postgres_stemming_semantics() -> None:
+def test_fts_lexical_ids_delegate_duplicate_stems_to_postgres() -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:
             self.rows = rows
@@ -154,12 +156,12 @@ def test_fts_lexical_ids_preserve_postgres_stemming_semantics() -> None:
 
     class Connection:
         def __init__(self) -> None:
-            self.calls: list[str] = []
+            self.calls: list[tuple[str, Any]] = []
 
         def execute(self, sql: str, _params: Any) -> Cursor:
             normalized = " ".join(sql.split())
-            self.calls.append(normalized)
-            if normalized.startswith("SELECT l.id FROM lessons l"):
+            self.calls.append((normalized, _params))
+            if "SELECT l.id FROM lessons l" in normalized:
                 return Cursor([("stemmed",)])
             if normalized.startswith("SELECT id, body, tags_json FROM lessons"):
                 return Cursor([("stemmed", "cache invalidation", "[]")])
@@ -171,7 +173,7 @@ def test_fts_lexical_ids_preserve_postgres_stemming_semantics() -> None:
 
     ids = provider._lexical_ids(
         conn,
-        "caching invalidations",
+        "caching cached responses",
         codename="c",
         repo="r",
         now=_NOW,
@@ -179,6 +181,7 @@ def test_fts_lexical_ids_preserve_postgres_stemming_semantics() -> None:
 
     assert ids == ["stemmed"]
     assert len(conn.calls) == 1
+    assert conn.calls[0][1][0] == ["caching", "cached", "responses"]
 
 
 def test_lexical_like_fallback_matches_body_and_tags() -> None:
@@ -927,7 +930,7 @@ def test_live_write_recall_merge_forget_round_trip() -> None:
     not _LIVE_DSN or not mod.psycopg_available(),
     reason="set ALFRED_MEMORY_PG_DSN and install psycopg to run the live pgvector test",
 )
-def test_live_fts_stemming_and_overlap_survive_candidate_limit() -> None:
+def test_live_fts_deduplicates_stems_before_overlap_and_candidate_limit() -> None:
     provider = PgvectorProvider.from_env(
         env={
             **os.environ,
@@ -936,12 +939,12 @@ def test_live_fts_stemming_and_overlap_survive_candidate_limit() -> None:
             "ALFRED_MEMORY_PG_POOL": "2",
         }
     )
-    lesson_ids = ("pgtest-stem-relevant", "pgtest-stem-cache", "pgtest-stem-invalidation")
+    lesson_ids = ("pgtest-stem-relevant", "pgtest-stem-cache", "pgtest-stem-response")
     try:
         relevant = provider.reflect(
             codename="lucius",
             repo="acme/api",
-            body="cache invalidation",
+            body="cache response",
             memory_id=lesson_ids[0],
         )
         provider.reflect(
@@ -953,12 +956,12 @@ def test_live_fts_stemming_and_overlap_survive_candidate_limit() -> None:
         provider.reflect(
             codename="lucius",
             repo="acme/api",
-            body=" ".join(["invalidation"] * 50),
+            body=" ".join(["response"] * 50),
             memory_id=lesson_ids[2],
         )
 
         out = provider.recall(
-            query="caching invalidations",
+            query="caching cached responses",
             codename="lucius",
             repo="acme/api",
         )
