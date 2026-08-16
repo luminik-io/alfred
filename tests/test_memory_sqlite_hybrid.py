@@ -364,6 +364,8 @@ def test_default_chain_canonicalizes_language_identity_contexts(
         ("branches", "branch"),
         ("alias", "aliases"),
         ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
     ],
 )
 def test_default_chain_preserves_sibilant_inflection_variants(
@@ -755,6 +757,8 @@ def test_recall_does_not_require_ordinary_slash_path(
         ("branches", "branch"),
         ("alias", "aliases"),
         ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -964,6 +968,8 @@ def test_fts_candidate_scan_has_hard_upper_bound() -> None:
         ("branches", "branch"),
         ("alias", "aliases"),
         ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),
@@ -1571,6 +1577,7 @@ def test_query_token_groups_bound_concepts_and_retrieval_variants() -> None:
         ("watches", "watch"),
         ("boxes", "box"),
         ("aliases", "alias"),
+        ("biases", "bias"),
         ("patches", "patch"),
         ("branches", "branch"),
         ("classes", "class"),
@@ -1598,7 +1605,11 @@ def test_tokenize_normalizes_bounded_regular_and_irregular_inflections(
         ("CSS", "css", "cs"),
         ("Redis", "redis", "redi"),
         ("alias", "alias", "alia"),
+        ("bias", "bias", "bia"),
         ("caches", "cache", "cach"),
+        ("news", "news", "new"),
+        ("series", "series", "serie"),
+        ("species", "species", "specie"),
     ],
 )
 def test_overlap_does_not_strip_technical_s_endings(

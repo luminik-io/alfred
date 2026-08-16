@@ -1208,6 +1208,8 @@ def test_lexical_like_fallback_does_not_require_ordinary_slash_path() -> None:
         ("branches", "branch"),
         ("alias", "aliases"),
         ("aliases", "alias"),
+        ("bias", "biases"),
+        ("biases", "bias"),
         ("class", "classes"),
         ("classes", "class"),
         ("bus", "buses"),

@@ -63,6 +63,7 @@ _IRREGULAR_ENGLISH_INFLECTIONS = {
 }
 _AMBIGUOUS_SIBILANT_ENGLISH_INFLECTIONS = {
     "aliases": "alias",
+    "biases": "bias",
     "buses": "bus",
     "caches": "cache",
 }
@@ -70,6 +71,7 @@ _INVARIANT_ENGLISH_S_ENDINGS = frozenset(
     {
         "analysis",
         "alias",
+        "bias",
         "class",
         "css",
         "news",
@@ -195,6 +197,8 @@ def _english_plural_form(token: str) -> str:
 
     if token == "alias":
         return "aliases"
+    if token == "bias":
+        return "biases"
     if token == "bus":
         return "buses"
     if (
