@@ -313,6 +313,26 @@ def test_recall_query_returns_matches_without_recency_backfill(brain: FleetBrain
     assert [lesson.body for lesson in out] == ["the GraphQL loader caches unions"]
 
 
+@pytest.mark.parametrize("query", ["N+1", "C++", "C#", "HTTP/2", "O(1)"])
+def test_recall_query_accepts_symbolic_technical_terms(brain: FleetBrain, query: str) -> None:
+    matching_body = f"Use {query} carefully in this code path."
+    brain.reflect(codename="lucius", repo="org/api", body=matching_body)
+
+    out = brain.recall(codename="lucius", repo="org/api", query=query)
+
+    assert [lesson.body for lesson in out] == [matching_body]
+
+
+@pytest.mark.parametrize("query", ["fix", "%", "_", r"\\"])
+def test_recall_query_rejects_low_signal_words_and_punctuation(
+    brain: FleetBrain,
+    query: str,
+) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body=f"Contains {query} literally.")
+
+    assert brain.recall(codename="lucius", repo="org/api", query=query) == []
+
+
 @pytest.mark.parametrize(
     ("query", "matching_body"),
     [
