@@ -8,11 +8,8 @@ loop once, on a throwaway repo, and asks nothing of you except a working
 alfred demo
 ```
 
-<p align="center">
-  <img src="images/demo.gif" alt="alfred demo in the terminal: plan, approval, build, review, verification, and local pull-request summary" width="760">
-</p>
-
-<p align="center"><em>One run on a throwaway repo: plan, approve, build, review, verify, and create a local pull-request summary.</em></p>
+One run plans, builds, reviews, verifies, and creates a local pull-request
+summary in a throwaway repository.
 
 From a source checkout:
 

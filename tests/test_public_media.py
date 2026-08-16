@@ -36,6 +36,7 @@ def test_public_docs_do_not_ship_live_operator_screenshots() -> None:
         assert "images/real/" not in path.read_text()
 
     retired_media = [
+        ROOT / "docs/images/demo.gif",
         ROOT / "docs/images/ask-dark.png",
         ROOT / "docs/images/ask-light.png",
         ROOT / "docs/images/setup-dark.png",
@@ -44,3 +45,7 @@ def test_public_docs_do_not_ship_live_operator_screenshots() -> None:
         ROOT / "site/public/proof/card-shipped-summary.png",
     ]
     assert not any(path.exists() for path in retired_media)
+
+    for path in documents:
+        assert "docs/images/demo.gif" not in path.read_text()
+        assert "images/demo.gif" not in path.read_text()

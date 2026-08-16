@@ -71,7 +71,9 @@ stages. See the [demo guide](docs/DEMO.md) or watch the
 [fixture-only product tour](docs/media/alfred-tour.mp4).
 
 <p align="center">
-  <img src="docs/images/demo.gif" alt="Alfred demo running plan, approval, build, review, and verification stages" width="760">
+  <a href="docs/media/alfred-tour.mp4">
+    <img src="docs/media/alfred-tour-poster.png" alt="Alfred Desktop showing fixture-only sample work in light mode" width="760">
+  </a>
 </p>
 
 ## Install
