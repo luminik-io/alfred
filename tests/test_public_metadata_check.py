@@ -27,6 +27,11 @@ def test_automated_attribution_footer_is_rejected() -> None:
     assert CHECK.metadata_findings("fix: repair layout", body) == ["automated attribution"]
 
 
+def test_codesmith_footer_marker_is_rejected() -> None:
+    body = "## Summary\n\n- fix the layout\n\n<!-- codesmith:footer -->"
+    assert CHECK.metadata_findings("fix: repair layout", body) == ["automated attribution"]
+
+
 def test_operator_home_path_is_rejected() -> None:
     path = "/" + "Users" + "/developer/work/private-repo/test.py"
     assert CHECK.metadata_findings("fix: setup", f"Failure at {path}") == ["local filesystem path"]

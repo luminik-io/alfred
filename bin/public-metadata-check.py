@@ -40,8 +40,9 @@ _RAW_OUTPUT = (
 )
 _ESCAPED_NEWLINES = re.compile(r"(?:\\n){2,}")
 _AUTOMATED_ATTRIBUTION = re.compile(
-    r"(?im)^\s*(?:built|created|generated|written)\s+(?:by|with)\s+"
-    r"(?:\[code\]smith|codex|claude(?:\s+code)?|an?\s+(?:ai|agent))\b"
+    r"(?im)(?:<!--\s*codesmith:footer\s*-->|"
+    r"^\s*(?:built|created|generated|written)\s+(?:by|with)\s+"
+    r"(?:\[code\]smith|codex|claude(?:\s+code)?|an?\s+(?:ai|agent))\b)"
 )
 
 
