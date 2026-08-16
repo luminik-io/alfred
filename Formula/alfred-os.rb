@@ -2,18 +2,14 @@
 
 # Homebrew formula for the Alfred release package.
 #
-# Formula name stays `alfred-os` even though the GitHub repo is now
-# luminik-io/alfred: renaming it would break `brew install alfred-os` for
-# existing users, and a bare `alfred` collides with the mainstream Alfred
-# launcher cask. The url/head below point at the new luminik-io/alfred slug.
+# Formula name stays `alfred-os` because a bare `alfred` collides with the
+# mainstream Alfred launcher cask. The URL and HEAD use luminik-io/alfred.
 class AlfredOs < Formula
   desc "Local coding agents for Claude Code and Codex"
   homepage "https://alfred.luminik.io"
   url "https://github.com/luminik-io/alfred/archive/refs/tags/v0.6.0.tar.gz"
   # GitHub's generated source archive names its top-level directory after the
-  # repo (alfred-0.6.0/ after the rename, previously alfred-os-0.6.0/), so the
-  # tarball bytes and this checksum change with the slug even for the same tag.
-  # Recomputed against the luminik-io/alfred archive.
+  # repository, so the checksum is specific to this slug and tag.
   sha256 "dc375843fed0fe71e6b9e24b8d9649f98185572dbf08463631680c99538e295b"
   license "MIT"
   head "https://github.com/luminik-io/alfred.git", branch: "main"

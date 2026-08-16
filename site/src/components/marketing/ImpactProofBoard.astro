@@ -67,10 +67,9 @@ interface Props {
 const { proof } = Astro.props;
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-// Self-proof: the CUMULATIVE count of merged PRs shipped by Alfred agents, with
-// the rolling window kept as a secondary line. Rendered when the emitter
-// supplied any merged-PR signal. A zero-attribution repo stays visible with
-// Empty data never becomes a fabricated number.
+// Cumulative count of merged PRs carrying an Alfred provenance label, with the
+// rolling window kept as a secondary line. Empty data does not become a
+// fabricated number.
 const selfProof = proof.self_proof;
 const cumulativeTotal = selfProof?.agent_shipped_total ?? 0;
 const cumulativeIncomplete = selfProof?.agent_shipped_total_incomplete ?? false;
@@ -85,8 +84,8 @@ const selfProofDisplayValue = hasCumulative
   : null;
 const cumulativeNoun = cumulativeTotal === 1 ? "PR" : "PRs";
 const selfProofLabel = hasCumulative
-  ? `agent-attributed ${cumulativeNoun} merged so far`
-  : selfProof?.sentence || "No agent-attributed PRs merged yet";
+  ? `${cumulativeNoun} carrying Alfred provenance labels merged so far`
+  : selfProof?.sentence || "No PRs carrying Alfred provenance labels merged yet";
 // Secondary line: the rolling window.
 const selfProofDetail =
   selfProof?.window_sentence ||
@@ -157,7 +156,7 @@ const metrics = [
   </div>
 
   {hasSelfProof ? (
-    <div class="proof-selfproof" aria-label="Public Alfred attribution proof">
+    <div class="proof-selfproof" aria-label="Public Alfred provenance-label count">
       {selfProofDisplayValue ? (
         <span class="proof-selfproof__value">{selfProofDisplayValue}</span>
       ) : null}

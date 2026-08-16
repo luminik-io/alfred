@@ -77,11 +77,11 @@ scale-out, behind the **same provider seam**. Opt in with
 else in the runner changes.
 
 It implements the same contract as the SQLite hybrid store, so recall,
-promotion, and Phase 3 consolidation all work through it unchanged:
+promotion, and consolidation use the same provider seam:
 
-- **Schema parity.** A `lessons` table with the Phase 2 `kind` / `anchors` /
-  `valid_until` / `superseded_by` / `provenance` columns and the Phase 3
-  `lesson_reuse` counters, a `tsvector` full-text column with a GIN index, and a
+- **Schema parity.** A `lessons` table with `kind` / `anchors` / `valid_until` /
+  `superseded_by` / `provenance` columns and `lesson_reuse` counters, a
+  `tsvector` full-text column with a GIN index, and a
   pgvector `vector` column with an HNSW index (IVFFlat optional). Schema creation
   and migration are idempotent (`CREATE ... IF NOT EXISTS`, `ADD COLUMN IF NOT
   EXISTS`, additive).
@@ -89,13 +89,12 @@ promotion, and Phase 3 consolidation all work through it unchanged:
   fallback) plus pgvector cosine KNN (`<=>`), fused with the **same** Reciprocal
   Rank Fusion (`k=60`) the SQLite store uses. Scope (`codename` / `repo`) and
   validity are filtered **in the query**, in the same `WHERE` that feeds the
-  vector order, so an in-scope lesson can never be truncated away by closer
-  out-of-scope vectors. (This is a strict improvement over the `sqlite-vec` KNN,
-  which is a global top-k that cannot see the scope columns.)
+  vector order, so an in-scope lesson is not truncated by closer out-of-scope
+  vectors.
 - **Consolidation parity.** `reflect` / `sync_lesson` / `forget_lesson` /
   `merge_lesson` (provenance + anchor + reuse UNION, invalidate-not-delete) /
-  `union_reuse_counts` / `list_lessons` / `health`, so promotion and the Phase 3
-  consolidation pass behave exactly as they do on SQLite.
+  `union_reuse_counts` / `list_lessons` / `health`, so promotion and
+  consolidation use the same operations as SQLite.
 
 **It is opt-in only and never a hard dependency.** `psycopg` (v3) and the
 server-side pgvector `vector` extension are optional, exactly like `sqlite-vec`
@@ -217,7 +216,7 @@ counter increments and its reuse signal rises: `reuse = 1 - 0.5 ** count` (0 use
 -> `0.0`, 1 -> `0.5`, 2 -> `0.75`, saturating below `1.0`). A lesson that keeps
 proving useful edges out an equally relevant one that has never been surfaced.
 
-The reuse counter is **durable** (Phase 3). A `lesson_reuse` table in the local
+The reuse counter is **durable**. A `lesson_reuse` table in the local
 FleetBrain store and in the SQLite hybrid recall store records the injection
 count per `(codename, repo, lesson-identity)` scope key, and `memory_ranking`
 reads/write-throughs it when the runtime binds a store from the configured
@@ -243,14 +242,12 @@ sees the lesson again) and is independent of ranking.
 The per-firing tracking is in-process and bounded; a firing's set is cleared when
 the firing completes.
 
-### Typed, linked, and time-aware lessons (Phase 2)
+### Typed, linked, and time-aware lessons
 
-Phase 2 adds structure to lessons: a `kind` taxonomy, code-grounding anchors,
-and bi-temporal validity. It is additive and off by default, so Phase 1 recall
-is preserved unless a flag below is set. The full write-side model (taxonomy,
-anchoring, supersede/validity, provenance) and the deterministic repo-profile
-injector are documented in [CODE_MEMORY.md](CODE_MEMORY.md#phase-2-typed-linked-and-time-aware-lessons).
-The recall-shaping knobs are:
+Optional structure adds a `kind` taxonomy, code-grounding anchors, provenance,
+and bi-temporal validity. The deterministic repository-profile injector can add
+manifest, package-manager, verification-command, and structure context. These
+controls are off by default:
 
 | Env var | Default | Meaning |
 | --- | --- | --- |
@@ -566,11 +563,11 @@ Now `ALFRED_MEMORY_PROVIDERS=redis,fleet,team_wiki` works.
   the other direction (to the first writer in the chain), never out
   to gbrain.
 
-### Consolidation policy (Phase 3)
+### Consolidation policy
 
 The periodic pass `alfred brain consolidate` (gated by
 `ALFRED_MEMORY_CONSOLIDATE`) keeps the recall store from bloating. On top of the
-existing lexical-duplicate merge and stale-lesson decay, Phase 3 adds:
+existing lexical-duplicate merge and stale-lesson decay, it adds:
 
 - **Semantic near-duplicate merge** (`ALFRED_MEMORY_CONSOLIDATE_SEMANTIC`, cosine
   threshold `ALFRED_MEMORY_CONSOLIDATE_SIM_THRESHOLD`), using the same embedding
@@ -581,9 +578,8 @@ existing lexical-duplicate merge and stale-lesson decay, Phase 3 adds:
   so no history is lost. Falls back to a plain forget on a store without the
   capability.
 - **Pressure/budget eviction** (`ALFRED_MEMORY_MAX_LESSONS`): the lowest-value
-  lessons (by the ranking value score) are invalidated down to the cap,
-  reversible. See [`CODE_MEMORY.md`](CODE_MEMORY.md) "Phase 3" for the full
-  description and the config table.
+  lessons (by the ranking value score) are invalidated down to the cap. The
+  invalidation is reversible.
 
 ## Deferred
 

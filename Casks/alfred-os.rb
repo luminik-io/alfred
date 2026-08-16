@@ -21,14 +21,9 @@
 # Then verify: `brew audit --cask --new Casks/alfred-os.rb` and
 # `brew install --cask ./Casks/alfred-os.rb`.
 #
-# Cask token stays `alfred-os` even though the GitHub repo is now
-# luminik-io/alfred. Two reasons: (1) homebrew/cask already ships a mainstream
-# `alfred` cask (the Alfred launcher, alfredapp.com), so a bare `alfred` token
-# is ambiguous; (2) renaming the token would break `brew install --cask
-# alfred-os` for existing users. The download URL and `verified:` stanza below
-# point at the new luminik-io/alfred slug, which is what actually resolves the
-# release asset. Tap-scoped installs (luminik-io/alfred/alfred-os) are
-# unaffected by the mainstream token.
+# Cask token stays `alfred-os` because homebrew/cask already ships the Alfred
+# launcher under the `alfred` token. The download URL and `verified:` stanza
+# use luminik-io/alfred.
 cask "alfred-os" do
   version "0.6.0"
   sha256 "cd8b69e3c5fa47baf881b12db8162a8e6775989b8af2968afdd90ecd488cba78"
