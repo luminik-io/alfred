@@ -87,7 +87,9 @@ def _request_json(
         return json.loads(response.read().decode("utf-8"))
 
 
-def _wait_for_setup(base_url: str, process: subprocess.Popen[str]) -> dict[str, Any]:
+def _wait_for_setup(
+    base_url: str, process: subprocess.Popen[str], token_path: Path
+) -> dict[str, Any]:
     deadline = time.monotonic() + 20
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -95,7 +97,8 @@ def _wait_for_setup(base_url: str, process: subprocess.Popen[str]) -> dict[str, 
             stdout, stderr = process.communicate()
             raise AssertionError(f"alfred serve exited early\n{stdout}\n{stderr}")
         try:
-            return _request_json(base_url, "/api/setup/status")
+            token = token_path.read_text(encoding="utf-8").strip()
+            return _request_json(base_url, "/api/setup/status", token=token)
         except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
             last_error = exc
             time.sleep(0.1)
@@ -138,7 +141,17 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         "fi\n"
         "exit 0\n",
     )
-    _write_executable(fake_bin / "codex", "#!/bin/sh\necho 'codex scratch'\n")
+    _write_executable(
+        fake_bin / "codex",
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'codex scratch\n' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox' ;;
+  'login status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+    )
     scheduler_stub = (
         '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "${ALFRED_TEST_SCHEDULER_LOG:?}"\nexit 0\n'
     )
@@ -152,6 +165,7 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         "ALFRED_HOME": str(runtime),
         "WORKSPACE_ROOT": str(workspace),
         "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "CLAUDE_BIN": str(tmp_path / "missing-claude"),
         "ALFRED_DEPLOY_SKIP_UI": "1",
         "ALFRED_SYSTEMD_USER_DIR": str(home / ".config" / "systemd" / "user"),
         "ALFRED_TEST_SCHEDULER_LOG": str(scheduler_log),
@@ -293,7 +307,7 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         start_new_session=True,
     )
     try:
-        initial = _wait_for_setup(base_url, process)
+        initial = _wait_for_setup(base_url, process, runtime / "state" / "server-token")
         assert initial["install"]["agents_conf_present"] is True
         assert initial["install"]["scheduled_runs"] >= 6
 
@@ -321,7 +335,7 @@ def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path)
         assert battery_save["battery"] == "headroom-compression"
         assert battery_save["enabled"] is False
 
-        status = _request_json(base_url, "/api/setup/status")
+        status = _request_json(base_url, "/api/setup/status", token=token)
         checks = {row["key"]: row for row in status["first_run"]["checks"]}
         assert status["ready"] is True, json.dumps(status, indent=2)
         assert status["first_run"]["ready"] is True, json.dumps(status["first_run"], indent=2)

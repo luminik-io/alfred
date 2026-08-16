@@ -7,6 +7,8 @@ import os
 import stat
 import subprocess
 import sys
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,15 +29,496 @@ def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octocat", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+        lambda **_kwargs: [
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/usr/local/bin/codex",
+            }
+        ],
     )
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
     monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+
+def test_bootstrap_status_shares_one_deadline_across_slow_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = threading.Barrier(2)
+    deadlines: dict[str, float | None] = {}
+
+    def github_probe(*, deadline: float | None = None) -> dict[str, object]:
+        deadlines["github"] = deadline
+        started.wait(timeout=5)
+        return {"ok": True, "account": "octocat", "detail": "Signed in."}
+
+    def engine_probe(*, deadline: float | None = None) -> list[dict[str, object]]:
+        deadlines["engines"] = deadline
+        started.wait(timeout=5)
+        return []
+
+    def repo_probe(
+        _repos: list[str],
+        _env: dict[str, str],
+        *,
+        deadline: float | None = None,
+    ) -> list[dict[str, object]]:
+        deadlines["repos"] = deadline
+        return []
+
+    monkeypatch.setattr(setup_mod, "gh_auth_status", github_probe)
+    monkeypatch.setattr(setup_mod, "engine_clis", engine_probe)
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {})
+    monkeypatch.setattr(setup_mod, "setup_board_repos", lambda _env: [])
+    monkeypatch.setattr(setup_mod, "_setup_queue_repos_for_status", lambda _env: set())
+    monkeypatch.setattr(setup_mod, "_selected_repo_local_paths", repo_probe)
+    monkeypatch.setattr(setup_mod, "code_memory_status", lambda _env: {})
+    monkeypatch.setattr(setup_mod, "_code_memory_coverage", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "capability_status", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "install_inventory", lambda **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "first_run_readiness_status", lambda **_kwargs: {})
+    monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+    before = time.monotonic()
+    setup_mod.bootstrap_status()
+
+    assert deadlines["github"] == deadlines["engines"] == deadlines["repos"]
+    assert deadlines["github"] is not None
+    assert before < deadlines["github"] <= before + 10.5
+
+
+def test_default_hybrid_route_blocks_on_claude_auth_even_when_codex_is_ready() -> None:
+    ready, detail = setup_mod._engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ]
+    )
+
+    assert ready is False
+    assert "Claude Code blocks the default hybrid route" in detail
+
+
+def test_bootstrap_status_blocks_when_claude_auth_stops_default_hybrid_route(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert "blocks the default hybrid route" in checks["engine_clis"]["detail"]
+
+
+def test_default_hybrid_route_uses_codex_when_claude_is_missing() -> None:
+    ready, detail = setup_mod._engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": False,
+                "ready": False,
+                "state": "missing",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ]
+    )
+
+    assert ready is True
+    assert detail == "Ready via Codex fallback."
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, "hybrid"),
+        ("", "hybrid"),
+        ("  ", "hybrid"),
+        ("removed-engine", "disabled"),
+        (" CODEX ", "codex"),
+    ],
+)
+def test_configured_setup_engine_mode_preserves_hybrid_default(
+    raw: str | None,
+    expected: str,
+) -> None:
+    env = {} if raw is None else {"ALFRED_ENGINE": raw}
+
+    assert setup_mod._configured_engine_mode(env) == expected
+
+
+def test_bootstrap_status_blocks_invalid_fleet_engine_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "removed-engine")
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert checks["engine_clis"]["detail"] == (
+        "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
+    )
+    assert checks["engine_clis"]["action"] == (
+        "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+    )
+
+
+def test_bootstrap_status_requires_claude_when_fleet_mode_is_claude(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "claude")
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": False,
+                "ready": False,
+                "state": "missing",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert "configured Claude Code route" in checks["engine_clis"]["detail"]
+
+
+def test_bootstrap_status_uses_ready_codex_when_fleet_mode_is_codex(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "codex")
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is True
+    assert checks["engine_clis"]["ready"] is True
+    assert checks["engine_clis"]["detail"] == "Ready via configured Codex route."
+
+
+def test_engine_inventory_uses_scheduler_selected_claude_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def inventory(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            value="/profiles/secondary",
+            available=True,
+        ),
+    )
+    monkeypatch.setattr(setup_mod.runtime_facade, "engine_inventory", inventory)
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/secondary"
+
+
+def test_engine_inventory_fails_closed_when_scheduler_profile_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+                "failures": [],
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+                "failures": [],
+            },
+        ],
+    )
+
+    engines = setup_mod.engine_clis(deadline=time.monotonic() + 5)
+    by_name = {engine["name"]: engine for engine in engines}
+
+    assert by_name["claude"]["ready"] is False
+    assert by_name["claude"]["state"] == "probe_failed"
+    assert by_name["claude"]["failures"] == ["profile_lookup_failed"]
+    assert by_name["codex"]["ready"] is True
+
+
+def test_engine_inventory_keeps_static_profile_after_deadline_on_unsupported_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {"PATH": "/usr/bin", "CLAUDE_CONFIG_DIR": "/profiles/static"},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_env_file_value",
+        lambda *_args, **_kwargs: "/profiles/static",
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_supported",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("an expired deadline must not start a scheduler command")
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: (
+            captured.update(kwargs)
+            or [
+                {
+                    "name": "claude",
+                    "display_name": "Claude Code",
+                    "installed": True,
+                    "ready": True,
+                    "state": "ready",
+                    "failures": [],
+                }
+            ]
+        ),
+    )
+
+    engines = setup_mod.engine_clis(deadline=time.monotonic() - 1)
+
+    assert engines[0]["ready"] is True
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/static"
+
+
+def test_engine_inventory_keeps_static_claude_profile_without_manager_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    (runtime_home / ".env").write_text(
+        "CLAUDE_CONFIG_DIR=/profiles/static\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/profiles/shell-only",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            available=True
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/static"
+
+
+def test_engine_inventory_excludes_shell_only_claude_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+            "CLAUDE_CONFIG_DIR": "/profiles/shell-only",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: setup_mod.runtime_facade.SchedulerEnvironmentLookup(
+            available=True
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert "CLAUDE_CONFIG_DIR" not in captured["environ"]
+
+
+def test_engine_inventory_can_probe_the_current_process_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    runtime_home = tmp_path / ".alfred"
+    runtime_home.mkdir()
+    (runtime_home / ".env").write_text(
+        "CLAUDE_CONFIG_DIR=/profiles/static\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/profiles/conversation-process")
+    monkeypatch.setattr(
+        setup_mod,
+        "_runtime_config_env",
+        lambda: {
+            "ALFRED_HOME": str(runtime_home),
+            "HOME": str(tmp_path),
+            "PATH": "/usr/bin",
+        },
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_lookup",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("process-profile probes must not query the scheduler")
+        ),
+    )
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: captured.update(kwargs) or [],
+    )
+
+    setup_mod.engine_clis(
+        deadline=time.monotonic() + 5,
+        environment="process",
+    )
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/conversation-process"
 
 
 def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -52,6 +535,40 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("ARCHITECT_AUTO_EXECUTE", raising=False)
     monkeypatch.delenv("ARCHITECT_PARENT_REPO", raising=False)
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+
+def test_bootstrap_rejects_detected_candidate_engine(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "opencode",
+                "display_name": "OpenCode",
+                "installed": True,
+                "protocol_compatible": True,
+                "ready": False,
+                "dispatchable": False,
+                "state": "needs_validation",
+                "detail": "OpenCode still needs a deep permission probe.",
+                "path": "/usr/local/bin/opencode",
+                "version": "opencode 2.0.0",
+                "capabilities": ["text"],
+                "failures": ["deep_probe_required"],
+            }
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert checks["engine_clis"]["detail"] == "Detected but not ready: OpenCode."
 
 
 def _git_repo_with_origin(path: Path, slug: str) -> None:
@@ -518,20 +1035,50 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
-    monkeypatch.setenv("CLAUDE_BIN", "/env/claude")
-    monkeypatch.setenv("CODEX_BIN", "/env/codex")
+    claude_bin = tmp_path / "env-claude"
+    codex_bin = tmp_path / "env-codex"
+    for binary in (claude_bin, codex_bin):
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        binary.chmod(0o755)
+    monkeypatch.setenv("CLAUDE_BIN", str(claude_bin))
+    monkeypatch.setenv("CODEX_BIN", str(codex_bin))
     monkeypatch.setenv("GH_ORG", "env-org")
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
 
     launcher_env = setup_mod._code_memory_launcher_env()
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert launcher_env["CLAUDE_BIN"] == "/env/claude"
-    assert launcher_env["CODEX_BIN"] == "/env/codex"
+    assert launcher_env["CLAUDE_BIN"] == str(claude_bin)
+    assert launcher_env["CODEX_BIN"] == str(codex_bin)
     assert launcher_env["GH_ORG"] == "env-org"
-    assert engines["claude"]["path"] == "/env/claude"
-    assert engines["codex"]["path"] == "/env/codex"
+    assert engines["claude"]["path"] == str(claude_bin)
+    assert engines["codex"]["path"] == str(codex_bin)
     assert setup_mod._repo_list_owners() == ["env-org"]
+
+
+def test_engine_inventory_does_not_execute_candidate_harnesses_during_setup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    marker = tmp_path / "candidate-called"
+    opencode = tmp_path / "opencode"
+    opencode.write_text(
+        f"#!/bin/sh\nprintf called >> {marker}\n",
+        encoding="utf-8",
+    )
+    opencode.chmod(0o755)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("CLAUDE_BIN", str(tmp_path / "missing-claude"))
+    monkeypatch.setenv("CODEX_BIN", str(tmp_path / "missing-codex"))
+    monkeypatch.setenv("OPENCODE_BIN", str(opencode))
+
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert marker.exists() is False
+    assert engines["opencode"]["installed"] is True
+    assert engines["opencode"]["state"] == "needs_validation"
+    assert engines["opencode"]["protocol_compatible"] is False
 
 
 def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
@@ -555,27 +1102,37 @@ def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
     (runtime / ".env").write_text(
         "\n".join(
             [
-                "CODEX_BIN=/runtime/codex",
+                f"CODEX_BIN={tmp_path / 'runtime-codex'}",
                 "GH_ORG=runtime-org",
             ]
         ),
         encoding="utf-8",
     )
+    runtime_codex = tmp_path / "runtime-codex"
+    runtime_codex.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_codex.chmod(0o755)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("CLAUDE_BIN", raising=False)
     monkeypatch.delenv("CODEX_BIN", raising=False)
     monkeypatch.delenv("GH_BIN", raising=False)
     monkeypatch.delenv("GH_ORG", raising=False)
-    monkeypatch.setattr(setup_mod.shutil, "which", lambda *args, **kwargs: None)
     monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "engine_inventory",
+        lambda **kwargs: [
+            {"name": "claude", "path": None},
+            {"name": "codex", "path": kwargs["environ"]["CODEX_BIN"]},
+        ],
+    )
 
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert setup_mod._setup_config_value("CODEX_BIN") == "/runtime/codex"
+    assert setup_mod._setup_config_value("CODEX_BIN") == str(runtime_codex)
     assert setup_mod._setup_config_value("CLAUDE_BIN") == ""
     assert setup_mod._gh_bin() == "gh"
-    assert engines["codex"]["path"] == "/runtime/codex"
+    assert engines["codex"]["path"] == str(runtime_codex)
     assert engines["claude"]["path"] is None
     assert setup_mod._repo_list_owners() == ["runtime-org"]
 
@@ -1455,12 +2012,20 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     monkeypatch.setattr(
         setup_mod,
         "gh_auth_status",
-        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+        lambda **_kwargs: {"ok": True, "account": "octocat", "detail": "Signed in."},
     )
     monkeypatch.setattr(
         setup_mod,
         "engine_clis",
-        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+        lambda **_kwargs: [
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "path": "/usr/local/bin/codex",
+            }
+        ],
     )
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
@@ -1530,7 +2095,17 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     )
     gh_bin.chmod(0o755)
     codex_bin = tmp_path / "codex"
-    codex_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    codex_bin.write_text(
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'codex-cli 1.2.3\n' ;;
+  'exec --help') printf '%s\n' '--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox' ;;
+  'login status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
     codex_bin.chmod(0o755)
 
     monkeypatch.delenv("HOME", raising=False)

@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
@@ -47,15 +49,20 @@ def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
     monkeypatch.setattr(
         cc,
         "_available_engine_clis",
-        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
+    )
+    monkeypatch.setattr(
+        cc,
+        "_engine_cli_path",
+        lambda name: "/opt/homebrew/bin/codex" if name == "codex" else None,
     )
 
     assert cc.converse_engine_from_env() == "codex"
-    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
-    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+    assert cc.os.environ["CLAUDE_BIN"] == ""
+    assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
 
 
-def test_converse_engine_hydrates_cli_paths_before_using_fleet_choice(monkeypatch) -> None:
+def test_converse_engine_uses_fleet_choice_without_inventory_probe(monkeypatch) -> None:
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
@@ -64,12 +71,85 @@ def test_converse_engine_hydrates_cli_paths_before_using_fleet_choice(monkeypatc
     monkeypatch.setattr(
         cc,
         "_available_engine_clis",
-        lambda: {"claude": "/bin/claude", "codex": "/bin/codex"},
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
+    )
+    monkeypatch.setattr(
+        cc,
+        "_engine_cli_path",
+        lambda name: "/opt/homebrew/bin/codex" if name == "codex" else None,
     )
 
     assert cc.converse_engine_from_env() == "codex"
-    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
-    assert cc.os.environ["CODEX_BIN"] == "/bin/codex"
+    assert cc.os.environ["CLAUDE_BIN"] == ""
+    assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
+
+
+def test_converse_engine_hydrates_both_explicit_hybrid_paths(monkeypatch) -> None:
+    monkeypatch.setenv(cc.ENGINE_ENV, "hybrid")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+    monkeypatch.setattr(
+        cc,
+        "_available_engine_clis",
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
+    )
+    paths = {
+        "claude": "/opt/homebrew/bin/claude",
+        "codex": "/opt/homebrew/bin/codex",
+    }
+    monkeypatch.setattr(cc, "_engine_cli_path", paths.get)
+
+    assert cc.converse_engine_from_env() == "hybrid"
+    assert cc.os.environ["CLAUDE_BIN"] == "/opt/homebrew/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
+
+
+@pytest.mark.parametrize("surface", ["compose", "theme", "onboarding", "slack"])
+def test_explicit_conversation_surface_uses_augmented_setup_search_path(
+    monkeypatch, tmp_path: Path, surface: str
+) -> None:
+    import onboarding_converse as onboarding
+    import server.setup as setup
+    import theme_builder as theme
+    from slack_surface.converse import SlackConverseConfig
+
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    codex.chmod(0o755)
+    surface_env = {
+        "compose": cc.ENGINE_ENV,
+        "theme": theme.ENGINE_ENV,
+        "onboarding": onboarding.ENGINE_ENV,
+        "slack": "ALFRED_SLACK_CONVERSE_ENGINE",
+    }[surface]
+    for name in (
+        cc.ENGINE_ENV,
+        cc.FALLBACK_ENGINE_ENV,
+        "ALFRED_ENGINE",
+        theme.ENGINE_ENV,
+        onboarding.ENGINE_ENV,
+        "ALFRED_SLACK_CONVERSE_ENGINE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(surface_env, "codex")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("CODEX_BIN", "codex")
+    monkeypatch.setattr(
+        setup,
+        "_runtime_config_env",
+        lambda: {"PATH": "/usr/bin:/bin", "CODEX_BIN": "codex"},
+    )
+    monkeypatch.setattr(setup, "_engine_search_path", lambda _env: (str(tmp_path),))
+
+    selected = {
+        "compose": cc.converse_engine_from_env,
+        "theme": theme.engine_from_env,
+        "onboarding": onboarding.engine_from_env,
+        "slack": lambda: SlackConverseConfig.from_env().engine,
+    }[surface]()
+
+    assert selected == "codex"
+    assert cc.os.environ["CODEX_BIN"] == str(codex.resolve())
 
 
 def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> None:
@@ -98,18 +178,89 @@ def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> Non
     assert cc.converse_engine_from_env() == ""
 
 
-def test_converse_engine_honors_configured_binary_override(monkeypatch) -> None:
+def test_converse_auto_selection_probes_the_process_environment(monkeypatch) -> None:
     import server.setup as setup
 
+    captured: dict[str, object] = {}
+    for name in (cc.ENGINE_ENV, cc.FALLBACK_ENGINE_ENV, "ALFRED_ENGINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+    monkeypatch.setattr(cc, "hydrate_engine_paths", lambda engine: captured.update(hydrated=engine))
+
+    def inventory(**kwargs):
+        captured.update(kwargs)
+        return [{"name": "claude", "path": "/bin/claude", "ready": True}]
+
+    monkeypatch.setattr(setup, "engine_clis", inventory)
+
+    assert cc.converse_engine_from_env() == "claude"
+    assert captured["hydrated"] == "hybrid"
+    assert captured["environment"] == "process"
+
+
+def test_converse_auto_selection_keeps_repairable_claude_auth_state(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import server.setup as setup
+
+    config_dir = tmp_path / ".claude"
+    config_dir.mkdir()
+    (config_dir / ".credentials.json").write_text("{}", encoding="utf-8")
+    for name in (cc.ENGINE_ENV, cc.FALLBACK_ENGINE_ENV, "ALFRED_ENGINE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    monkeypatch.delenv("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR", raising=False)
+    monkeypatch.setattr(cc, "hydrate_engine_paths", lambda _engine: None)
+    monkeypatch.setattr(
+        setup,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "path": "/bin/claude",
+                "ready": False,
+                "state": "auth_required",
+            }
+        ],
+    )
+
+    assert cc.converse_engine_from_env() == "claude"
+    assert cc.os.environ["CLAUDE_BIN"] == "/bin/claude"
+
+    monkeypatch.setenv("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR", "1")
+    assert cc.converse_engine_from_env() == ""
+
+
+def test_converse_engine_honors_configured_binary_override(monkeypatch, tmp_path: Path) -> None:
+    import server.setup as setup
+
+    claude = tmp_path / "claude"
+    claude.write_text(
+        """#!/bin/sh
+case "$*" in
+  --version) printf 'Claude Code 2.1.41\n' ;;
+  --help) printf '%s\n' '--output-format --permission-mode --allowedTools' ;;
+  'auth status') exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
     monkeypatch.delenv(cc.ENGINE_ENV, raising=False)
     monkeypatch.delenv(cc.FALLBACK_ENGINE_ENV, raising=False)
     monkeypatch.delenv("ALFRED_ENGINE", raising=False)
-    monkeypatch.setenv("CLAUDE_BIN", "/opt/alfred/bin/claude")
-    monkeypatch.delenv("CODEX_BIN", raising=False)
-    monkeypatch.setattr(setup.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("CLAUDE_BIN", str(claude))
+    monkeypatch.setenv("CODEX_BIN", str(tmp_path / "missing-codex"))
+    monkeypatch.setattr(
+        setup,
+        "_engine_search_path",
+        lambda _env: str(tmp_path),
+    )
 
     assert cc.converse_engine_from_env() == "claude"
-    assert cc.os.environ["CLAUDE_BIN"] == "/opt/alfred/bin/claude"
+    assert cc.os.environ["CLAUDE_BIN"] == str(claude)
 
 
 def _messages(n: int) -> list[cc.ConverseMessage]:

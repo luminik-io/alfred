@@ -136,6 +136,7 @@ def test_render_appends_enabled_custom_agents_from_manifest(tmp_path):
     lib_dir = tmp_path / "lib"
     lib_dir.mkdir()
     shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    shutil.copy(REPO_ROOT / "lib" / "agent_capabilities.py", lib_dir / "agent_capabilities.py")
     store = runtime / "state" / "custom-agents"
     store.mkdir(parents=True)
     (store / "custom-agents.json").write_text(
@@ -174,6 +175,7 @@ def test_render_skips_custom_agent_rows_that_collide_with_base_conf(tmp_path):
     lib_dir = tmp_path / "lib"
     lib_dir.mkdir()
     shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    shutil.copy(REPO_ROOT / "lib" / "agent_capabilities.py", lib_dir / "agent_capabilities.py")
     store = runtime / "state" / "custom-agents"
     store.mkdir(parents=True)
     (store / "custom-agents.json").write_text(
@@ -212,6 +214,7 @@ def test_render_supports_custom_agents_without_base_agents_conf(tmp_path):
     lib_dir = tmp_path / "lib"
     lib_dir.mkdir()
     shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    shutil.copy(REPO_ROOT / "lib" / "agent_capabilities.py", lib_dir / "agent_capabilities.py")
     store = runtime / "state" / "custom-agents"
     store.mkdir(parents=True)
     (store / "custom-agents.json").write_text(
@@ -262,6 +265,7 @@ def test_render_fails_when_custom_agent_manifest_is_malformed(tmp_path):
     lib_dir = tmp_path / "lib"
     lib_dir.mkdir()
     shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    shutil.copy(REPO_ROOT / "lib" / "agent_capabilities.py", lib_dir / "agent_capabilities.py")
     store = runtime / "state" / "custom-agents"
     store.mkdir(parents=True)
     (store / "custom-agents.json").write_text('{"version": 1, "agents": [', encoding="utf-8")

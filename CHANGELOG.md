@@ -22,6 +22,20 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 ### Fixed
 
+- Engine readiness now runs within one bounded setup budget. Setup does not run
+  candidate harnesses that Alfred cannot dispatch.
+- Claude and Codex now run the canonical executable that passed the readiness
+  probe. A later path or environment change cannot redirect that invocation.
+- Setup status now requires the local action token before it runs GitHub or
+  engine probes. GitHub and engine probes share one request deadline.
+- A failed engine readiness probe now stops the current firing without retry or
+  fallback. A later scheduled firing can probe again.
+- Hybrid scheduled agents can now pass preflight on a Codex-only host and reach
+  the documented fallback path.
+- Setup now evaluates the default hybrid route and probes the Claude profile
+  selected in the host scheduler.
+- Scheduler labels can no longer select engine state paths outside the engine
+  state directory.
 - Conversational desktop onboarding now requires an explicit Batteries choice and a handled Slack choice before finishing. Slack setup opens the existing local, token-gated step so secrets and webhook URLs stay out of the model transcript.
 
 ## [0.6.0] - 2026-07-10

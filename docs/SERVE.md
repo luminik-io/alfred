@@ -193,8 +193,9 @@ State-mutating `POST`/`DELETE` endpoints require the per-launch token via the
 bridge. When the app is served in a browser, the server injects that same token
 into the served `index.html` as a `<meta name="alfred-token">` tag: a same-origin
 page can read it and echo it back, a cross-origin page cannot read another
-origin's document, and the token file stays `0600` on disk. Read endpoints need
-no token.
+origin's document, and the token file stays `0600` on disk. Read endpoints do
+not need a token, except `GET /api/setup/status`. Setup status runs local GitHub
+and engine probes, so it uses the same token gate as a local action.
 
 `GET /api/setup/status` includes a `first_run` readiness block for native
 onboarding. It rolls up GitHub auth, engine CLIs, repo scope, queue coverage,

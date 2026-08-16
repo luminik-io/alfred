@@ -45,6 +45,7 @@ from envflags import FALSY_VALUES, truthy
 
 from . import memory_ranking
 from .config import (
+    DISABLED_ENGINE,
     _truthy_env,
     agent_model,
     dry_run_log,
@@ -54,6 +55,12 @@ from .config import (
     normalize_model_name,
 )
 from .context_governor import govern_prompt_context
+from .engine_registry import (
+    DEFAULT_ENGINE_REGISTRY,
+    EngineProbeResult,
+    EngineProbeState,
+    probe_engine,
+)
 from .memory_runtime import (
     BEGIN_MARKER,
     load_runtime_memory,
@@ -64,9 +71,7 @@ from .memory_runtime import (
     with_memory_prompt,
 )
 from .paths import (
-    CLAUDE_BIN,
     CODEX_APPROVAL_POLICY,
-    CODEX_BIN,
     CODEX_DEFAULT_SANDBOX,
 )
 from .reliability import (
@@ -82,6 +87,7 @@ from .result import (
     _RATE_LIMIT_RESULT_RE,
     ClaudeResult,
     _build_claude_result,
+    _claude_credentials_file,
     _should_retry_claude_auth,
     dry_run_claude_result,
     looks_quota_exhausted,
@@ -108,10 +114,78 @@ _LOG = logging.getLogger(__name__)
 _CLAUDE_UNLIMITED_TURNS: int = 999
 
 
-def _runtime_cli_bin(env_name: str, imported_default: str) -> str:
-    """Resolve a CLI at invocation time so setup detection can supply its path."""
+def _probe_dispatch_engine(engine: str) -> EngineProbeResult:
+    """Verify the real CLI contract immediately before autonomous dispatch."""
 
-    return os.environ.get(env_name, "").strip() or imported_default
+    return probe_engine(DEFAULT_ENGINE_REGISTRY.descriptor(engine))
+
+
+def _engine_not_ready_result(engine: str, readiness: EngineProbeResult) -> ClaudeResult:
+    """Return a scrubbed failure without crossing an unready engine boundary."""
+
+    if readiness.state == "auth_required":
+        subtype = "error_authentication"
+    elif readiness.state == "probe_failed":
+        subtype = "error_engine_probe"
+    else:
+        subtype = "error_engine_unavailable"
+    return ClaudeResult(
+        success=False,
+        subtype=subtype,
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text=(
+            f"{readiness.descriptor.display_name} is not ready for autonomous dispatch "
+            f"({readiness.state}). Run `alfred doctor` after fixing the engine setup."
+        ),
+        raw={"engine": engine, "engine_readiness": readiness.state},
+        stop_reason="error",
+        error_message=f"{engine} engine is not ready ({readiness.state})",
+    )
+
+
+def engine_readiness_allows_dispatch_attempt(engine: str, state: EngineProbeState | str) -> bool:
+    """Allow ready engines and Claude's bounded stale-credential repair attempt."""
+
+    if state == EngineProbeState.READY:
+        return True
+    return (
+        engine == "claude"
+        and state == EngineProbeState.AUTH_REQUIRED
+        and not _truthy_env("ALFRED_DISABLE_CLAUDE_AUTH_REPAIR")
+        and _claude_credentials_file().is_file()
+    )
+
+
+def _engine_readiness_failure(engine: str, readiness: EngineProbeResult) -> ClaudeResult | None:
+    """Translate one readiness result into a fail-closed dispatch result."""
+
+    if engine_readiness_allows_dispatch_attempt(engine, readiness.state):
+        # Let one real invocation reach the existing result classifier. Only a
+        # confirmed authentication response may quarantine the disk credential
+        # and retry; a transient readiness-probe failure never mutates auth.
+        return None
+    return _engine_not_ready_result(engine, readiness)
+
+
+def _disabled_engine_result() -> ClaudeResult:
+    """Return a clean failure for invalid operator-controlled engine state."""
+
+    return ClaudeResult(
+        success=False,
+        subtype="error_configuration",
+        num_turns=0,
+        cost_usd=0.0,
+        session_id=None,
+        result_text=(
+            "The configured engine is invalid. Choose claude, codex, or hybrid, "
+            "then run `alfred doctor`."
+        ),
+        raw={"engine": DISABLED_ENGINE, "engine_readiness": "invalid_configuration"},
+        stop_reason="error",
+        error_message="invalid engine configuration",
+    )
 
 
 def _claude_subprocess_env(
@@ -772,13 +846,20 @@ def claude_invoke(
         )
         return dry_run_claude_result(prompt, model=model, engine="claude")
 
+    readiness = _probe_dispatch_engine("claude")
+    readiness_failure = _engine_readiness_failure("claude", readiness)
+    if readiness_failure is not None:
+        return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("claude", readiness)
+
     effective_max_turns = max_turns if max_turns is not None else _CLAUDE_UNLIMITED_TURNS
     # Resolve the memory-MCP server path ONCE so the allowlist augmentation and
     # the --mcp-config attachment below always agree (no TOCTOU between two
     # independent Path.exists() checks).
     memory_script = _memory_mcp_script()
     cmd = [
-        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
+        readiness.binary,
         "-p",
         prompt,
         "--allowedTools",
@@ -906,12 +987,19 @@ def claude_invoke_streaming(
         )
         return dry_run_claude_result(prompt, model=model, engine="claude")
 
+    readiness = _probe_dispatch_engine("claude")
+    readiness_failure = _engine_readiness_failure("claude", readiness)
+    if readiness_failure is not None:
+        return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("claude", readiness)
+
     if max_turns is None:
         max_turns = _CLAUDE_UNLIMITED_TURNS
 
     memory_script = _memory_mcp_script()
     cmd = [
-        _runtime_cli_bin("CLAUDE_BIN", CLAUDE_BIN),
+        readiness.binary,
         "-p",
         prompt,
         "--allowedTools",
@@ -1203,17 +1291,26 @@ def codex_invoke(
             ),
         )
 
+    readiness = _probe_dispatch_engine("codex")
+    readiness_failure = _engine_readiness_failure("codex", readiness)
+    if readiness_failure is not None:
+        return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("codex", readiness)
+
     if firing_id is None:
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         firing_id = f"{stamp}-{secrets.token_hex(2)}"
 
     paths = codex_artifact_paths(agent, firing_id)
     cmd = [
-        _runtime_cli_bin("CODEX_BIN", CODEX_BIN),
+        readiness.binary,
         "exec",
         "--skip-git-repo-check",
         "--cd",
         str(workdir),
+        "--ignore-user-config",
+        "--ephemeral",
     ]
     resolved_sandbox = sandbox or CODEX_DEFAULT_SANDBOX
     if bypass_approvals_and_sandbox:
@@ -1707,6 +1804,7 @@ def invoke_agent_engine(
     rubric: str | None = None,
     rubric_grader_engine: str | None = None,
     rubric_grader_fn: Callable[[str], str] | None = None,
+    engine_probe_fn: Callable[[str], EngineProbeResult] | None = None,
 ) -> tuple[ClaudeResult, str]:
     """Invoke a prompt through Claude, Codex, or Claude-first hybrid.
 
@@ -1751,13 +1849,23 @@ def invoke_agent_engine(
     edit-target. Off by default and a no-op when unset, so existing callers are
     byte-identical.
     """
-    mode = normalize_engine(engine)
+    if engine == DISABLED_ENGINE:
+        return _disabled_engine_result(), DISABLED_ENGINE
+    try:
+        mode = normalize_engine(engine)
+    except ValueError:
+        return _disabled_engine_result(), DISABLED_ENGINE
     if claude_model is None:
         claude_model = agent_model(agent, "claude")
     if codex_model is None:
         codex_model = agent_model(agent, "codex")
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
+    # Real adapters enforce readiness at their own subprocess boundary, which
+    # also protects direct graders, judges, and utility callers. An injected
+    # probe remains available for tests and injected adapters.
+    claude_probe = engine_probe_fn
+    codex_probe = engine_probe_fn
     memory_provider = load_runtime_memory() if memory_repo else None
     # Arm the cleanup BEFORE the firing's delta state can exist. with_memory_prompt
     # records injected lessons for this firing, and govern_prompt_context runs
@@ -1799,6 +1907,10 @@ def invoke_agent_engine(
             return result
 
         def _invoke_claude() -> ClaudeResult:
+            if claude_probe is not None:
+                readiness = claude_probe("claude")
+                if not readiness.ready:
+                    return _engine_not_ready_result("claude", readiness)
             return claude_call(
                 prompt_for_engine,
                 workdir=workdir,
@@ -1811,6 +1923,10 @@ def invoke_agent_engine(
             )
 
         def _invoke_codex() -> ClaudeResult:
+            if codex_probe is not None:
+                readiness = codex_probe("codex")
+                if not readiness.ready:
+                    return _engine_not_ready_result("codex", readiness)
             return codex_call(
                 prompt_for_engine,
                 workdir=workdir,

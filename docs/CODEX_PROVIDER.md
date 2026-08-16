@@ -75,8 +75,10 @@ Alfred's default posture is local CLI auth, not direct API-key billing.
   subscription-backed usage.
 - For Codex, sign in through the Codex CLI with your ChatGPT account when you
   want ChatGPT-plan usage.
-- If `OPENAI_API_KEY` is set, make sure that is intentional for your Codex
-  workflow.
+- Keep `OPENAI_API_KEY` unset. Alfred verifies Codex through `codex login
+  status` and never treats a generic SDK key as proof that the CLI is ready.
+  An API-billed Codex CLI must first be authenticated through Codex's own
+  login flow.
 
 References:
 

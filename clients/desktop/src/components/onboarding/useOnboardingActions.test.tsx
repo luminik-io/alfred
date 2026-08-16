@@ -168,6 +168,40 @@ describe("useOnboardingActions", () => {
     });
   });
 
+  it("does not pass the engine check when only the blocked fallback is ready", async () => {
+    const refreshStatus = vi.fn(async () =>
+      ({
+        engine_ready: false,
+        engines: [
+          { name: "claude", display_name: "Claude Code", ready: false, state: "auth_required" },
+          { name: "codex", display_name: "Codex", ready: true, state: "ready" },
+        ],
+      }) as SetupStatus,
+    );
+    const { result } = renderHook(() =>
+      useOnboardingActions({
+        baseUrl: "http://127.0.0.1:7010",
+        canMutate: true,
+        canRun: true,
+        connected: true,
+        githubConnected: false,
+        refreshStatus,
+        startGithubAuthLogin: vi.fn(async () => false),
+        onRunLocalAction: vi.fn(async () => null),
+        onOpenRepoSetup: vi.fn(),
+        onSaveCustomNames: vi.fn(async () => undefined),
+        onBatteriesDecision: vi.fn(),
+        onSlackDecision: vi.fn(),
+        onOpenSlackSetup: vi.fn(),
+      }),
+    );
+
+    await expect(result.current({ tool: "check_engine", args: {} })).resolves.toEqual({
+      ok: false,
+      note: "Found Codex, but the configured engine route is blocked. Fix its sign-in or engine selection, then try again.",
+    });
+  });
+
   it("finishes conversational setup only when required setup is ready", async () => {
     const refreshStatus = vi.fn(async () =>
       ({

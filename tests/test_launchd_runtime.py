@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -348,6 +351,214 @@ def test_doctor_includes_custom_agents_when_runtime_conf_is_empty(tmp_path):
     assert res.returncode == 0, res.stdout + res.stderr
     assert "custom-agent" in res.stdout
     assert "doctor: 1 passed, 0 failed" in res.stdout
+
+
+def test_doctor_fails_when_configured_engine_is_not_registry_ready(tmp_path):
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    fakebin = tmp_path / "fakebin"
+    (alfred / "launchd").mkdir(parents=True)
+    (alfred / "state" / "custom-agents").mkdir(parents=True)
+    workspace.mkdir()
+    fakebin.mkdir()
+    (alfred / "launchd" / "agents.conf").write_text("", encoding="utf-8")
+    (alfred / "state" / "custom-agents" / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (fakebin / "codex").write_text(
+        """#!/usr/bin/env sh
+case "$1 $2" in
+  "--version ") echo "codex-cli 9.9.9" ;;
+  "exec --help") echo "--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox" ;;
+  "login status") exit 1 ;;
+  *) exit 2 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (fakebin / "git").write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    (fakebin / "codex").chmod(0o755)
+    (fakebin / "git").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "doctor.sh")],
+        env=_clean_env(
+            HOME=str(home),
+            ALFRED_HOME=str(alfred),
+            WORKSPACE_ROOT=str(workspace),
+            PATH=f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "codex    [release-captain] FAIL (auth_required)" in res.stdout
+    assert "Codex is installed but is not signed in." in res.stdout
+    assert "doctor: 1 passed, 1 failed" in res.stdout
+
+
+@pytest.mark.parametrize("scheduler_kind", ["launchd", "systemd"])
+@pytest.mark.parametrize("opt_in_enabled", [False, True], ids=["opt-in-disabled", "opt-in-enabled"])
+def test_doctor_scheduler_fallback_shares_engine_and_preflight_roster(
+    tmp_path,
+    scheduler_kind,
+    opt_in_enabled,
+):
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    fakebin = tmp_path / "fakebin"
+    launch_dir = tmp_path / "launch-agents"
+    systemd_dir = tmp_path / "systemd-user"
+    capture = tmp_path / "reviewer-doctor.json"
+    opt_in_capture = tmp_path / "architect-doctor.txt"
+    (alfred / "bin").mkdir(parents=True)
+    (alfred / "state" / "engines").mkdir(parents=True)
+    home.mkdir()
+    workspace.mkdir()
+    fakebin.mkdir()
+    (alfred / "state" / "engines" / "reviewer").write_text("codex\n", encoding="utf-8")
+    (alfred / "state" / "engines" / "architect").write_text("codex\n", encoding="utf-8")
+    if opt_in_enabled:
+        (alfred / "state" / "fleet").mkdir()
+        (alfred / "state" / "fleet" / "enabled.txt").write_text(
+            "architect\n",
+            encoding="utf-8",
+        )
+    (alfred / "bin" / "agent-launch").write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\npython3 "$ALFRED_HOME/bin/$1"\n',
+        encoding="utf-8",
+    )
+    (alfred / "bin" / "reviewer.py").write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os\n"
+        f"open({str(capture)!r}, 'w').write(json.dumps({{\n"
+        "  'codename': os.environ.get('AGENT_CODENAME'),\n"
+        "  'label': os.environ.get('LAUNCHD_LABEL'),\n"
+        "}))\n"
+        "print('[REVIEWER-DOCTOR-OK]')\n",
+        encoding="utf-8",
+    )
+    (alfred / "bin" / "architect.py").write_text(
+        "#!/usr/bin/env python3\n"
+        f"open({str(opt_in_capture)!r}, 'w').write('invoked')\n"
+        "print('[ARCHITECT-DOCTOR-OK]')\n",
+        encoding="utf-8",
+    )
+    (alfred / "bin" / "agent-launch").chmod(0o755)
+    (alfred / "bin" / "reviewer.py").chmod(0o755)
+    (alfred / "bin" / "architect.py").chmod(0o755)
+
+    if scheduler_kind == "launchd":
+        launch_dir.mkdir()
+        (launch_dir / "alfred.reviewer.plist").write_bytes(
+            plistlib.dumps(
+                {
+                    "Label": "alfred.reviewer",
+                    "ProgramArguments": [
+                        str(alfred / "bin" / "agent-launch"),
+                        "reviewer.py",
+                    ],
+                }
+            )
+        )
+        (launch_dir / "alfred.architect.plist").write_bytes(
+            plistlib.dumps(
+                {
+                    "Label": "alfred.architect",
+                    "ProgramArguments": [
+                        str(alfred / "bin" / "agent-launch"),
+                        "architect.py",
+                    ],
+                }
+            )
+        )
+    else:
+        systemd_dir.mkdir()
+        (systemd_dir / "alfred.reviewer.service").write_text(
+            f"[Service]\nExecStart={alfred / 'bin' / 'agent-launch'} reviewer.py\n",
+            encoding="utf-8",
+        )
+        (systemd_dir / "alfred.architect.service").write_text(
+            f"[Service]\nExecStart={alfred / 'bin' / 'agent-launch'} architect.py\n",
+            encoding="utf-8",
+        )
+
+    (fakebin / "codex").write_text(
+        """#!/usr/bin/env sh
+case "$1 $2" in
+  "--version ") echo "codex-cli 9.9.9" ;;
+  "exec --help") echo "--output-last-message --sandbox --cd --skip-git-repo-check --ignore-user-config --ephemeral -c --model --add-dir --dangerously-bypass-approvals-and-sandbox" ;;
+  "login status") exit 0 ;;
+  *) exit 2 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (fakebin / "git").write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    (fakebin / "codex").chmod(0o755)
+    (fakebin / "git").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "doctor.sh")],
+        env=_clean_env(
+            HOME=str(home),
+            ALFRED_HOME=str(alfred),
+            ALFRED_LAUNCH_DIR=(
+                str(launch_dir) if scheduler_kind == "launchd" else str(tmp_path / "no-launchd")
+            ),
+            ALFRED_SYSTEMD_USER_DIR=str(systemd_dir),
+            WORKSPACE_ROOT=str(workspace),
+            PATH=f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    expected_agents = "architect, reviewer" if opt_in_enabled else "reviewer"
+    assert f"codex    [{expected_agents}] OK (ready)" in res.stdout
+    assert any(
+        line.strip().startswith("reviewer") and line.rstrip().endswith("ok")
+        for line in res.stdout.splitlines()
+    )
+    expected_passes = 2 if opt_in_enabled else 1
+    assert f"doctor: {expected_passes} passed, 0 failed" in res.stdout
+    if opt_in_enabled:
+        assert any(
+            line.strip().startswith("architect") and line.rstrip().endswith("ok")
+            for line in res.stdout.splitlines()
+        )
+        assert opt_in_capture.read_text(encoding="utf-8") == "invoked"
+    else:
+        assert "architect" not in res.stdout
+        assert not opt_in_capture.exists()
+    assert json.loads(capture.read_text(encoding="utf-8")) == {
+        "codename": "reviewer",
+        "label": "alfred.reviewer",
+    }
 
 
 def test_deploy_removes_stale_managed_plists(tmp_path):
@@ -711,6 +922,7 @@ def test_deploy_linux_fails_when_custom_agent_manifest_is_malformed(tmp_path):
     shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
     shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
     shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "lib" / "agent_capabilities.py", src / "lib" / "agent_capabilities.py")
     (src / "lib" / "dummy.py").write_text("# dummy\n")
     for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
         (src / "lib" / pkg).mkdir()
@@ -840,6 +1052,7 @@ def test_deploy_linux_custom_only_reaps_only_previous_managed_units(tmp_path):
     shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
     shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
     shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "lib" / "agent_capabilities.py", src / "lib" / "agent_capabilities.py")
     shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
     shutil.copy(REPO / "bin" / "custom-agent.py", src / "bin" / "custom-agent.py")
     (src / "lib" / "dummy.py").write_text("# dummy\n")
@@ -934,6 +1147,7 @@ def test_deploy_linux_migrates_existing_alfred_units_without_ledger(tmp_path):
     shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
     shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
     shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "lib" / "agent_capabilities.py", src / "lib" / "agent_capabilities.py")
     shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
     shutil.copy(REPO / "bin" / "custom-agent.py", src / "bin" / "custom-agent.py")
     (src / "lib" / "dummy.py").write_text("# dummy\n")

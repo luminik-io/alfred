@@ -708,8 +708,17 @@ export type SetupGithub = {
 
 export type SetupEngine = {
   name: string;
+  display_name: string;
   installed: boolean;
+  protocol_compatible: boolean;
+  ready: boolean;
+  dispatchable: boolean;
+  state: string;
+  detail: string;
   path: string | null;
+  version: string | null;
+  capabilities: string[];
+  failures: string[];
 };
 
 export type SetupCodeMemory = {

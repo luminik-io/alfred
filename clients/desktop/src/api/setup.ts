@@ -60,7 +60,7 @@ export async function loadSchedule(baseUrl: string): Promise<ScheduleResponse> {
 
 export async function loadSetupStatus(baseUrl: string): Promise<SetupStatus> {
   return withTimeout(
-    readAlfredJson<SetupStatus>(baseUrl, "/api/setup/status"),
+    readAlfredJson<SetupStatus>(baseUrl, "/api/setup/status", { token: true }),
     12000,
     "/api/setup/status",
   );
