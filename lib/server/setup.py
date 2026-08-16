@@ -830,14 +830,37 @@ def engine_cli_path(engine: str) -> str | None:
 
 
 _DEFAULT_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
+_SETUP_ENGINE_MODES = frozenset({"claude", "codex", "hybrid"})
 
 
-def _default_engine_route_status(engines: list[dict[str, Any]]) -> tuple[bool, str]:
-    """Evaluate setup engines with the shipped Claude-first hybrid policy."""
+def _configured_engine_mode(env: Mapping[str, str]) -> str:
+    """Return the fleet engine mode that setup must evaluate."""
 
+    mode = env.get("ALFRED_ENGINE", "").strip().lower()
+    if not mode:
+        return "hybrid"
+    return mode if mode in _SETUP_ENGINE_MODES else "disabled"
+
+
+def _engine_route_status(
+    engines: list[dict[str, Any]],
+    *,
+    mode: str = "hybrid",
+) -> tuple[bool, str]:
+    """Evaluate setup engines against one normalized fleet route."""
+
+    if mode == "disabled":
+        return False, "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
     by_name = {str(engine.get("name")): engine for engine in engines}
     claude = by_name.get("claude")
     codex = by_name.get("codex")
+    if mode != "hybrid":
+        selected = by_name.get(mode)
+        display_name = "Claude Code" if mode == "claude" else "Codex"
+        if selected and selected.get("ready"):
+            return True, f"Ready via configured {display_name} route."
+        state = str(selected.get("state") if selected else "missing")
+        return False, f"The configured {display_name} route is not ready ({state})."
     if claude and claude.get("ready"):
         return True, "Ready via Claude Code."
     claude_state = str(claude.get("state") if claude else "missing")
@@ -1791,7 +1814,8 @@ def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
-    engine_route_ready, _ = _default_engine_route_status(engines)
+    engine_mode = _configured_engine_mode(runtime_env)
+    engine_route_ready, _ = _engine_route_status(engines, mode=engine_mode)
     repo_checkouts = _selected_repo_local_paths(repos, runtime_env, deadline=deadline)
     code_memory = code_memory_status(runtime_env)
     code_memory_coverage = _code_memory_coverage(
@@ -1860,7 +1884,10 @@ def first_run_readiness_status(
 
     checks = [
         _github_readiness_check(gh),
-        _engine_readiness_check(engines),
+        _engine_readiness_check(
+            engines,
+            mode=_configured_engine_mode(runtime_env),
+        ),
         _repo_scope_readiness_check(repos),
         _queue_readiness_check(repos, queue_repos, queue_missing),
         _repo_local_paths_readiness_check(repos, runtime_env, resolved=repo_checkouts),
@@ -1941,13 +1968,22 @@ def _github_readiness_check(gh: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _engine_readiness_check(engines: list[dict[str, Any]]) -> dict[str, Any]:
-    ready, detail = _default_engine_route_status(engines)
-    action = (
-        "Sign in to Claude Code or select Codex for each enabled agent, then recheck setup."
-        if "blocks the default hybrid route" in detail
-        else "Install and sign in to a supported coding engine, then recheck setup."
-    )
+def _engine_readiness_check(
+    engines: list[dict[str, Any]],
+    *,
+    mode: str = "hybrid",
+) -> dict[str, Any]:
+    ready, detail = _engine_route_status(engines, mode=mode)
+    if mode == "disabled":
+        action = "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+    elif mode == "claude":
+        action = "Install and sign in to Claude Code, then recheck setup."
+    elif mode == "codex":
+        action = "Install and sign in to Codex, then recheck setup."
+    elif "blocks the default hybrid route" in detail:
+        action = "Sign in to Claude Code or select Codex, then recheck setup."
+    else:
+        action = "Install and sign in to a supported coding engine, then recheck setup."
     return _readiness_check(
         "engine_clis",
         "Coding engine",

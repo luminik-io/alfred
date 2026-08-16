@@ -90,7 +90,7 @@ def test_bootstrap_status_shares_one_deadline_across_slow_probes(
 
 
 def test_default_hybrid_route_blocks_on_claude_auth_even_when_codex_is_ready() -> None:
-    ready, detail = setup_mod._default_engine_route_status(
+    ready, detail = setup_mod._engine_route_status(
         [
             {
                 "name": "claude",
@@ -149,7 +149,7 @@ def test_bootstrap_status_blocks_when_claude_auth_stops_default_hybrid_route(
 
 
 def test_default_hybrid_route_uses_codex_when_claude_is_missing() -> None:
-    ready, detail = setup_mod._default_engine_route_status(
+    ready, detail = setup_mod._engine_route_status(
         [
             {
                 "name": "claude",
@@ -170,6 +170,118 @@ def test_default_hybrid_route_uses_codex_when_claude_is_missing() -> None:
 
     assert ready is True
     assert detail == "Ready via Codex fallback."
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, "hybrid"),
+        ("", "hybrid"),
+        ("  ", "hybrid"),
+        ("removed-engine", "disabled"),
+        (" CODEX ", "codex"),
+    ],
+)
+def test_configured_setup_engine_mode_preserves_hybrid_default(
+    raw: str | None,
+    expected: str,
+) -> None:
+    env = {} if raw is None else {"ALFRED_ENGINE": raw}
+
+    assert setup_mod._configured_engine_mode(env) == expected
+
+
+def test_bootstrap_status_blocks_invalid_fleet_engine_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "removed-engine")
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert checks["engine_clis"]["detail"] == (
+        "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
+    )
+    assert checks["engine_clis"]["action"] == (
+        "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+    )
+
+
+def test_bootstrap_status_requires_claude_when_fleet_mode_is_claude(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "claude")
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": False,
+                "ready": False,
+                "state": "missing",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert "configured Claude Code route" in checks["engine_clis"]["detail"]
+
+
+def test_bootstrap_status_uses_ready_codex_when_fleet_mode_is_codex(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_ENGINE", "codex")
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is True
+    assert checks["engine_clis"]["ready"] is True
+    assert checks["engine_clis"]["detail"] == "Ready via configured Codex route."
 
 
 def test_engine_inventory_uses_scheduler_selected_claude_profile(
