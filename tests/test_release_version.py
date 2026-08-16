@@ -86,9 +86,14 @@ def test_release_workflow_validates_the_dispatch_tag_before_shell_use() -> None:
     assert 'tag="${{ inputs.tag }}"' not in workflow
     assert "^v[0-9]+\\.[0-9]+\\.[0-9]+$" in workflow
     assert "push:" not in workflow.partition("permissions:")[0]
-    assert "if: github.ref == 'refs/heads/main'" in workflow
+    assert "if: github.ref == 'refs/heads/main'" not in workflow
+    assert 'if [ "$GITHUB_REF" != "refs/heads/main" ]; then' in workflow
+    assert "Release workflow must run from main, not $GITHUB_REF" in workflow
     assert "ref: main" in workflow
     assert "ref: ${{ steps.tag.outputs.tag }}" not in workflow
+    assert workflow.index("- name: Verify dispatch source") < workflow.index(
+        "- name: Determine tag"
+    )
     assert workflow.index("- name: Determine tag") < workflow.index("- uses: actions/checkout@v7")
     assert "bin/release-source-gate.sh" in workflow
     assert '"refs/heads/main:refs/remotes/origin/main"' in workflow

@@ -13,9 +13,15 @@ permissions:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
+      - name: Verify dispatch source
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Release workflow must run from main, not $GITHUB_REF"
+            exit 1
+          fi
+
       - name: Determine tag
         id: tag
         env:
