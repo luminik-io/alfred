@@ -564,6 +564,39 @@ def test_lexical_like_fallback_requires_unicode_subject_in_mixed_query() -> None
     assert ids == ["relevant"]
 
 
+def test_lexical_like_fallback_requires_devanagari_subject_in_mixed_query() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("api-only", "the api client retries requests", _NOW),
+                (
+                    "relevant",
+                    "api डेटा मिटाएँ प्रक्रिया",
+                    _NOW - timedelta(seconds=1),
+                ),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            if "FROM lessons l WHERE" in normalized:
+                return Cursor()
+            raise AssertionError(f"unexpected SQL: {normalized}")
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = False
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "API डेटा मिटाएँ",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["relevant"]
+
+
 def test_lexical_like_fallback_matches_unicode_subject_stored_only_in_tag() -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:

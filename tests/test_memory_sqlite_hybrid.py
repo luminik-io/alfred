@@ -386,6 +386,21 @@ def test_recall_requires_unicode_subject_in_mixed_query(provider: SqliteHybridPr
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_recall_requires_devanagari_subject_in_mixed_query(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="The API client retries requests")
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="API डेटा मिटाएँ प्रक्रिया",
+    )
+
+    out = provider.recall(query="API डेटा मिटाएँ", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 @pytest.mark.parametrize("force_like_fallback", [False, True])
 def test_recall_matches_unicode_subject_stored_only_in_tag(
     monkeypatch: pytest.MonkeyPatch,
@@ -545,6 +560,14 @@ def test_tokenize_mixed_query_emits_unicode_subject_concepts() -> None:
     assert {"課金", "エラー", "修正"}.issubset(tokens)
     assert not mod._has_meaningful_lexical_overlap("The API client retries requests", tokens)
     assert mod._has_meaningful_lexical_overlap("API の課金エラーを修正する手順", tokens)
+
+
+def test_tokenize_keeps_devanagari_combining_marks_in_subject_concepts() -> None:
+    tokens = mod._tokenize("API डेटा मिटाएँ")
+
+    assert {"api", "डेटा", "मिटाएँ"}.issubset(tokens)
+    assert not mod._has_meaningful_lexical_overlap("API billing guidance", tokens)
+    assert mod._has_meaningful_lexical_overlap("API डेटा मिटाएँ प्रक्रिया", tokens)
 
 
 @pytest.mark.parametrize(

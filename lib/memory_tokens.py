@@ -13,7 +13,6 @@ import unicodedata
 from collections.abc import Iterator
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
-_UNICODE_WORD_RE = re.compile(r"[^\W_]+")
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:C\+\+|[A-Za-z]#|N\+[0-9]+|"
     r"O\((?:[0-9]+|n|log[ \t]+n)\)|"
@@ -99,11 +98,29 @@ def _unicode_script(char: str, previous: str | None) -> str:
     return name.partition(" ")[0].lower() or unicodedata.category(char)
 
 
+def _unicode_word_spans(text: str) -> Iterator[tuple[int, int, str]]:
+    """Yield alphanumeric word spans with combining marks kept on their base."""
+
+    start: int | None = None
+    for index, char in enumerate(text):
+        continues_word = char.isalnum() or (
+            start is not None and unicodedata.category(char).startswith("M")
+        )
+        if continues_word:
+            if start is None:
+                start = index
+            continue
+        if start is not None:
+            yield start, index, text[start:index]
+            start = None
+    if start is not None:
+        yield start, len(text), text[start:]
+
+
 def _unicode_concepts(text: str) -> Iterator[str]:
     """Yield non-ASCII word chunks and their meaningful script runs."""
 
-    for match in _UNICODE_WORD_RE.finditer(text):
-        raw = match.group(0)
+    for _start, _end, raw in _unicode_word_spans(text):
         if raw.isascii():
             continue
         normalized = unicodedata.normalize("NFKC", raw).casefold()
@@ -143,9 +160,7 @@ def meaningful_tokens(text: str) -> Iterator[str]:
 
     text = lexical_surface(text)
     compounds = _compound_matches(text)
-    unicode_words = [
-        match for match in _UNICODE_WORD_RE.finditer(text) if not match.group(0).isascii()
-    ]
+    unicode_words = [span for span in _unicode_word_spans(text) if not span[2].isascii()]
     for match in compounds:
         yield re.sub(r"\s+", " ", match.group(0))
 
@@ -164,13 +179,13 @@ def meaningful_tokens(text: str) -> Iterator[str]:
             continue
         while (
             unicode_word_index < len(unicode_words)
-            and unicode_words[unicode_word_index].end() <= match.start()
+            and unicode_words[unicode_word_index][1] <= match.start()
         ):
             unicode_word_index += 1
         if (
             unicode_word_index < len(unicode_words)
-            and match.end() > unicode_words[unicode_word_index].start()
-            and match.start() < unicode_words[unicode_word_index].end()
+            and match.end() > unicode_words[unicode_word_index][0]
+            and match.start() < unicode_words[unicode_word_index][1]
         ):
             continue
         raw = match.group(0)
@@ -225,7 +240,7 @@ def literal_fallback_query(text: str) -> str | None:
     stripped = lexical_surface(text).strip()
     if not stripped or tokenize(stripped):
         return None
-    words = [match.group(0) for match in _UNICODE_WORD_RE.finditer(stripped)]
+    words = [word for _start, _end, word in _unicode_word_spans(stripped)]
     if not words or all(word.isascii() for word in words):
         return None
     return stripped
