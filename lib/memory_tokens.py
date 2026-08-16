@@ -15,11 +15,13 @@ from collections.abc import Iterator
 _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 _UNICODE_WORD_RE = re.compile(r"[^\W_]+")
 _SYMBOLIC_TECHNICAL_TERM_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:C\+\+|[A-Za-z]#|N\+[0-9]+|O\([0-9]+\)|"
+    r"(?<![A-Za-z0-9])(?:C\+\+|[A-Za-z]#|N\+[0-9]+|"
+    r"O\((?:[0-9]+|n|log[ \t]+n)\)|"
     r"[A-Za-z0-9]{1,24}/[A-Za-z0-9]{1,24}(?:\.[A-Za-z0-9]{1,8})?)"
     r"(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+_ONE_CHAR_TECHNICAL_TOKENS = frozenset({"c", "r"})
 _MAX_QUERY_TOKENS = 24
 MAX_LITERAL_QUERY_CANDIDATES = 400
 _LOW_SIGNAL_QUERY_TOKENS = frozenset(
@@ -145,7 +147,7 @@ def meaningful_tokens(text: str) -> Iterator[str]:
         match for match in _UNICODE_WORD_RE.finditer(text) if not match.group(0).isascii()
     ]
     for match in compounds:
-        yield re.sub(r"\s+", "", match.group(0))
+        yield re.sub(r"\s+", " ", match.group(0))
 
     yield from _unicode_concepts(text)
 
@@ -173,7 +175,9 @@ def meaningful_tokens(text: str) -> Iterator[str]:
             continue
         raw = match.group(0)
         token = raw
-        if len(raw) > 1 and token not in _LOW_SIGNAL_QUERY_TOKENS:
+        if (
+            len(raw) > 1 or token in _ONE_CHAR_TECHNICAL_TOKENS
+        ) and token not in _LOW_SIGNAL_QUERY_TOKENS:
             yield token
 
 
@@ -244,11 +248,12 @@ def has_meaningful_lexical_overlap(text: str, query_tokens: list[str]) -> bool:
 
     required = required_lexical_overlap(query_tokens)
     query_token_set = set(query_tokens)
+    required_identity_tokens = query_token_set & _ONE_CHAR_TECHNICAL_TOKENS
     matched: set[str] = set()
     for token in meaningful_tokens(text):
         if token not in query_token_set:
             continue
         matched.add(token)
-        if len(matched) >= required:
+        if len(matched) >= required and required_identity_tokens <= matched:
             return True
     return False

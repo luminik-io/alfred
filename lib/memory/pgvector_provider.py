@@ -459,7 +459,7 @@ def _lexical_like_query(
 def _requires_exact_lexical_tokens(tokens: list[str]) -> bool:
     """Return whether PostgreSQL lexemes would erase concept identity."""
 
-    return any(not token.isalnum() for token in tokens)
+    return any(not token.isalnum() or len(token) == 1 for token in tokens)
 
 
 def _lexical_literal_query(

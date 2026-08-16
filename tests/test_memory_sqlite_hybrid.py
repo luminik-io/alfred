@@ -102,7 +102,10 @@ def test_lexical_recall_keeps_compound_single_character_terms(
     assert out[0].id == match.id
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "F#", "N+12", "O(42)", "HTTP/2.1", "I/O", "A/B"])
+@pytest.mark.parametrize(
+    "query",
+    ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
+)
 def test_default_chain_round_trips_symbolic_technical_terms(
     tmp_path: Path,
     query: str,
@@ -235,7 +238,10 @@ def test_default_chain_requires_mixed_query_unicode_subject(tmp_path: Path) -> N
     assert [item.id for item in out] == [relevant.id]
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "F#", "N+12", "O(42)", "HTTP/2.1", "I/O", "A/B"])
+@pytest.mark.parametrize(
+    "query",
+    ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
+)
 def test_like_fallback_recalls_symbolic_technical_terms(
     monkeypatch: pytest.MonkeyPatch,
     query: str,
@@ -352,6 +358,17 @@ def test_recall_requires_two_meaningful_terms_for_multiword_queries(
         codename="c",
         repo="r",
     )
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
+def test_recall_requires_one_character_language_identity(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(codename="c", repo="r", body="Fix R compiler warnings")
+    relevant = provider.reflect(codename="c", repo="r", body="Fix C compiler warnings")
+
+    out = provider.recall(query="Fix C compiler warnings", codename="c", repo="r")
 
     assert [lesson.id for lesson in out] == [relevant.id]
 
@@ -559,6 +576,24 @@ def test_unicode_word_is_one_overlap_concept(
 )
 def test_tokenize_recognizes_symbolic_technical_terms(query: str, expected: str) -> None:
     assert mod._tokenize(query) == [expected]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [("O(n)", "o(n)"), ("O(log n)", "o(log n)"), ("O(42)", "o(42)")],
+)
+def test_tokenize_recognizes_bounded_big_o_terms(query: str, expected: str) -> None:
+    assert mod._tokenize(query) == [expected]
+
+
+def test_tokenize_does_not_treat_arbitrary_big_o_prose_as_symbolic() -> None:
+    assert "o(ready)" not in mod._tokenize("O(ready)")
+
+
+def test_tokenize_preserves_only_explicit_one_character_languages() -> None:
+    assert mod._tokenize("Fix C compiler warnings") == ["c", "compiler", "warnings"]
+    assert mod._tokenize("Use R") == ["r"]
+    assert mod._tokenize("A I X Q") == []
 
 
 def test_compound_and_constituent_count_as_one_overlap_concept() -> None:

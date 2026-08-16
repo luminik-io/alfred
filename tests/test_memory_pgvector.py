@@ -445,7 +445,10 @@ def test_lexical_like_fallback_stops_after_eight_candidate_pages() -> None:
     assert conn.candidate_calls == 8
 
 
-@pytest.mark.parametrize("query", ["C++", "C#", "F#", "N+12", "O(42)", "HTTP/2.1", "I/O", "A/B"])
+@pytest.mark.parametrize(
+    "query",
+    ["C", "R", "C++", "C#", "F#", "N+12", "O(n)", "O(log n)", "O(42)", "HTTP/2.1", "I/O", "A/B"],
+)
 def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> None:
     class Cursor:
         def __init__(self, rows: list[tuple[Any, ...]]) -> None:
@@ -455,9 +458,10 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
             return self.rows
 
     class Connection:
-        def execute(self, sql: str, _params: Any) -> Cursor:
+        def execute(self, sql: str, params: list[Any]) -> Cursor:
             normalized = " ".join(sql.split())
             if "FROM lessons l WHERE" in normalized:
+                assert f"%{query.casefold()}%" in params
                 return Cursor([("match", f"prefer {query.casefold()} for this case.", _NOW)])
             raise AssertionError(f"unexpected SQL: {normalized}")
 
@@ -473,6 +477,35 @@ def test_lexical_like_fallback_recalls_symbolic_technical_terms(query: str) -> N
     )
 
     assert ids == ["match"]
+
+
+def test_lexical_like_fallback_requires_one_character_language_identity() -> None:
+    class Cursor:
+        def fetchall(self) -> list[tuple[Any, ...]]:
+            return [
+                ("r", "fix r compiler warnings", _NOW),
+                ("c", "fix c compiler warnings", _NOW - timedelta(seconds=1)),
+            ]
+
+    class Connection:
+        def execute(self, sql: str, _params: Any) -> Cursor:
+            normalized = " ".join(sql.split())
+            assert "body_tsv" not in normalized
+            assert "FROM lessons l WHERE" in normalized
+            return Cursor()
+
+    provider = PgvectorProvider(dsn="postgresql://u:p@h/db", pool=2)
+    provider._fts_ok = True
+
+    ids = provider._lexical_ids(
+        Connection(),
+        "Fix C compiler warnings",
+        codename="c",
+        repo="r",
+        now=_NOW,
+    )
+
+    assert ids == ["c"]
 
 
 def test_lexical_like_fallback_recalls_unicode_query() -> None:
