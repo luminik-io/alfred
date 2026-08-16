@@ -27,6 +27,8 @@ AUTONOMY_ENTRYPOINTS = [
     ROOT / "site/scripts/generate-og.mjs",
 ]
 
+ISSUE_TEMPLATES = ROOT / ".github/ISSUE_TEMPLATE"
+
 
 def test_public_entrypoints_use_the_outcome_led_positioning() -> None:
     for path in POSITIONING_ENTRYPOINTS:
@@ -57,3 +59,16 @@ def test_public_entrypoints_do_not_use_the_infrastructure_led_tagline() -> None:
         content = path.read_text().casefold()
         for phrase in retired_phrases:
             assert phrase not in content, path
+
+
+def test_issue_templates_match_the_current_product() -> None:
+    bug = (ISSUE_TEMPLATES / "bug.yml").read_text()
+    feature = (ISSUE_TEMPLATES / "feature.yml").read_text()
+    question = (ISSUE_TEMPLATES / "question.yml").read_text()
+
+    assert "placeholder: \"0.2.1\"" not in bug
+    assert "label: Operating system" in bug
+    assert "alfred doctor" in bug
+    assert "weekend-maintained" not in feature
+    assert "vector DB" not in feature
+    assert "the doc gets a star" not in question

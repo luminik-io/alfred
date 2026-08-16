@@ -8,23 +8,34 @@ body:
       value: |
         Thanks for taking the time to file a bug. The more concrete you are, the faster we can fix it.
 
-        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/INSTALL.md) "Troubleshooting". Most install/config issues are answered there.
+        **Before filing:** check [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred/blob/main/docs/TUTORIAL.md) "Common stumbles" and [`INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/INSTALL.md) "Troubleshooting". Run `alfred doctor` and include the result below.
 
   - type: input
     id: version
     attributes:
       label: alfred-os version
       description: Output of `cat VERSION` from your clone.
-      placeholder: "0.2.1"
+      placeholder: "0.7.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Debian or Ubuntu Linux
+        - Other Linux
     validations:
       required: true
 
   - type: input
-    id: macos
+    id: os_version
     attributes:
-      label: macOS version
-      description: Output of `sw_vers -productVersion`.
-      placeholder: "14.5"
+      label: Operating-system version
+      description: For example, the output of `sw_vers -productVersion` or `cat /etc/os-release`.
+      placeholder: "macOS 15.6 or Ubuntu 24.04"
     validations:
       required: true
 
@@ -54,7 +65,7 @@ body:
       placeholder: |
         export GH_ORG=myorg
         bash install.sh
-        bash bin/doctor.sh
+        alfred doctor
     validations:
       required: true
 
@@ -62,7 +73,7 @@ body:
     id: output
     attributes:
       label: Full output
-      description: Paste the entire output, not just the error line. Include `bash bin/doctor.sh` output if relevant.
+      description: Paste the entire output, not just the error line. Include `alfred doctor` output.
       render: shell
     validations:
       required: true
@@ -85,7 +96,7 @@ body:
     attributes:
       label: Sanity checks
       options:
-        - label: I checked `bash bin/doctor.sh` passes (or I included its output if not).
+        - label: I ran `alfred doctor` and included its output.
           required: true
         - label: I redacted any AWS keys, Slack URLs, bot tokens, or other secrets from the output above.
           required: true
