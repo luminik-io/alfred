@@ -1621,12 +1621,11 @@ def converse_engine_from_env() -> str:
     deterministic no-engine path.
     """
 
-    configured = (
-        os.environ.get(ENGINE_ENV)
-        or os.environ.get(FALLBACK_ENGINE_ENV)
-        or os.environ.get("ALFRED_ENGINE")
-        or ""
-    ).strip()
+    configured = configured_engine_from_env(
+        ENGINE_ENV,
+        FALLBACK_ENGINE_ENV,
+        "ALFRED_ENGINE",
+    )
     if configured:
         return configured
 
@@ -1645,6 +1644,40 @@ def converse_engine_from_env() -> str:
     if codex_ready:
         return "codex"
     return ""
+
+
+def configured_engine_from_env(*names: str) -> str:
+    """Return the first configured engine and bind its executable paths."""
+
+    configured = next(
+        (value.strip() for name in names if (value := os.environ.get(name, "")).strip()),
+        "",
+    )
+    if configured:
+        hydrate_engine_paths(configured)
+    return configured
+
+
+def hydrate_engine_paths(engine: str) -> None:
+    """Bind explicit conversation routes to setup-resolved executables."""
+
+    mode = engine.strip().lower()
+    selected = ("claude", "codex") if mode == "hybrid" else (mode,)
+    for name in selected:
+        if name not in {"claude", "codex"}:
+            continue
+        env_name = f"{name.upper()}_BIN"
+        path = _engine_cli_path(name)
+        if path:
+            os.environ[env_name] = path
+
+
+def _engine_cli_path(engine: str) -> str | None:
+    """Resolve one configured route through the canonical setup detector."""
+
+    from server.setup import engine_cli_path
+
+    return engine_cli_path(engine)
 
 
 def _available_engine_clis() -> dict[str, str]:

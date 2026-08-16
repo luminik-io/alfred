@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB = REPO_ROOT / "lib"
 if str(LIB) not in sys.path:
@@ -49,10 +51,15 @@ def test_converse_engine_prefers_explicit_configuration(monkeypatch) -> None:
         "_available_engine_clis",
         lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
     )
+    monkeypatch.setattr(
+        cc,
+        "_engine_cli_path",
+        lambda name: "/opt/homebrew/bin/codex" if name == "codex" else None,
+    )
 
     assert cc.converse_engine_from_env() == "codex"
     assert cc.os.environ["CLAUDE_BIN"] == ""
-    assert cc.os.environ["CODEX_BIN"] == ""
+    assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
 
 
 def test_converse_engine_uses_fleet_choice_without_inventory_probe(monkeypatch) -> None:
@@ -66,10 +73,83 @@ def test_converse_engine_uses_fleet_choice_without_inventory_probe(monkeypatch) 
         "_available_engine_clis",
         lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
     )
+    monkeypatch.setattr(
+        cc,
+        "_engine_cli_path",
+        lambda name: "/opt/homebrew/bin/codex" if name == "codex" else None,
+    )
 
     assert cc.converse_engine_from_env() == "codex"
     assert cc.os.environ["CLAUDE_BIN"] == ""
-    assert cc.os.environ["CODEX_BIN"] == ""
+    assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
+
+
+def test_converse_engine_hydrates_both_explicit_hybrid_paths(monkeypatch) -> None:
+    monkeypatch.setenv(cc.ENGINE_ENV, "hybrid")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
+    monkeypatch.setattr(
+        cc,
+        "_available_engine_clis",
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
+    )
+    paths = {
+        "claude": "/opt/homebrew/bin/claude",
+        "codex": "/opt/homebrew/bin/codex",
+    }
+    monkeypatch.setattr(cc, "_engine_cli_path", paths.get)
+
+    assert cc.converse_engine_from_env() == "hybrid"
+    assert cc.os.environ["CLAUDE_BIN"] == "/opt/homebrew/bin/claude"
+    assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
+
+
+@pytest.mark.parametrize("surface", ["compose", "theme", "onboarding", "slack"])
+def test_explicit_conversation_surface_uses_augmented_setup_search_path(
+    monkeypatch, tmp_path: Path, surface: str
+) -> None:
+    import onboarding_converse as onboarding
+    import server.setup as setup
+    import theme_builder as theme
+    from slack_surface.converse import SlackConverseConfig
+
+    codex = tmp_path / "codex"
+    codex.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    codex.chmod(0o755)
+    surface_env = {
+        "compose": cc.ENGINE_ENV,
+        "theme": theme.ENGINE_ENV,
+        "onboarding": onboarding.ENGINE_ENV,
+        "slack": "ALFRED_SLACK_CONVERSE_ENGINE",
+    }[surface]
+    for name in (
+        cc.ENGINE_ENV,
+        cc.FALLBACK_ENGINE_ENV,
+        "ALFRED_ENGINE",
+        theme.ENGINE_ENV,
+        onboarding.ENGINE_ENV,
+        "ALFRED_SLACK_CONVERSE_ENGINE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(surface_env, "codex")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("CODEX_BIN", "codex")
+    monkeypatch.setattr(
+        setup,
+        "_runtime_config_env",
+        lambda: {"PATH": "/usr/bin:/bin", "CODEX_BIN": "codex"},
+    )
+    monkeypatch.setattr(setup, "_engine_search_path", lambda _env: (str(tmp_path),))
+
+    selected = {
+        "compose": cc.converse_engine_from_env,
+        "theme": theme.engine_from_env,
+        "onboarding": onboarding.engine_from_env,
+        "slack": lambda: SlackConverseConfig.from_env().engine,
+    }[surface]()
+
+    assert selected == "codex"
+    assert cc.os.environ["CODEX_BIN"] == str(codex.resolve())
 
 
 def test_converse_engine_detects_installed_subscription_clis(monkeypatch) -> None:

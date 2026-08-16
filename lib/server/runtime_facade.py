@@ -95,6 +95,23 @@ def engine_inventory(
     )
 
 
+def engine_binary(
+    engine: str,
+    *,
+    environ: Mapping[str, str],
+    search_path: str | None,
+) -> str | None:
+    """Resolve one engine executable without running its readiness probes."""
+
+    from agent_runner.engine_registry import DEFAULT_ENGINE_REGISTRY
+
+    return DEFAULT_ENGINE_REGISTRY.resolve_binary(
+        engine,
+        environ=environ,
+        search_path=search_path,
+    )
+
+
 def scheduler_environment_value(
     name: str,
     *,

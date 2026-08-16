@@ -773,6 +773,18 @@ def engine_clis(*, deadline: float | None = None) -> list[dict[str, Any]]:
     )
 
 
+def engine_cli_path(engine: str) -> str | None:
+    """Resolve one engine through the setup search path without probing it."""
+
+    runtime_env = _runtime_config_env()
+    search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
+    return runtime_facade.engine_binary(
+        engine,
+        environ=runtime_env,
+        search_path=search,
+    )
+
+
 _DEFAULT_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
 
 

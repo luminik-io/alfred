@@ -319,6 +319,25 @@ class EngineRegistry:
         needed = frozenset(required)
         return tuple(row for row in self._descriptors if needed <= row.capabilities)
 
+    def resolve_binary(
+        self,
+        engine_id: str,
+        *,
+        environ: Mapping[str, str] | None = None,
+        search_path: str | None = None,
+        which: Callable[..., str | None] = shutil.which,
+    ) -> str | None:
+        """Resolve one engine executable without running the CLI."""
+
+        env = environ if environ is not None else os.environ
+        resolved_search_path = search_path if search_path is not None else env.get("PATH")
+        return _resolve_binary(
+            self.descriptor(engine_id),
+            environ=env,
+            search_path=resolved_search_path,
+            which=which,
+        )
+
     def inventory(
         self,
         *,

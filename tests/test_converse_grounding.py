@@ -378,6 +378,8 @@ def test_slack_converse_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.delenv(sc.ENV_ENABLED, raising=False)
     monkeypatch.delenv(sc.ENV_ENGINE, raising=False)
     monkeypatch.setenv(sc.ENV_FALLBACK_ENGINE, "hybrid")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
     monkeypatch.delenv(sc.ENV_CHANNELS, raising=False)
     config = sc.SlackConverseConfig.from_env()
     assert config.enabled is True
@@ -387,6 +389,8 @@ def test_slack_converse_enabled_by_default(monkeypatch: pytest.MonkeyPatch) -> N
 def test_slack_converse_kill_switch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(sc.ENV_ENABLED, "0")
     monkeypatch.setenv(sc.ENV_FALLBACK_ENGINE, "hybrid")
+    monkeypatch.setenv("CLAUDE_BIN", "")
+    monkeypatch.setenv("CODEX_BIN", "")
     config = sc.SlackConverseConfig.from_env()
     assert config.enabled is False
     assert config.engages("C123") is False
