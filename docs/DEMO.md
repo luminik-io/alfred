@@ -40,8 +40,9 @@ runs a compressed version of the real fleet loop against it with real
 1. **Plan.** Drake reads the sample project and drafts a short plan to add
    the missing `slugify` helper.
 2. **Approve.** The run pauses at an operator approval gate. You press Enter
-   to approve, or type `n` to decline. This is the same control you keep over
-   the real fleet: nothing proceeds without your say-so.
+   to approve, or type `n` to decline. The demo pauses once so you can inspect
+   the plan before it enters the queue. After approval, build, review, and
+   verification continue without another prompt.
 3. **Build.** Lucius implements the plan directly in the worktree.
 4. **Review.** Ra's al Ghul reviews the change. The sample
    project ships with a planted bug in its existing `titlecase` function: it

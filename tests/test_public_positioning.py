@@ -16,6 +16,9 @@ POSITIONING_ENTRYPOINTS = [
 PUBLIC_COPY = [
     *POSITIONING_ENTRYPOINTS,
     ROOT / "PRODUCT.md",
+    ROOT / "docs/CONVERSATION.md",
+    ROOT / "docs/DEMO.md",
+    ROOT / "docs/DESKTOP_CLIENT.md",
     ROOT / "site/DESIGN.md",
     ROOT / "site/src/content/docs/guides/skills.md",
     ROOT / "clients/desktop/src/components/layout/AppShell.tsx",
@@ -54,6 +57,10 @@ def test_public_entrypoints_do_not_use_the_infrastructure_led_tagline() -> None:
         "supervised coding agents",
         "one supervised team",
         "coordination and supervision layer",
+        "nothing proceeds without your say-so",
+        "nothing single-repo ships without a go-ahead",
+        "nothing runs without your approval",
+        "waits for your go-ahead before anything is filed or run",
     ]
     for path in PUBLIC_COPY:
         content = path.read_text().casefold()

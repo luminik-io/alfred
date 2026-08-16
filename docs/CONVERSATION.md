@@ -11,8 +11,9 @@ reply streams back as it is written, the way a person would answer.
 
 This is the bar: a natural conversation that reflects what Alfred knows, at the
 level of a capable teammate. Only when you clearly ask for work to be built does
-Alfred shift into planning, and even then it offers a plan in plain language
-first and waits for your go-ahead before anything is filed or run.
+Alfred shift into planning. It offers a plan in plain language and waits for
+confirmation before filing it. Once the plan enters the autonomous queue,
+scheduled roles continue without prompt-by-prompt supervision.
 
 The desktop Ask box is one of those surfaces. Ask a question and Alfred
 answers. Describe a change and it shapes a plan you can file for the fleet to
@@ -76,7 +77,7 @@ Slack's rate limits, and the final reconciled answer always lands in full. The
 desktop Ask streams token by token over Server-Sent Events via the same
 `run_turn` path.
 
-## Safety: nothing runs without your approval
+## Safety: conversation does not execute changes directly
 
 The conversation layer is a suggester, never an executor.
 
