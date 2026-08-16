@@ -62,10 +62,20 @@ publication.
    from the tag before verification. At this point the release exists but is
    not public and has no desktop assets.
 
-4. **Build the desktop packages against the tag.** The trusted signing
-   environment builds the signed and notarized macOS `.dmg` /
-   `.app.zip` and the Linux `.AppImage` / `.deb` from the tagged source and uploads them to the draft
-   release created in step 3. The desktop bundle version is already aligned to
+4. **Build the desktop packages against the tag.** Dispatch
+   `package-linux.yml` from protected `main` to build, inspect, and upload the
+   unsigned Linux `.AppImage` and `.deb` from the verified tag:
+
+   ```sh
+   gh workflow run package-linux.yml --repo luminik-io/alfred --ref main \
+     -f tag="v$(cat VERSION)"
+   ```
+
+   The build job has read-only repository access. A separate upload job checks
+   that the release is still a draft before it attaches the two stable Linux
+   assets. The trusted macOS signing environment builds, signs, notarizes,
+   staples, and uploads the `.dmg` and `.app.zip` from the same tag. The desktop
+   bundle version is already aligned to
    the release in the prep step (`clients/desktop/package.json` and
    `src-tauri/Cargo.toml` are set to the release number, and `tauri.conf.json`
    reads the version from `package.json`), so the desktop installers carry the

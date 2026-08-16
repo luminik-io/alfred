@@ -142,8 +142,8 @@ environment described below.
 
 Linux builds need the WebKitGTK and native dialog system libraries
 (`libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`,
-`librsvg2-dev`, `patchelf`, plus `build-essential` and `file`). The release
-workflow installs them; install them yourself for a local Linux build.
+`librsvg2-dev`, `patchelf`, plus `build-essential` and `file`). The Linux
+packaging workflow installs them; install them yourself for a local Linux build.
 
 ## First launch and install
 

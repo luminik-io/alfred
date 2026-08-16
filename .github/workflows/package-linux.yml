@@ -1,0 +1,204 @@
+name: Package Linux Desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Verified release tag to package (for example v0.7.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-linux-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+    steps:
+      - name: Verify dispatch source
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Linux packaging must run from main, not $GITHUB_REF"
+            exit 1
+          fi
+
+      - name: Determine tag
+        id: tag
+        env:
+          RELEASE_INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$RELEASE_INPUT_TAG"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag: $tag"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Verify reviewed and signed package source
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          tag="$RELEASE_TAG"
+          git fetch --no-tags origin \
+            "refs/heads/main:refs/remotes/origin/main"
+          git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+          tag_commit="$(bin/release-source-gate.sh "$tag" origin/main)"
+          tag_object="$(git rev-parse "refs/tags/${tag}")"
+          tag_verified="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}" \
+              --jq '.verification.verified'
+          )"
+          commit_verified="$(
+            gh api "repos/${GITHUB_REPOSITORY}/commits/${tag_commit}" \
+              --jq '.commit.verification.verified'
+          )"
+          if [ "$tag_verified" != "true" ] || [ "$commit_verified" != "true" ]; then
+            echo "::error::Release tag and commit must both be verified"
+            exit 1
+          fi
+          is_draft="$(
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq '.isDraft'
+          )"
+          if [ "$is_draft" != "true" ]; then
+            echo "::error::Release $tag must exist and remain a draft"
+            exit 1
+          fi
+          version="${tag#v}"
+          version_in_file="$(git show "${tag}:VERSION" | tr -d '[:space:]')"
+          if [ "$version" != "$version_in_file" ]; then
+            echo "::error::Tag $tag does not match VERSION ($version_in_file)"
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\n' "$tag_commit" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$tag_commit"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.13.0"
+          cache: npm
+          cache-dependency-path: clients/desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: clients/desktop/src-tauri
+
+      - name: Install Linux bundle dependencies
+        run: |
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            \( -iname "*microsoft*" -o -iname "*azure-cli*" \) \
+            -print -delete || true
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            file \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Build Linux packages
+        working-directory: clients/desktop
+        run: |
+          npm ci
+          npm run tauri -- build --bundles appimage,deb --ci
+          mkdir -p packages
+          appimage="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 \
+            -type f -name '*.AppImage' -print -quit)"
+          deb="$(find src-tauri/target/release/bundle/deb -maxdepth 1 \
+            -type f -name '*.deb' -print -quit)"
+          test -n "$appimage"
+          test -n "$deb"
+          install -m 0755 "$appimage" packages/Alfred.AppImage
+          install -m 0644 "$deb" packages/Alfred.deb
+
+      - name: Validate Linux packages
+        working-directory: clients/desktop
+        env:
+          PACKAGE_VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          version="$PACKAGE_VERSION"
+          appimage_kind="$(file -b packages/Alfred.AppImage)"
+          deb_kind="$(file -b packages/Alfred.deb)"
+          printf '%s\n' "$appimage_kind" "$deb_kind"
+          case "$appimage_kind" in
+            *ELF*executable*) ;;
+            *) echo "::error::Alfred.AppImage is not an ELF executable"; exit 1 ;;
+          esac
+          case "$deb_kind" in
+            *Debian*binary*package*) ;;
+            *) echo "::error::Alfred.deb is not a Debian package"; exit 1 ;;
+          esac
+          dpkg-deb --info packages/Alfred.deb
+          test "$(dpkg-deb -f packages/Alfred.deb Version)" = "$version"
+          extract_dir="$(mktemp -d)"
+          (
+            cd "$extract_dir"
+            "$GITHUB_WORKSPACE/clients/desktop/packages/Alfred.AppImage" \
+              --appimage-extract >/dev/null
+            test -x squashfs-root/AppRun
+          )
+          sha256sum packages/Alfred.AppImage packages/Alfred.deb
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-packages
+          path: clients/desktop/packages/
+          if-no-files-found: error
+          retention-days: 1
+
+  upload:
+    needs: build
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: linux-packages
+          path: packages
+
+      - name: Upload packages to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          tag="$RELEASE_TAG"
+          test -f packages/Alfred.AppImage
+          test -f packages/Alfred.deb
+          test "$(find packages -maxdepth 1 -type f | wc -l | tr -d ' ')" = "2"
+          is_draft="$(
+            gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq '.isDraft'
+          )"
+          if [ "$is_draft" != "true" ]; then
+            echo "::error::Release $tag must exist and remain a draft"
+            exit 1
+          fi
+          gh release upload "$tag" \
+            "packages/Alfred.AppImage" \
+            "packages/Alfred.deb" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
