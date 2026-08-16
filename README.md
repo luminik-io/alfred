@@ -11,16 +11,18 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Run a supervised fleet of coding agents on your own machine.**
+**An autonomous engineering team that ships while you're away.**
 
-Alfred coordinates Claude Code and Codex as short-lived engineering roles. The
-roles plan work, implement changes, add tests, review diffs, and open pull
-requests. Alfred uses your existing CLI authentication. Your operating system
-schedules each run, git worktrees separate code-changing roles, and GitHub
-records the handoffs.
+Alfred turns Claude Code and Codex into a spec-driven engineering team. Named
+agents plan the work, write the code, review each other, and open pull requests.
+Every run stays behind an approval gate.
 
-Alfred does not replace a coding harness. It adds durable coordination and
-deterministic controls around the harnesses you already use.
+Interactive coding agents finish one prompt while you sit at the keyboard, then
+forget what the last session learned. Alfred is for work that should keep moving
+after you step away: planned features, review comments, follow-up tests,
+dependency bumps, and multi-repo rollouts. Alfred carries each one to a pull
+request you can read, diff, and merge. It remembers what it learned for next
+time.
 
 | A coding-harness session | Alfred |
 |---|---|

@@ -37,7 +37,7 @@ export const GET: APIRoute = async ({ site }) => {
   const root = docs.find((d) => d.id === "docs");
   const summary =
     root?.data.description ??
-    "Run a supervised fleet of Claude Code and Codex agents on your own machine.";
+    "An autonomous engineering team that ships while you're away.";
 
   const out: string[] = [
     "# Alfred: full documentation",

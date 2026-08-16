@@ -206,7 +206,7 @@ function SidebarBrandButton({ onNavigate }: { onNavigate: (key: TabKey) => void 
           Alfred
         </span>
         <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-sidebar-foreground/55">
-          Supervised agent fleet
+          Engineering team
         </span>
       </span>
     </button>
