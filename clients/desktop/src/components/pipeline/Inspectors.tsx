@@ -330,7 +330,15 @@ export function CardInspector({
           </ul>
         </section>
       ) : null}
-      {github ? (
+      {card.github_evidence_unavailable ? (
+        <section
+          className="inspector-evidence inspector-evidence--github"
+          aria-label="GitHub evidence status"
+        >
+          <h4>GitHub evidence</h4>
+          <p>GitHub evidence is unavailable. Refresh Work or open the GitHub record.</p>
+        </section>
+      ) : github ? (
         <section
           className="inspector-evidence inspector-evidence--github"
           aria-label="GitHub evidence"

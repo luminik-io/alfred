@@ -817,6 +817,34 @@ describe("PipelineView", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("reports unavailable GitHub evidence without showing factual zeroes", async () => {
+    const user = userEvent.setup();
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [],
+          in_progress: [
+            card({
+              kind: "pr",
+              github_evidence: null,
+              github_evidence_unavailable: true,
+            }),
+          ],
+          shipped: [],
+        },
+        counts: { queued: 0, in_progress: 1, shipped: 0 },
+      }),
+    });
+
+    await user.click(screen.getByRole("button", { name: /ready issue/i }));
+
+    const inspector = screen.getByRole("complementary", {
+      name: "Work item inspector",
+    });
+    expect(within(inspector).getByText(/github evidence is unavailable/i)).toBeVisible();
+    expect(within(inspector).queryByText("Commits")).not.toBeInTheDocument();
+  });
+
   it("moves focus into the docked inspector and restores it when closed", async () => {
     const user = userEvent.setup();
     renderPipeline({

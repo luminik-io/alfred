@@ -7,6 +7,7 @@ deterministically. ``conftest.py`` puts ``lib/`` on ``sys.path``.
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -256,8 +257,47 @@ def test_pr_evidence_failure_keeps_the_work_card(monkeypatch):
 
     board = sb.build_board(["acme/api"], now=NOW)
 
-    assert [card["number"] for card in board["columns"]["in_progress"]] == [1]
+    card = board["columns"]["in_progress"][0]
+    assert card["number"] == 1
+    assert card["github_evidence"] is None
+    assert card["github_evidence_unavailable"] is True
     assert board["errors"] == ["acme/api"]
+
+
+def test_pr_evidence_requests_run_in_a_bounded_concurrent_batch(monkeypatch):
+    prs = [
+        {
+            "number": number,
+            "title": f"ship it {number}",
+            "url": f"u{number}",
+            "state": "OPEN",
+            "author": {"login": "alice"},
+            "createdAt": _iso(2),
+            "mergedAt": None,
+            "isDraft": False,
+            "labels": [{"name": "agent:authored"}],
+            "headRefName": f"senior-dev/ship-it-{number}",
+        }
+        for number in range(1, 5)
+    ]
+    all_views_started = threading.Barrier(len(prs))
+
+    def fake_gh(args, **kwargs):
+        if args[:2] == ["pr", "list"]:
+            return prs
+        if args[:2] == ["pr", "view"]:
+            all_views_started.wait(timeout=1)
+            return {"headRefOid": args[2] * 40}
+        if args[0] == "issue":
+            return []
+        return None
+
+    monkeypatch.setattr(sb, "_gh_json", fake_gh)
+
+    board = sb.build_board(["acme/api"], now=NOW)
+
+    assert len(board["columns"]["in_progress"]) == 4
+    assert board["errors"] == []
 
 
 def test_github_evidence_marks_capped_connections_without_guessing_totals():

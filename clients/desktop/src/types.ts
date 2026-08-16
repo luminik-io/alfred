@@ -379,6 +379,7 @@ export type ShippedCard = {
     commit_count_incomplete: boolean;
     latest_reviews: Array<{ author: string; state: string }>;
   } | null;
+  github_evidence_unavailable?: boolean;
   demo?: boolean;
 };
 

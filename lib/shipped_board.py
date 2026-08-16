@@ -25,6 +25,7 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
@@ -53,6 +54,8 @@ _PR_LIST_FIELDS = "number,title,url,author,state,createdAt,mergedAt,isDraft,labe
 _PR_EVIDENCE_FIELDS = (
     "headRefOid,reviewDecision,statusCheckRollup,changedFiles,files,commits,latestReviews"
 )
+_PR_EVIDENCE_WORKERS = 8
+_PR_EVIDENCE_SLOTS = threading.BoundedSemaphore(_PR_EVIDENCE_WORKERS)
 
 # Open issues carrying any of these label substrings are NOT genuine queue
 # work: they are already represented by an open PR, or parked for human /
@@ -412,6 +415,7 @@ def _github_evidence(item: dict) -> dict:
 
 def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> dict:
     ts = _parse_ts(item.get(ts_field))
+    evidence_unavailable = kind == "pr" and bool(item.get("_github_evidence_unavailable"))
     return {
         "repo": repo,
         "number": item.get("number"),
@@ -428,7 +432,10 @@ def _card(repo: str, item: dict, *, kind: str, ts_field: str, now: datetime) -> 
             if isinstance(lab, dict) and lab.get("name")
         ],
         "agent_evidence": _agent_shipped_evidence(item) if kind == "pr" else [],
-        "github_evidence": _github_evidence(item) if kind == "pr" else None,
+        "github_evidence": _github_evidence(item)
+        if kind == "pr" and not evidence_unavailable
+        else None,
+        "github_evidence_unavailable": evidence_unavailable,
     }
 
 
@@ -443,19 +450,23 @@ def _with_pr_evidence(repo: str, pr: dict) -> tuple[dict, bool]:
     number = pr.get("number")
     if not isinstance(number, int):
         return pr, False
-    evidence = _gh_json(
-        [
-            "pr",
-            "view",
-            str(number),
-            "--repo",
-            repo,
-            "--json",
-            _PR_EVIDENCE_FIELDS,
-        ]
-    )
+    try:
+        with _PR_EVIDENCE_SLOTS:
+            evidence = _gh_json(
+                [
+                    "pr",
+                    "view",
+                    str(number),
+                    "--repo",
+                    repo,
+                    "--json",
+                    _PR_EVIDENCE_FIELDS,
+                ]
+            )
+    except Exception:
+        evidence = None
     if not isinstance(evidence, dict):
-        return pr, True
+        return {**pr, "_github_evidence_unavailable": True}, True
     return {**pr, **evidence}, False
 
 
@@ -491,19 +502,30 @@ def _fetch_repo(
     if prs is None:
         errored = True
     else:
+        selected_prs: list[tuple[dict, str, str]] = []
         for pr in prs:
             if pr.get("state") == "OPEN" and (
                 not _in_progress_requires_agent_evidence() or _pr_is_agent_shipped(pr)
             ):
-                enriched, evidence_error = _with_pr_evidence(repo, pr)
-                errored = errored or evidence_error
-                in_progress.append(_card(repo, enriched, kind="pr", ts_field="createdAt", now=now))
+                selected_prs.append((pr, "in_progress", "createdAt"))
             elif pr.get("mergedAt"):
                 merged = _parse_ts(pr.get("mergedAt"))
                 if merged and merged.timestamp() >= cutoff and _pr_is_agent_shipped(pr):
-                    enriched, evidence_error = _with_pr_evidence(repo, pr)
+                    selected_prs.append((pr, "shipped", "mergedAt"))
+
+        if selected_prs:
+            workers = min(len(selected_prs), _PR_EVIDENCE_WORKERS)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as evidence_pool:
+                evidence_rows = evidence_pool.map(
+                    lambda selected: _with_pr_evidence(repo, selected[0]),
+                    selected_prs,
+                )
+                for (_pr, lane, ts_field), (enriched, evidence_error) in zip(
+                    selected_prs, evidence_rows, strict=True
+                ):
                     errored = errored or evidence_error
-                    shipped.append(_card(repo, enriched, kind="pr", ts_field="mergedAt", now=now))
+                    target = in_progress if lane == "in_progress" else shipped
+                    target.append(_card(repo, enriched, kind="pr", ts_field=ts_field, now=now))
 
     issues = _gh_json(
         [
