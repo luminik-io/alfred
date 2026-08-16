@@ -167,20 +167,19 @@ On first launch:
 
 ## Releases
 
-Releases start in the public `Release` workflow
-(`.github/workflows/release.yml`) and finish after the desktop assets are
-attached to that draft release.
+Releases start from reviewed `main` and finish after the desktop assets are
+attached and a maintainer publishes the draft.
 
-- **Tag a release:** push a tag matching `v*.*.*`, e.g.
-  `git tag v0.5.0 && git push origin v0.5.0`. The public workflow creates or
-  updates a **draft** GitHub Release and prints the source tarball checksum for
-  the Homebrew formula.
+- **Tag a release:** create and push a signed annotated tag on the reviewed
+  release commit.
+- **Create the draft:** dispatch `.github/workflows/release.yml` from `main`
+  with the tag as input. The workflow verifies the tag and commit, creates the
+  draft, and prints the source tarball checksum for the Homebrew formula.
 - **Attach desktop assets:** build from the same tag in the trusted packaging
   environment. Confirm `Alfred.dmg`, `Alfred.app.zip`, `Alfred.AppImage`, and
   `Alfred.deb` are present on the draft before publishing it.
-- **Dry run:** trigger the public release workflow manually
-  (`workflow_dispatch`) to update release notes or recompute the source tarball
-  checksum without publishing a release.
+- **Rerun:** dispatch the workflow again for the same tag. It can update a
+  draft, but it does not edit a published release.
 
 Keep `package.json`'s `version` in step with the tag (the tag does not set the
 in-app version; `package.json` does).

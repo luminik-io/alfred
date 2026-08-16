@@ -12,6 +12,8 @@
     "posttypecheck": "tsc --noEmit -p tsconfig.e2e.json",
     "lint": "eslint . --max-warnings 0",
     "build": "tsc && vite build",
+    "precapture:tour": "npm run build",
+    "capture:tour": "node scripts/capture-public-tour.mjs",
     "preview": "vite preview",
     "preview:contract": "vite preview --host 127.0.0.1 --strictPort",
     "test": "vitest run",

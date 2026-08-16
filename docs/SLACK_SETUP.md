@@ -10,12 +10,6 @@ Once it is wired up, Alfred lives in your channel: agents post what they did, an
 you can start work by mentioning Alfred and refine the plan in the thread before
 anything is built.
 
-<p align="center">
-  <img src="images/real/slack-plan-scoped.png" alt="A thread in the Alfred Slack channel: a plain-English request to add unit tests, which Alfred turns into a scoped plan with a readiness score, then waits for a go-ahead before building" width="820">
-</p>
-
-<p align="center"><em>Ask Alfred for a change in plain English and it writes back a plan with a readiness score. You shape it in the thread, and it builds only after you say go ahead.</em></p>
-
 ## At the end
 
 - A Slack app named `<your-fleet>-bot` in the workspace where you want the channel.
@@ -124,8 +118,8 @@ You should see the message in your channel and `posted: True` on stdout.
 Quick demo:
 
 ```python
-slack_post("Lucius shipped #42", severity="info")        # plain
-slack_post("Lucius hit max-turns on #42", severity="warn")   # ⚠️ prefix
+slack_post("Lucius shipped #42", severity="info")  # plain
+slack_post("Lucius hit max-turns on #42", severity="warn")  # ⚠️ prefix
 slack_post("Staging deploy drifted from main", severity="alert")  # 🚨 + <!here>
 ```
 

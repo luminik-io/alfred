@@ -65,7 +65,7 @@ cd ~/alfred
 
 The demo runs the plan, approval, implementation, review, fix, and verification
 stages. See the [demo guide](docs/DEMO.md) or watch the
-[56-second product tour](docs/media/alfred-tour.mp4).
+[fixture-only product tour](docs/media/alfred-tour.mp4).
 
 <p align="center">
   <img src="docs/images/demo.gif" alt="Alfred demo running plan, approval, build, review, and verification stages" width="760">

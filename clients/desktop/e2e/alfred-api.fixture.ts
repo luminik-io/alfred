@@ -351,13 +351,45 @@ export class AlfredApiFixture {
     }
     if (matches("/api/usage")) {
       await this.fulfill(route, {
-        available: false,
+        available: true,
         kind: "subscription",
-        source: "local",
+        source: "fixture",
         block: null,
-        codex: null,
+        codex: {
+          latest_day: {
+            date: "2026-07-23",
+            total_tokens: 82_400,
+            cost_usd: null,
+            input_tokens: 70_200,
+            output_tokens: 12_200,
+          },
+          totals: { total_tokens: 1_240_000, cost_usd: null },
+          quota: {
+            primary: { used_percent: 28, resets_at: "2026-07-23T23:00:00Z" },
+            secondary: { used_percent: 39, resets_at: "2026-07-28T20:00:00Z" },
+            plan_type: "sample",
+          },
+        },
+        limits: {
+          source: "fixture",
+          updated_at: "2026-07-23T20:15:00Z",
+          five_hour: {
+            utilization: 28,
+            remaining_percent: 72,
+            resets_at: "2026-07-23T23:00:00Z",
+            minutes_to_reset: 165,
+          },
+          seven_day: {
+            utilization: 39,
+            remaining_percent: 61,
+            resets_at: "2026-07-28T20:00:00Z",
+            minutes_to_reset: 7_185,
+          },
+          seven_day_sonnet: null,
+          seven_day_opus: null,
+          extra_usage: null,
+        },
         weekly: null,
-        error: "No local usage fixture.",
       });
       return true;
     }

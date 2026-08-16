@@ -114,3 +114,16 @@ against your own repos, opens real pull requests on GitHub, and holds work at
 the approval rules you configure. Start with [`../INSTALL.md`](../INSTALL.md),
 then use Alfred Desktop to choose repos, roster names, and schedule, or use
 `alfred-init` to configure agents, repos, schedule, and Slack.
+
+## Public tour recording
+
+Maintainers can rebuild the public desktop tour from the repository fixture:
+
+```sh
+npm --prefix clients/desktop run capture:tour
+```
+
+The command records the synthetic contract data in
+`clients/desktop/e2e/alfred-api.fixture.ts`. It writes the MP4 and poster to
+`docs/media/` and `site/public/media/`. Do not record a live Alfred runtime,
+operator account, Slack workspace, or repository for public media.
