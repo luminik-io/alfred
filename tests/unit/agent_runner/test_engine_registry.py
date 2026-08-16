@@ -950,3 +950,155 @@ def test_inventory_reuses_fresh_auth_while_direct_probe_rechecks_it(
     assert direct.ready is True
     assert protocol_calls == 1
     assert auth_calls == 2
+
+
+def test_claude_inventory_cache_is_scoped_to_auth_environment(
+    fresh_agent_runner,
+    tmp_path: Path,
+):
+    ar = fresh_agent_runner
+    ar.clear_engine_probe_cache()
+    binary = _executable(tmp_path / "claude")
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    registry = ar.EngineRegistry((descriptor,))
+    auth_profiles: list[str] = []
+
+    def runner(command, **kwargs):
+        args = tuple(command[1:])
+        if args == ("--version",):
+            return subprocess.CompletedProcess(command, 0, "Claude Code 2.1.41\n", "")
+        if args == ("auth", "status"):
+            profile = kwargs["env"]["CLAUDE_CONFIG_DIR"]
+            auth_profiles.append(profile)
+            return subprocess.CompletedProcess(
+                command,
+                0 if profile.endswith("ready") else 1,
+                "",
+                "",
+            )
+        raise AssertionError(f"unexpected probe: {args}")
+
+    first = registry.inventory(
+        environ={
+            "CLAUDE_BIN": str(binary),
+            "CLAUDE_CONFIG_DIR": str(tmp_path / "ready"),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+    )
+    second = registry.inventory(
+        environ={
+            "CLAUDE_BIN": str(binary),
+            "CLAUDE_CONFIG_DIR": str(tmp_path / "signed-out"),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+    )
+
+    assert first[0]["state"] == "ready"
+    assert second[0]["state"] == "auth_required"
+    assert auth_profiles == [str(tmp_path / "ready"), str(tmp_path / "signed-out")]
+
+
+def test_codex_inventory_cache_is_scoped_to_auth_environment(
+    fresh_agent_runner,
+    tmp_path: Path,
+):
+    ar = fresh_agent_runner
+    ar.clear_engine_probe_cache()
+    binary = _executable(tmp_path / "codex")
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("codex")
+    registry = ar.EngineRegistry((descriptor,))
+    auth_profiles: list[str] = []
+
+    def runner(command, **kwargs):
+        args = tuple(command[1:])
+        if args == ("--version",):
+            return subprocess.CompletedProcess(command, 0, "codex 1.2.3\n", "")
+        if args == ("exec", "--help"):
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "--output-last-message --sandbox --cd --skip-git-repo-check "
+                "--ignore-user-config --ephemeral -c --model --add-dir "
+                "--dangerously-bypass-approvals-and-sandbox\n",
+                "",
+            )
+        if args == ("login", "status"):
+            profile = kwargs["env"]["CODEX_HOME"]
+            auth_profiles.append(profile)
+            return subprocess.CompletedProcess(
+                command,
+                0 if profile.endswith("ready") else 1,
+                "",
+                "",
+            )
+        raise AssertionError(f"unexpected probe: {args}")
+
+    first = registry.inventory(
+        environ={
+            "CODEX_BIN": str(binary),
+            "CODEX_HOME": str(tmp_path / "ready"),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+    )
+    second = registry.inventory(
+        environ={
+            "CODEX_BIN": str(binary),
+            "CODEX_HOME": str(tmp_path / "signed-out"),
+            "PATH": "",
+        },
+        search_path="",
+        runner=runner,
+    )
+
+    assert first[0]["state"] == "ready"
+    assert second[0]["state"] == "auth_required"
+    assert auth_profiles == [str(tmp_path / "ready"), str(tmp_path / "signed-out")]
+
+
+def test_inventory_cache_distinguishes_missing_and_empty_auth_values(
+    fresh_agent_runner,
+    tmp_path: Path,
+):
+    ar = fresh_agent_runner
+    ar.clear_engine_probe_cache()
+    binary = _executable(tmp_path / "claude")
+    descriptor = ar.DEFAULT_ENGINE_REGISTRY.descriptor("claude")
+    registry = ar.EngineRegistry((descriptor,))
+    auth_calls = 0
+
+    def runner(command, **kwargs):
+        nonlocal auth_calls
+        args = tuple(command[1:])
+        if args == ("--version",):
+            return subprocess.CompletedProcess(command, 0, "Claude Code 2.1.41\n", "")
+        if args == ("auth", "status"):
+            auth_calls += 1
+            return subprocess.CompletedProcess(
+                command,
+                1 if "CLAUDE_CONFIG_DIR" in kwargs["env"] else 0,
+                "",
+                "",
+            )
+        raise AssertionError(f"unexpected probe: {args}")
+
+    common = {"CLAUDE_BIN": str(binary), "PATH": ""}
+    first = registry.inventory(
+        environ=common,
+        search_path="",
+        runner=runner,
+    )
+    second = registry.inventory(
+        environ={**common, "CLAUDE_CONFIG_DIR": ""},
+        search_path="",
+        runner=runner,
+    )
+
+    assert first[0]["state"] == "ready"
+    assert second[0]["state"] == "auth_required"
+    assert auth_calls == 2

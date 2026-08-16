@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import contextlib
+import hashlib
 import os
 import re
 import shutil
@@ -399,7 +400,7 @@ class EngineRegistry:
 
 DEFAULT_ENGINE_REGISTRY = EngineRegistry(ENGINE_DESCRIPTORS)
 
-_ProbeCacheKey = tuple[str, str, int, int]
+_ProbeCacheKey = tuple[str, str, int, int, str]
 _probe_cache: dict[_ProbeCacheKey, tuple[float, EngineProbeResult]] = {}
 
 
@@ -482,6 +483,26 @@ def _fingerprint(path: str) -> tuple[int, int]:
     except OSError:
         return (0, 0)
     return (stat.st_mtime_ns, stat.st_size)
+
+
+def _auth_context_fingerprint(
+    descriptor: EngineDescriptor,
+    environ: Mapping[str, str],
+) -> str:
+    """Digest only inputs that can select or change the CLI authentication context."""
+
+    auth = descriptor.auth_command
+    if auth is None:
+        return ""
+    digest = hashlib.sha256()
+    for name in sorted(auth.env_vars | {"HOME"}):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(b"\1" if name in environ else b"\0")
+        if name in environ:
+            digest.update(environ[name].encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def _safe_version(output: str) -> str | None:
@@ -722,7 +743,13 @@ def probe_engine(
         )
 
     mtime_ns, size = _fingerprint(binary)
-    cache_key = (descriptor.id, binary, mtime_ns, size)
+    cache_key = (
+        descriptor.id,
+        binary,
+        mtime_ns,
+        size,
+        _auth_context_fingerprint(descriptor, env),
+    )
     cached = _probe_cache.get(cache_key) if use_cache else None
     cached_result = cached[1] if cached and cached[0] > time.monotonic() else None
     if cached_result and (
