@@ -746,7 +746,7 @@ class SqliteHybridProvider:
             match = " OR ".join(f'"{token}"' for token in retrieval_tokens)
             sql = (
                 "SELECT l.id FROM lessons_fts f JOIN lessons l ON l.id = f.lesson_id "
-                "WHERE f.text MATCH ? " + scope_sql + " ORDER BY bm25(f) LIMIT ?"
+                "WHERE f.text MATCH ? " + scope_sql + " ORDER BY bm25(lessons_fts) LIMIT ?"
             )
             params: list[Any] = [match, *scope_params, self.pool]
             try:

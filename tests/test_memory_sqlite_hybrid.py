@@ -502,6 +502,27 @@ def test_fts_recall_preserves_inflection_retrieval_variants(
     assert [lesson.id for lesson in out] == [relevant.id]
 
 
+def test_fts_inflection_retrieval_executes_without_like_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: SqliteHybridProvider,
+) -> None:
+    relevant = provider.reflect(
+        codename="c",
+        repo="r",
+        body="GraphQL policies must be reviewed",
+    )
+    assert provider._fts_ok is True
+
+    def reject_like_fallback() -> int:
+        raise AssertionError("FTS query unexpectedly fell back to LIKE")
+
+    monkeypatch.setattr(mod, "_lexical_fallback_page_size", reject_like_fallback)
+
+    out = provider.recall(query="Fix GraphQL policies", codename="c", repo="r")
+
+    assert [lesson.id for lesson in out] == [relevant.id]
+
+
 @pytest.mark.parametrize(
     ("query_term", "lesson_term"),
     [
