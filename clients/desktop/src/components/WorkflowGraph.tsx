@@ -50,7 +50,11 @@ function AgentNode({ data }: NodeProps) {
       data-selected={node.selected ? "true" : "false"}
       style={{ "--agent-accent": node.accent } as React.CSSProperties}
     >
-      <Handle type="target" position={Position.Left} className="wf-node__handle" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="wf-node__handle"
+      />
       <span className="wf-node__rail" aria-hidden="true" />
       <span className="wf-node__mark" aria-hidden="true">
         {monogram}
@@ -81,12 +85,19 @@ function AgentNode({ data }: NodeProps) {
           </span>
         ) : null}
       </span>
-      <Handle type="source" position={Position.Right} className="wf-node__handle" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="wf-node__handle"
+      />
     </div>
   );
 }
 
-const NODE_TYPES: ReactFlowProps["nodeTypes"] = { agent: AgentNode, lane: LaneNode };
+const NODE_TYPES: ReactFlowProps["nodeTypes"] = {
+  agent: AgentNode,
+  lane: LaneNode,
+};
 
 /**
  * A quiet glass legend pinned top-left of the canvas so a newcomer can decode
@@ -107,19 +118,35 @@ function WorkflowLegend() {
       </p>
       <ul className="wf-legend__items">
         <li className="wf-legend__item">
-          <span className="wf-legend__swatch" data-tone="ok" aria-hidden="true" />
+          <span
+            className="wf-legend__swatch"
+            data-tone="ok"
+            aria-hidden="true"
+          />
           Running
         </li>
         <li className="wf-legend__item">
-          <span className="wf-legend__swatch" data-tone="warn" aria-hidden="true" />
+          <span
+            className="wf-legend__swatch"
+            data-tone="warn"
+            aria-hidden="true"
+          />
           Needs attention
         </li>
         <li className="wf-legend__item">
-          <span className="wf-legend__swatch" data-tone="error" aria-hidden="true" />
+          <span
+            className="wf-legend__swatch"
+            data-tone="error"
+            aria-hidden="true"
+          />
           Failing
         </li>
         <li className="wf-legend__item">
-          <span className="wf-legend__swatch" data-tone="idle" aria-hidden="true" />
+          <span
+            className="wf-legend__swatch"
+            data-tone="idle"
+            aria-hidden="true"
+          />
           Idle
         </li>
         <li className="wf-legend__item wf-legend__item--edge">
@@ -127,7 +154,10 @@ function WorkflowLegend() {
           Handoff
         </li>
         <li className="wf-legend__item wf-legend__item--edge">
-          <span className="wf-legend__edge wf-legend__edge--gate" aria-hidden="true" />
+          <span
+            className="wf-legend__edge wf-legend__edge--gate"
+            aria-hidden="true"
+          />
           Your approval
         </li>
       </ul>
@@ -228,15 +258,24 @@ function FitToContainer({
             frame();
           } else if (fallbackWidth > 0 && fallbackHeight > 0) {
             const target = initialWorkflowViewport(
-              { x: fallbackX, y: fallbackY, width: fallbackWidth, height: fallbackHeight },
+              {
+                x: fallbackX,
+                y: fallbackY,
+                width: fallbackWidth,
+                height: fallbackHeight,
+              },
               { width, height },
             );
-            void setViewport(target, { duration: prefersReducedMotion() ? 0 : 240 });
+            void setViewport(target, {
+              duration: prefersReducedMotion() ? 0 : 240,
+            });
           }
           return;
         }
         const target = initialWorkflowViewport(bounds, { width, height });
-        void setViewport(target, { duration: prefersReducedMotion() ? 0 : 240 });
+        void setViewport(target, {
+          duration: prefersReducedMotion() ? 0 : 240,
+        });
       }, 80);
     };
 
@@ -332,55 +371,60 @@ export function WorkflowGraph({
           <Maximize2 aria-hidden="true" size={15} />
         )}
       </button>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        // Initial + resize framing is driven by FitToContainer (readable floor,
-        // leftmost-lane start). We deliberately omit the `fitView` prop so React
-        // Flow does not auto-fit the whole graph below the readable floor on
-        // load. The Controls fit button still uses fitViewOptions to reach it.
-        fitViewOptions={FIT_OPTIONS}
-        minZoom={WORKFLOW_ZOOM.min}
-        maxZoom={WORKFLOW_ZOOM.max}
-        // Canvas controls: the mouse wheel and trackpad two-finger scroll zoom
-        // the canvas (the primary way to zoom in on a cramped pipeline), pinch
-        // zooms on touch, and click-drag pans. The +/- and fit-to-view controls
-        // (bottom-left) and the minimap cover keyboard/mouse-only panning, so a
-        // mouse user never has to drag to see a node clipped off an edge.
-        zoomOnScroll
-        panOnScroll={false}
-        zoomOnPinch
-        panOnDrag
-        zoomOnDoubleClick={false}
-        nodesConnectable={false}
-        edgesFocusable={false}
-        nodesDraggable={false}
-        // We render our own selected state (data-selected) from the inspector,
-        // so disable React Flow's native selection to avoid a second indicator.
-        // onNodeClick still fires.
-        elementsSelectable={false}
-        proOptions={{ hideAttribution: false }}
-        onNodeClick={(_event, node) => {
-          if (node.type === "agent") {
-            selectNode(node.id);
-          }
-        }}
-      >
-        <FitToContainer signature={signature} fallbackBounds={fallbackBounds} />
-        <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
-        <Controls showInteractive={false} position="bottom-left" />
-        <MiniMap
-          pannable
-          zoomable
-          ariaLabel="Workflow minimap"
-          position="bottom-right"
-          className="wf-minimap"
-          nodeColor={miniMapNodeColor}
-          nodeStrokeWidth={0}
-          maskColor="color-mix(in oklch, var(--background), transparent 35%)"
-        />
-      </ReactFlow>
+      <div className="workflow-graph__canvas">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={NODE_TYPES}
+          // Initial + resize framing is driven by FitToContainer (readable floor,
+          // leftmost-lane start). We deliberately omit the `fitView` prop so React
+          // Flow does not auto-fit the whole graph below the readable floor on
+          // load. The Controls fit button still uses fitViewOptions to reach it.
+          fitViewOptions={FIT_OPTIONS}
+          minZoom={WORKFLOW_ZOOM.min}
+          maxZoom={WORKFLOW_ZOOM.max}
+          // Canvas controls: the mouse wheel and trackpad two-finger scroll zoom
+          // the canvas (the primary way to zoom in on a cramped pipeline), pinch
+          // zooms on touch, and click-drag pans. The +/- and fit-to-view controls
+          // (bottom-left) and the minimap cover keyboard/mouse-only panning, so a
+          // mouse user never has to drag to see a node clipped off an edge.
+          zoomOnScroll
+          panOnScroll={false}
+          zoomOnPinch
+          panOnDrag
+          zoomOnDoubleClick={false}
+          nodesConnectable={false}
+          edgesFocusable={false}
+          nodesDraggable={false}
+          // We render our own selected state (data-selected) from the inspector,
+          // so disable React Flow's native selection to avoid a second indicator.
+          // onNodeClick still fires.
+          elementsSelectable={false}
+          proOptions={{ hideAttribution: false }}
+          onNodeClick={(_event, node) => {
+            if (node.type === "agent") {
+              selectNode(node.id);
+            }
+          }}
+        >
+          <FitToContainer
+            signature={signature}
+            fallbackBounds={fallbackBounds}
+          />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+          <Controls showInteractive={false} position="bottom-left" />
+          <MiniMap
+            pannable
+            zoomable
+            ariaLabel="Workflow minimap"
+            position="bottom-right"
+            className="wf-minimap"
+            nodeColor={miniMapNodeColor}
+            nodeStrokeWidth={0}
+            maskColor="color-mix(in oklch, var(--background), transparent 35%)"
+          />
+        </ReactFlow>
+      </div>
     </div>
   );
 }

@@ -78,7 +78,12 @@ Ask owns plain-language intake and the planning inbox. Plan cards show:
 - approve/reject status
 - PR chain after execution starts
 
-The app can help draft or refine a spec, but the final collaboration loop stays in Slack. Any "send to Alfred" action posts to or links back to the approval thread. A locally drafted single-repo issue lands behind an approval gate (`agent:plan-pending-approval`) and is held from autonomous pickup until you approve it, so nothing single-repo ships without a go-ahead.
+The app can help draft or refine a spec, but the final collaboration loop stays
+in Slack. Any "send to Alfred" action posts to or links back to the approval
+thread. A locally drafted single-repo issue lands behind an approval gate
+(`agent:plan-pending-approval`) and stays out of the autonomous queue until you
+approve it. After approval, scheduled roles continue through implementation,
+testing, and review without another prompt.
 
 ### Agents in detail
 

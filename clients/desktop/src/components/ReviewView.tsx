@@ -67,7 +67,13 @@ const SHIPPED_WINDOWS: Array<{ key: number; label: string }> = [
   { key: 14, label: "14 days" },
 ];
 
-const ROUTE_AGENT_PRIORITY = ["architect", "senior-dev", "planner", "spec-planner", "test-engineer"];
+const ROUTE_AGENT_PRIORITY = [
+  "architect",
+  "senior-dev",
+  "planner",
+  "spec-planner",
+  "test-engineer",
+];
 
 type RouteCard = {
   codename: string;
@@ -106,8 +112,14 @@ const FALLBACK_ROUTE_SEEDS: FallbackRouteSeed[] = [
 
 function countBoardLiveWork(board: ShippedBoard | null): number {
   if (!board) return 0;
-  const queued = Math.max(board.counts?.queued ?? 0, board.columns.queued.length);
-  const inProgress = Math.max(board.counts?.in_progress ?? 0, board.columns.in_progress.length);
+  const queued = Math.max(
+    board.counts?.queued ?? 0,
+    board.columns.queued.length,
+  );
+  const inProgress = Math.max(
+    board.counts?.in_progress ?? 0,
+    board.columns.in_progress.length,
+  );
   return queued + inProgress;
 }
 
@@ -151,10 +163,14 @@ export function ReviewView({
   );
   const filteredShipped = useMemo<ShippedBoard | null>(() => {
     if (!shipped) return null;
-    const within = (card: ShippedCard) => card.age_days == null || card.age_days <= shippedDays;
+    const within = (card: ShippedCard) =>
+      card.age_days == null || card.age_days <= shippedDays;
     return {
       ...shipped,
-      columns: { ...shipped.columns, shipped: shipped.columns.shipped.filter(within) },
+      columns: {
+        ...shipped.columns,
+        shipped: shipped.columns.shipped.filter(within),
+      },
     };
   }, [shipped, shippedDays]);
   const filteredDigest = useMemo(() => {
@@ -166,7 +182,11 @@ export function ReviewView({
       item.agent
         ? {
             ...item,
-            agent: resolveThemedIdentity({ codename: item.agent }, rosterTheme, customNames).name,
+            agent: resolveThemedIdentity(
+              { codename: item.agent },
+              rosterTheme,
+              customNames,
+            ).name,
           }
         : item,
     );
@@ -174,7 +194,8 @@ export function ReviewView({
   // A paused fleet is not "running", so a mostly/all-paused fleet with no live
   // firing prefers the shipped proof (or needs-you) over an empty Running lane.
   const fleetHeld = fleet.allPaused || fleet.mostlyPaused;
-  const hasLiveActivity = running.running.length > 0 || (!fleetHeld && boardLiveCount > 0);
+  const hasLiveActivity =
+    running.running.length > 0 || (!fleetHeld && boardLiveCount > 0);
   const preferredLane: InboxLane = decisions
     ? "needs"
     : hasLiveActivity
@@ -202,7 +223,9 @@ export function ReviewView({
   // firing counts as live work then, so "Working now" never overstates a paused
   // fleet. When the fleet is running, live work is the usual runs + board work.
   // `fleetHeld` (derived above) is the single source of truth for this state.
-  const liveWorkCount = fleetHeld ? runningCount : runningCount + boardLiveCount;
+  const liveWorkCount = fleetHeld
+    ? runningCount
+    : runningCount + boardLiveCount;
   const pauseSummary = fleetPauseSummary(fleet, boardLiveCount);
   const liveRunSummary = runningCount
     ? `${runningCount} ${runningCount === 1 ? "run is" : "runs are"} active now.`
@@ -221,7 +244,9 @@ export function ReviewView({
           : null,
         liveRunSummary,
         activeThreadSummary,
-        decisions ? `${decisions} ${decisions === 1 ? "needs" : "need"} your go-ahead.` : null,
+        decisions
+          ? `${decisions} ${decisions === 1 ? "needs" : "need"} your go-ahead.`
+          : null,
         snagCount ? `${snagCount} hit a snag.` : null,
       ]
         .filter(Boolean)
@@ -243,8 +268,18 @@ export function ReviewView({
 
   const laneTabs: TabItem<InboxLane>[] = [
     { key: "needs", label: "Needs you", icon: Bell, badge: decisions || null },
-    { key: "activity", label: "Running", icon: Activity, badge: liveWorkCount || null },
-    { key: "shipped", label: "Shipped", icon: GitPullRequest, badge: filteredDigest.length || null },
+    {
+      key: "activity",
+      label: "Running",
+      icon: Activity,
+      badge: liveWorkCount || null,
+    },
+    {
+      key: "shipped",
+      label: "Shipped",
+      icon: GitPullRequest,
+      badge: filteredDigest.length || null,
+    },
   ];
 
   const overviewCards = [
@@ -253,7 +288,9 @@ export function ReviewView({
       value: String(health.runsToday),
       detail: health.lastRunByAgent.length
         ? `${health.succeeded} ok, ${health.failed} failed. Last: ${health.lastRunByAgent[0].codename} ${
-            health.lastRunByAgent[0].at ? friendlyTime(health.lastRunByAgent[0].at) : ""
+            health.lastRunByAgent[0].at
+              ? friendlyTime(health.lastRunByAgent[0].at)
+              : ""
           }`.trim()
         : "No runs recorded yet.",
     },
@@ -278,7 +315,9 @@ export function ReviewView({
     {
       label: `Shipped in ${shippedDays === 1 ? "24h" : `${shippedDays}d`}`,
       value: filteredDigest.length ? String(filteredDigest.length) : "0",
-      detail: filteredDigest.length ? "Merged PRs with Alfred evidence." : "No shipped evidence here.",
+      detail: filteredDigest.length
+        ? "Merged PRs with Alfred evidence."
+        : "No shipped evidence here.",
     },
   ];
 
@@ -291,7 +330,10 @@ export function ReviewView({
   // duplicates it: it is a pure morning-after summary plus the next action.
   const decisionCta = decisions
     ? {
-        label: decisions === 1 ? "Review the 1 waiting" : `Review the ${decisions} waiting`,
+        label:
+          decisions === 1
+            ? "Review the 1 waiting"
+            : `Review the ${decisions} waiting`,
         onClick: () => {
           setLanePinned(true);
           setLane("needs");
@@ -318,7 +360,6 @@ export function ReviewView({
     <div className="command-center" aria-label="Inbox">
       <header className="command-center__top" aria-label="Inbox summary">
         <div className="command-center__title">
-          <p>Inbox</p>
           <h1>{headline}</h1>
           <span>{summary}</span>
         </div>
@@ -339,12 +380,27 @@ export function ReviewView({
         </div>
       </header>
 
+      {shipped?.sample ? (
+        <p className="sample-board-notice" role="note">
+          Demo data. No real repositories or agent activity.
+        </p>
+      ) : null}
+
       <div className="command-center__grid">
-        <section ref={queueRef} className="command-center__pane command-center__pane--main" aria-label="Inbox queue">
+        <section
+          ref={queueRef}
+          className="command-center__pane command-center__pane--main"
+          aria-label="Inbox queue"
+        >
           <div className="command-center__pane-head">
             <div>
-              <p>{lane === "needs" ? "Decide" : lane === "activity" ? "Watch" : "Proof"}</p>
-              <h2>{lane === "needs" ? "Needs you" : lane === "activity" ? "Running now" : "Shipped PRs"}</h2>
+              <h2>
+                {lane === "needs"
+                  ? "Needs you"
+                  : lane === "activity"
+                    ? "Running now"
+                    : "Shipped PRs"}
+              </h2>
             </div>
             <Tabs
               tabs={laneTabs}
@@ -365,7 +421,11 @@ export function ReviewView({
               />
             ) : null}
             {lane === "activity" ? (
-              <ActivityLane running={running} activeThreads={activeThreads} onSwitch={onSwitch} />
+              <ActivityLane
+                running={running}
+                activeThreads={activeThreads}
+                onSwitch={onSwitch}
+              />
             ) : null}
             {lane === "shipped" ? (
               <ShippedLane
@@ -376,7 +436,8 @@ export function ReviewView({
                 onOpenWork={() => onSwitch("pipeline")}
                 onOpenThread={
                   onOpenThread
-                    ? (card) => onOpenThread(threadForCard(card, filteredShipped))
+                    ? (card) =>
+                        onOpenThread(threadForCard(card, filteredShipped))
                     : undefined
                 }
               />
@@ -387,8 +448,13 @@ export function ReviewView({
         <aside className="command-center__rail" aria-label="Review insights">
           <section className="command-center__route" aria-label="Agent roles">
             <div className="command-center__rail-head">
-              <p>Agent roles</p>
-              <Button type="button" variant="ghost" size="sm" onClick={() => onSwitch("fleet")}>
+              <h2>Agent roles</h2>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onSwitch("fleet")}
+              >
                 Manage
               </Button>
             </div>
@@ -396,7 +462,9 @@ export function ReviewView({
               {routeCards.map((agent) => (
                 <article
                   key={agent.codename}
-                  style={{ "--agent-accent": agent.themeAccent } as CSSProperties}
+                  style={
+                    { "--agent-accent": agent.themeAccent } as CSSProperties
+                  }
                 >
                   <span>{agent.displayName}</span>
                   <strong>{agent.roleTitle}</strong>
@@ -406,9 +474,12 @@ export function ReviewView({
             </div>
           </section>
 
-          <section className="command-center__pulse" aria-label="Alfred shift summary">
+          <section
+            className="command-center__pulse"
+            aria-label="Alfred shift summary"
+          >
             <div className="command-center__rail-head">
-              <p>Shift</p>
+              <h2>Shift</h2>
             </div>
             <div className="command-center__metrics">
               {overviewCards.map((card) => (
@@ -421,9 +492,12 @@ export function ReviewView({
             </div>
           </section>
 
-          <section className="command-center__capacity" aria-label="Engine capacity">
+          <section
+            className="command-center__capacity"
+            aria-label="Engine capacity"
+          >
             <div className="command-center__rail-head">
-              <p>Capacity</p>
+              <h2>Capacity</h2>
             </div>
             <UsagePanel usage={usage} state={usageState} compact />
           </section>
@@ -459,7 +533,9 @@ function NeedsYouLane({
     <section className="grid gap-3 motion-rise" aria-label="Decisions">
       {items.map((item) => {
         const plan = item.planId
-          ? snapshot?.plans.find((candidate) => candidate.plan_id === item.planId)
+          ? snapshot?.plans.find(
+              (candidate) => candidate.plan_id === item.planId,
+            )
           : null;
         return (
           <DecisionCard
@@ -587,8 +663,19 @@ function DecisionCard({
   onDecline: () => void;
   onNavigate: (tab: AttentionItem["targetTab"]) => void;
 }) {
-  const Icon = item.icon === "memory" ? MemoryStick : item.icon === "run" ? Radio : item.icon === "setup" ? Settings : ListChecks;
-  const busy = Boolean(busyPlanAction && item.planId && busyPlanAction.startsWith(`${item.planId}:`));
+  const Icon =
+    item.icon === "memory"
+      ? MemoryStick
+      : item.icon === "run"
+        ? Radio
+        : item.icon === "setup"
+          ? Settings
+          : ListChecks;
+  const busy = Boolean(
+    busyPlanAction &&
+    item.planId &&
+    busyPlanAction.startsWith(`${item.planId}:`),
+  );
   return (
     <Card size="sm" className="border-border/70 bg-card/80">
       <CardHeader className="gap-2">
@@ -603,7 +690,9 @@ function DecisionCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-sm leading-relaxed text-muted-foreground">{item.detail}</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {item.detail}
+        </p>
         {item.command ? (
           <code className="block truncate rounded-md border border-border/70 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
             {item.command}
@@ -612,18 +701,34 @@ function DecisionCard({
         <div className="flex flex-wrap gap-2">
           {canDecide ? (
             <>
-              <Button type="button" size="sm" disabled={busy} onClick={onApprove}>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                onClick={onApprove}
+              >
                 <Check aria-hidden="true" />
                 Approve
               </Button>
-              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onDecline}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={onDecline}
+              >
                 <X aria-hidden="true" />
                 Decline
               </Button>
             </>
           ) : null}
           {item.targetTab ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => onNavigate(item.targetTab)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onNavigate(item.targetTab)}
+            >
               <ArrowRight aria-hidden="true" />
               {item.icon === "run" ? "Inspect runs" : "Review"}
             </Button>
@@ -648,17 +753,28 @@ function ActivityLane({
       {running.running.length ? (
         <div className="grid gap-2">
           {running.running.map((firing) => (
-            <Card key={firing.firing_id} className="border-border/70 bg-background/35">
+            <Card
+              key={firing.firing_id}
+              className="border-border/70 bg-background/35"
+            >
               <CardContent className="flex items-center gap-3 py-3">
-                <span className="size-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                <span
+                  className="size-2 rounded-full bg-emerald-500"
+                  aria-hidden="true"
+                />
                 <div className="min-w-0 flex-1">
                   <strong className="block truncate">{firing.codename}</strong>
                   <p className="truncate text-sm text-muted-foreground">
                     {firing.summary || "Running now."}
                   </p>
                 </div>
-                <time className="text-xs text-muted-foreground" title={exactTime(firing.started_at)}>
-                  {firing.started_at ? friendlyTime(firing.started_at) : "just now"}
+                <time
+                  className="text-xs text-muted-foreground"
+                  title={exactTime(firing.started_at)}
+                >
+                  {firing.started_at
+                    ? friendlyTime(firing.started_at)
+                    : "just now"}
                 </time>
               </CardContent>
             </Card>
@@ -674,13 +790,25 @@ function ActivityLane({
       {running.upcoming.length ? (
         <ul className="grid gap-2" aria-label="Upcoming scheduled runs">
           {running.upcoming.map((run) => (
-            <li key={run.codename} className="flex items-center gap-3 rounded-lg border border-border/70 bg-background/35 p-3 text-sm">
-              <Clock className="size-4 text-muted-foreground" aria-hidden="true" />
+            <li
+              key={run.codename}
+              className="flex items-center gap-3 rounded-lg border border-border/70 bg-background/35 p-3 text-sm"
+            >
+              <Clock
+                className="size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
               <strong>{run.codename}</strong>
-              {run.role ? <span className="truncate text-muted-foreground">{run.role}</span> : null}
+              {run.role ? (
+                <span className="truncate text-muted-foreground">
+                  {run.role}
+                </span>
+              ) : null}
               <span className="ml-auto whitespace-nowrap text-muted-foreground">
                 {run.next_fire_at ? (
-                  <time title={exactTime(run.next_fire_at)}>next {friendlyTime(run.next_fire_at)}</time>
+                  <time title={exactTime(run.next_fire_at)}>
+                    next {friendlyTime(run.next_fire_at)}
+                  </time>
                 ) : (
                   run.cadence
                 )}
@@ -689,7 +817,10 @@ function ActivityLane({
           ))}
         </ul>
       ) : (
-        <div className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/25 p-3 text-sm text-muted-foreground" role="note">
+        <div
+          className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/25 p-3 text-sm text-muted-foreground"
+          role="note"
+        >
           <Clock className="mt-0.5 size-4" aria-hidden="true" />
           <span>
             No upcoming runs surfaced. Alfred could not read a launchd schedule
@@ -701,12 +832,20 @@ function ActivityLane({
       {activeThreads.length ? (
         <section className="space-y-3" aria-label="Request threads">
           <div>
-            <h2 className="font-heading text-base font-medium">Requests in flight</h2>
-            <p className="text-sm text-muted-foreground">Follow a request end to end.</p>
+            <h2 className="font-heading text-base font-medium">
+              Requests in flight
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Follow a request end to end.
+            </p>
           </div>
           <div className="grid gap-3">
             {activeThreads.map((thread) => (
-              <RequestThread key={thread.id} thread={thread} onOpenPlan={() => onSwitch("pipeline")} />
+              <RequestThread
+                key={thread.id}
+                thread={thread}
+                onOpenPlan={() => onSwitch("pipeline")}
+              />
             ))}
           </div>
         </section>
@@ -734,10 +873,18 @@ function ShippedLane({
     <section className="space-y-4" aria-label="Shipped">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-heading text-base font-medium">What Alfred shipped</h2>
-          <p className="text-sm text-muted-foreground">Plain-English evidence from merged PRs.</p>
+          <h2 className="font-heading text-base font-medium">
+            What Alfred shipped
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Plain-English evidence from merged PRs.
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter shipped by time window">
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label="Filter shipped by time window"
+        >
           {SHIPPED_WINDOWS.map((window) => (
             <Button
               key={window.key}
@@ -751,13 +898,22 @@ function ShippedLane({
             </Button>
           ))}
           {board ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onOpenWork}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onOpenWork}
+            >
               Work
             </Button>
           ) : null}
         </div>
       </div>
-      <ShippedDigest board={board} digest={digest} onOpenThread={onOpenThread} />
+      <ShippedDigest
+        board={board}
+        digest={digest}
+        onOpenThread={onOpenThread}
+      />
     </section>
   );
 }
@@ -800,25 +956,38 @@ function ShippedDigest({
   return (
     <div className="grid gap-3">
       {digest.map(({ agent, card, what, why }) => (
-        <Card key={`${card.repo}-${card.number ?? card.title}`} className="border-border/70 bg-background/35">
+        <Card
+          key={`${card.repo}-${card.number ?? card.title}`}
+          className="border-border/70 bg-background/35"
+        >
           <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {card.demo ? <Badge variant="outline">Sample</Badge> : null}
                 {agent ? <Badge variant="secondary">{agent}</Badge> : null}
-                <strong className="block min-w-0 leading-snug sm:truncate">{what}</strong>
+                <strong className="block min-w-0 leading-snug sm:truncate">
+                  {what}
+                </strong>
               </div>
               <p className="text-sm text-muted-foreground">{why}</p>
             </div>
             <div className="flex shrink-0 gap-2">
               {card.url ? (
-                <Button type="button" variant="outline" onClick={() => void openExternal(card.url as string)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void openExternal(card.url as string)}
+                >
                   <ExternalLink aria-hidden="true" />
                   Open PR
                 </Button>
               ) : null}
               {onOpenThread ? (
-                <Button type="button" variant="ghost" onClick={() => onOpenThread(card)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onOpenThread(card)}
+                >
                   <MessageSquare aria-hidden="true" />
                   Thread
                 </Button>
@@ -840,12 +1009,17 @@ function EmptyCard({
   title: string;
   tone?: "ok" | "error";
 }) {
-  const variant = tone === "error" ? "destructive" : tone === "ok" ? "secondary" : "outline";
+  const variant =
+    tone === "error" ? "destructive" : tone === "ok" ? "secondary" : "outline";
   return (
     <Card className="border-border/70 bg-card/80">
       <CardHeader>
         <CardAction>
-          {tone ? <Badge variant={variant}>{tone === "ok" ? "Clear" : "Needs attention"}</Badge> : null}
+          {tone ? (
+            <Badge variant={variant}>
+              {tone === "ok" ? "Clear" : "Needs attention"}
+            </Badge>
+          ) : null}
         </CardAction>
         <CardTitle className="text-base">{title}</CardTitle>
         <CardDescription>{body}</CardDescription>

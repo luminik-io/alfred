@@ -17,16 +17,9 @@ import {
   EMPTY_CUSTOM_NAMES,
   type RosterThemeId,
 } from "../lib/agentThemes";
-import {
-  dedupePlans,
-  isLowSignalPlan,
-} from "../lib/derive";
+import { dedupePlans, isLowSignalPlan } from "../lib/derive";
 import type { ActionNotice, FollowupAction } from "../lib/uiTypes";
-import type {
-  PlanDecision,
-  PlanDraft,
-  ShippedBoard,
-} from "../types";
+import type { PlanDecision, PlanDraft, ShippedBoard } from "../types";
 import { EmptyState } from "./atoms";
 import { Button } from "./ui/button";
 import {
@@ -36,7 +29,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "./ui/sheet";
-import { BoardLifecycleCard, PlanLifecycleCard } from "./pipeline/LifecycleCards";
+import {
+  BoardLifecycleCard,
+  PlanLifecycleCard,
+} from "./pipeline/LifecycleCards";
 import { CardInspector, PlanInspector } from "./pipeline/Inspectors";
 import { PipelineColumn } from "./pipeline/PipelineColumn";
 import { QueueComposer } from "./pipeline/QueueComposer";
@@ -44,9 +40,7 @@ import { cardKey, type QueueActionHandler } from "./pipeline/types";
 
 // A unified selection key so the detail panel can address either a plan or a
 // board card without a shared id space.
-type Selection =
-  | { kind: "plan"; id: string }
-  | { kind: "card"; key: string };
+type Selection = { kind: "plan"; id: string } | { kind: "card"; key: string };
 
 const BOARD_COLUMNS: Array<{
   key: BoardColumn;
@@ -161,7 +155,9 @@ export function PipelineView({
     lowSignal.length ||
     awaitingApproval.length ||
     (columns &&
-      (columns.queued.length || columns.in_progress.length || columns.shipped.length));
+      (columns.queued.length ||
+        columns.in_progress.length ||
+        columns.shipped.length));
 
   // Queue actions (assign / give-go-ahead / hold / done) are token-gated HTTP
   // writes to /api/queue, which succeed from the Tauri shell AND the browser
@@ -184,11 +180,17 @@ export function PipelineView({
     }
   }, [hasSelection, dockInspector]);
   const selectedCardColumn: BoardColumn = selectedCard
-    ? (columns?.shipped || []).some((card) => cardKey(card) === cardKey(selectedCard))
+    ? (columns?.shipped || []).some(
+        (card) => cardKey(card) === cardKey(selectedCard),
+      )
       ? "shipped"
-      : (columns?.in_progress || []).some((card) => cardKey(card) === cardKey(selectedCard))
+      : (columns?.in_progress || []).some(
+            (card) => cardKey(card) === cardKey(selectedCard),
+          )
         ? "in_progress"
-        : awaitingApproval.some((card) => cardKey(card) === cardKey(selectedCard))
+        : awaitingApproval.some(
+              (card) => cardKey(card) === cardKey(selectedCard),
+            )
           ? "awaiting_approval"
           : "queued"
     : "queued";
@@ -235,7 +237,10 @@ export function PipelineView({
           </div>
           <div className="flex items-center gap-2">
             {status ? (
-              <span className="text-xs text-muted-foreground" title={generatedAt ? exactTime(generatedAt) : undefined}>
+              <span
+                className="text-xs text-muted-foreground"
+                title={generatedAt ? exactTime(generatedAt) : undefined}
+              >
                 {status}
               </span>
             ) : null}
@@ -271,12 +276,15 @@ export function PipelineView({
       ) : null}
 
       {canQueue && onQueueAction ? (
-        <QueueComposer onQueueAction={onQueueAction} busy={Boolean(busyQueue)} />
+        <QueueComposer
+          onQueueAction={onQueueAction}
+          busy={Boolean(busyQueue)}
+        />
       ) : null}
 
       {board?.sample ? (
         <p className="sample-board-notice" role="note">
-          Sample data for visual review
+          Demo data. No real repositories or agent activity.
         </p>
       ) : null}
 
@@ -284,8 +292,9 @@ export function PipelineView({
         <div className="inline-notice inline-notice--error">
           <AlertTriangle size={18} aria-hidden="true" />
           <span>
-            Alfred reached the runtime but the pipeline failed to build ({hardError}).
-            Check <code>gh auth status</code> and the watched-repo config.
+            Alfred reached the runtime but the pipeline failed to build (
+            {hardError}). Check <code>gh auth status</code> and the watched-repo
+            config.
           </span>
         </div>
       ) : null}
@@ -296,103 +305,146 @@ export function PipelineView({
           body="When you ask Alfred for something, it appears here first as a plan for you to approve, then as work in progress, then as shipped."
         />
       ) : (
-        <div className={`alfred-pipeline__workspace${hasSelection && dockInspector ? " has-inspector" : ""}`}>
+        <div
+          className={`alfred-pipeline__workspace${hasSelection && dockInspector ? " has-inspector" : ""}`}
+        >
           <div className="alfred-pipeline__columns motion-rise">
-          <PipelineColumn label="Needs your go-ahead" count={goAheadCount} lane="needs">
-            {visiblePlans.map((entry) => (
-              <PlanLifecycleCard
-                key={entry.plan.plan_id}
-                plan={entry.plan}
-                revisions={entry.revisions}
-                busyPlanAction={busyPlanAction}
-                selected={selection?.kind === "plan" && selection.id === entry.plan.plan_id}
-                onSelect={() => openInspector({ kind: "plan", id: entry.plan.plan_id })}
-                onDecision={onDecision}
-                onDiscardPlan={onDiscardPlan}
-              />
-            ))}
-            {awaitingApproval.map((card) => (
-              <BoardLifecycleCard
-                key={cardKey(card)}
-                card={card}
-                column="awaiting_approval"
-                selected={selection?.kind === "card" && selection.key === cardKey(card)}
-                onSelect={() => openInspector({ kind: "card", key: cardKey(card) })}
-                canQueue={canQueue}
-                busyQueue={busyQueue}
-                onQueueAction={onQueueAction}
-                rosterTheme={rosterTheme}
-                customNames={customNames}
-              />
-            ))}
-            {lowSignal.length ? (
-              <div className="alfred-pipeline__lowsignal">
-                <button
-                  type="button"
-                  className="alfred-pipeline__lowsignal-toggle"
-                  aria-expanded={showLowSignal}
-                  onClick={() => setShowLowSignal((open) => !open)}
+            <PipelineColumn
+              label="Needs your go-ahead"
+              count={goAheadCount}
+              lane="needs"
+            >
+              {visiblePlans.map((entry) => (
+                <PlanLifecycleCard
+                  key={entry.plan.plan_id}
+                  plan={entry.plan}
+                  revisions={entry.revisions}
+                  busyPlanAction={busyPlanAction}
+                  selected={
+                    selection?.kind === "plan" &&
+                    selection.id === entry.plan.plan_id
+                  }
+                  onSelect={() =>
+                    openInspector({ kind: "plan", id: entry.plan.plan_id })
+                  }
+                  onDecision={onDecision}
+                  onDiscardPlan={onDiscardPlan}
+                />
+              ))}
+              {awaitingApproval.map((card) => (
+                <BoardLifecycleCard
+                  key={cardKey(card)}
+                  card={card}
+                  column="awaiting_approval"
+                  selected={
+                    selection?.kind === "card" &&
+                    selection.key === cardKey(card)
+                  }
+                  onSelect={() =>
+                    openInspector({ kind: "card", key: cardKey(card) })
+                  }
+                  canQueue={canQueue}
+                  busyQueue={busyQueue}
+                  onQueueAction={onQueueAction}
+                  rosterTheme={rosterTheme}
+                  customNames={customNames}
+                />
+              ))}
+              {lowSignal.length ? (
+                <div className="alfred-pipeline__lowsignal">
+                  <button
+                    type="button"
+                    className="alfred-pipeline__lowsignal-toggle"
+                    aria-expanded={showLowSignal}
+                    onClick={() => setShowLowSignal((open) => !open)}
+                  >
+                    <ChevronDown
+                      size={14}
+                      aria-hidden="true"
+                      className={
+                        showLowSignal
+                          ? "rotate-180 transition-transform"
+                          : "transition-transform"
+                      }
+                    />
+                    {showLowSignal
+                      ? "Hide low signal"
+                      : `${lowSignal.length} low signal`}
+                  </button>
+                  {showLowSignal
+                    ? lowSignal.map((entry) => (
+                        <PlanLifecycleCard
+                          key={entry.plan.plan_id}
+                          plan={entry.plan}
+                          revisions={entry.revisions}
+                          busyPlanAction={busyPlanAction}
+                          selected={
+                            selection?.kind === "plan" &&
+                            selection.id === entry.plan.plan_id
+                          }
+                          onSelect={() =>
+                            openInspector({
+                              kind: "plan",
+                              id: entry.plan.plan_id,
+                            })
+                          }
+                          onDecision={onDecision}
+                          onDiscardPlan={onDiscardPlan}
+                        />
+                      ))
+                    : null}
+                </div>
+              ) : null}
+              {!visiblePlans.length &&
+              !lowSignal.length &&
+              !awaitingApproval.length ? (
+                <p className="alfred-pipeline__empty">
+                  No plans waiting on you.
+                </p>
+              ) : null}
+            </PipelineColumn>
+
+            {BOARD_COLUMNS.map((col) => {
+              const cards = columns?.[col.key] || [];
+              return (
+                <PipelineColumn
+                  key={col.key}
+                  label={col.label}
+                  count={cards.length}
+                  lane={col.lane}
                 >
-                  <ChevronDown
-                    size={14}
-                    aria-hidden="true"
-                    className={showLowSignal ? "rotate-180 transition-transform" : "transition-transform"}
-                  />
-                  {showLowSignal ? "Hide low signal" : `${lowSignal.length} low signal`}
-                </button>
-                {showLowSignal
-                  ? lowSignal.map((entry) => (
-                      <PlanLifecycleCard
-                        key={entry.plan.plan_id}
-                        plan={entry.plan}
-                        revisions={entry.revisions}
-                        busyPlanAction={busyPlanAction}
-                        selected={selection?.kind === "plan" && selection.id === entry.plan.plan_id}
-                        onSelect={() =>
-                          openInspector({ kind: "plan", id: entry.plan.plan_id })
+                  {cards.length ? (
+                    cards.map((card) => (
+                      <BoardLifecycleCard
+                        key={cardKey(card)}
+                        card={card}
+                        column={col.key}
+                        selected={
+                          selection?.kind === "card" &&
+                          selection.key === cardKey(card)
                         }
-                        onDecision={onDecision}
-                        onDiscardPlan={onDiscardPlan}
+                        onSelect={() =>
+                          openInspector({ kind: "card", key: cardKey(card) })
+                        }
+                        canQueue={canQueue}
+                        busyQueue={busyQueue}
+                        onQueueAction={onQueueAction}
+                        rosterTheme={rosterTheme}
+                        customNames={customNames}
                       />
                     ))
-                  : null}
-              </div>
-            ) : null}
-            {!visiblePlans.length && !lowSignal.length && !awaitingApproval.length ? (
-              <p className="alfred-pipeline__empty">No plans waiting on you.</p>
-            ) : null}
-          </PipelineColumn>
-
-          {BOARD_COLUMNS.map((col) => {
-            const cards = columns?.[col.key] || [];
-            return (
-              <PipelineColumn key={col.key} label={col.label} count={cards.length} lane={col.lane}>
-                {cards.length ? (
-                  cards.map((card) => (
-                    <BoardLifecycleCard
-                      key={cardKey(card)}
-                      card={card}
-                      column={col.key}
-                      selected={selection?.kind === "card" && selection.key === cardKey(card)}
-                      onSelect={() =>
-                        openInspector({ kind: "card", key: cardKey(card) })
-                      }
-                      canQueue={canQueue}
-                      busyQueue={busyQueue}
-                      onQueueAction={onQueueAction}
-                      rosterTheme={rosterTheme}
-                      customNames={customNames}
-                    />
-                  ))
-                ) : (
-                  <p className="alfred-pipeline__empty">Nothing here yet.</p>
-                )}
-              </PipelineColumn>
-            );
-          })}
+                  ) : (
+                    <p className="alfred-pipeline__empty">Nothing here yet.</p>
+                  )}
+                </PipelineColumn>
+              );
+            })}
           </div>
           {hasSelection && dockInspector ? (
-            <aside className="pipeline-inspector motion-rise" aria-label={`${inspectorTitle} inspector`}>
+            <aside
+              className="pipeline-inspector motion-rise"
+              aria-label={`${inspectorTitle} inspector`}
+            >
               <header className="pipeline-inspector__header">
                 <div>
                   <h2>{inspectorTitle}</h2>

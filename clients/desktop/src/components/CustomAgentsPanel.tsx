@@ -11,7 +11,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { deleteCustomAgent, loadCustomAgents, saveCustomAgent } from "../api/agents";
+import {
+  deleteCustomAgent,
+  loadCustomAgents,
+  saveCustomAgent,
+} from "../api/agents";
 import { supportsMutations } from "../api/client";
 import type {
   CustomAgentEngine,
@@ -34,7 +38,11 @@ import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { Textarea } from "./ui/textarea";
 
-const ENGINE_OPTIONS: Array<{ value: CustomAgentEngine; label: string; detail: string }> = [
+const ENGINE_OPTIONS: Array<{
+  value: CustomAgentEngine;
+  label: string;
+  detail: string;
+}> = [
   { value: "hybrid", label: "Hybrid", detail: "Route per task" },
   { value: "codex", label: "Codex", detail: "Code-heavy agent" },
   { value: "claude", label: "Claude", detail: "Planning and prose" },
@@ -73,7 +81,9 @@ export function CustomAgentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [editingCodename, setEditingCodename] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<CustomAgentRecord | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CustomAgentRecord | null>(
+    null,
+  );
   const [form, setForm] = useState<CustomAgentForm>(EMPTY_FORM);
   // The create/edit form is a disclosure so the built-in roster below stays the
   // primary content and the Agents page fits the viewport. It only opens when the
@@ -139,7 +149,10 @@ export function CustomAgentsPanel({
     setExpanded(false);
   };
 
-  const updateForm = <K extends keyof CustomAgentForm>(key: K, value: CustomAgentForm[K]) => {
+  const updateForm = <K extends keyof CustomAgentForm>(
+    key: K,
+    value: CustomAgentForm[K],
+  ) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
@@ -150,7 +163,14 @@ export function CustomAgentsPanel({
     const purpose = form.purpose.trim();
     const prompt = form.prompt.trim();
     const schedule = form.schedule.trim();
-    if (!codename || !displayName || !roleTitle || !purpose || !prompt || !schedule) {
+    if (
+      !codename ||
+      !displayName ||
+      !roleTitle ||
+      !purpose ||
+      !prompt ||
+      !schedule
+    ) {
       return null;
     }
     return {
@@ -219,16 +239,20 @@ export function CustomAgentsPanel({
             <UserRound />
           </span>
           <div>
-            <p className="custom-agents-panel__eyebrow">Custom agents</p>
-            <h2>Extend the fleet</h2>
+            <h2>Add an agent role</h2>
             <p>
-              Add local roles that run on the same scheduler, logs, memory, and
-              provider guardrails as the built-in engineering team.
+              Add a role that uses the same scheduler, logs, memory, and
+              provider controls as the built-in team.
             </p>
           </div>
         </div>
         <div className="custom-agents-panel__actions">
-          <Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void refresh()}
+          >
             <RefreshCw aria-hidden="true" />
             Refresh
           </Button>
@@ -248,210 +272,265 @@ export function CustomAgentsPanel({
       ) : null}
 
       {error ? (
-        <div className="custom-agents-panel__callout" data-tone="error" role="alert">
+        <div
+          className="custom-agents-panel__callout"
+          data-tone="error"
+          role="alert"
+        >
           <AlertCircle aria-hidden="true" />
           {error}
         </div>
       ) : null}
 
       {deployCue ? (
-        <div className="custom-agents-panel__callout" data-tone="ok" role="status">
+        <div
+          className="custom-agents-panel__callout"
+          data-tone="ok"
+          role="status"
+        >
           <Save aria-hidden="true" />
           {deployCue}
         </div>
       ) : null}
 
       {expanded || agents.length ? (
-      <div className="custom-agents-panel__body" data-expanded={expanded ? "true" : "false"}>
-        <div className="custom-agents-panel__list" aria-busy={loading ? "true" : "false"}>
-          <div className="custom-agents-panel__listhead">
-            <span>{snapshot ? `${snapshot.count} configured` : "Inventory"}</span>
-            {snapshot ? (
+        <div
+          className="custom-agents-panel__body"
+          data-expanded={expanded ? "true" : "false"}
+        >
+          <div
+            className="custom-agents-panel__list"
+            aria-busy={loading ? "true" : "false"}
+          >
+            <div className="custom-agents-panel__listhead">
               <span>
-                {snapshot.enabled_count} enabled, {snapshot.disabled_count} paused
+                {snapshot ? `${snapshot.count} configured` : "Inventory"}
               </span>
-            ) : null}
+              {snapshot ? (
+                <span>
+                  {snapshot.enabled_count} enabled, {snapshot.disabled_count}{" "}
+                  paused
+                </span>
+              ) : null}
+            </div>
+            {agents.length ? (
+              <ul className="custom-agents-panel__rows" role="list">
+                {agents.map((agent) => (
+                  <li key={agent.codename}>
+                    <button
+                      type="button"
+                      className="custom-agents-panel__row"
+                      data-selected={
+                        agent.codename === editingCodename ? "true" : "false"
+                      }
+                      onClick={() => selectAgent(agent)}
+                      aria-label={`Edit ${agent.display_name}`}
+                    >
+                      <span className="custom-agents-panel__row-main">
+                        <span className="custom-agents-panel__row-title">
+                          {agent.display_name}
+                          <Badge variant="outline">
+                            {engineLabel(agent.engine)}
+                          </Badge>
+                        </span>
+                        <span>{agent.role_title}</span>
+                      </span>
+                      <span className="custom-agents-panel__row-meta">
+                        <Badge
+                          variant="outline"
+                          data-tone={agent.enabled ? "ok" : "idle"}
+                        >
+                          {agent.enabled ? "Enabled" : "Paused"}
+                        </Badge>
+                        <span>{scheduleLabel(agent.schedule)}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="custom-agents-panel__empty">
+                {loading ? "Loading custom agents..." : "No custom agents yet."}
+              </div>
+            )}
           </div>
-          {agents.length ? (
-            <ul className="custom-agents-panel__rows" role="list">
-              {agents.map((agent) => (
-                <li key={agent.codename}>
+
+          {expanded ? (
+            <form className="custom-agent-form" onSubmit={onSubmit}>
+              <div className="custom-agent-form__head">
+                <div>
+                  <h3>
+                    {isEditing
+                      ? form.displayName || editingCodename
+                      : "Define a role"}
+                  </h3>
+                </div>
+                <div className="custom-agent-form__headactions">
+                  {isEditing ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={!canMutate}
+                      onClick={() => {
+                        const agent = agents.find(
+                          (item) => item.codename === editingCodename,
+                        );
+                        if (agent) setPendingDelete(agent);
+                      }}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Remove
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={closeForm}
+                  >
+                    <X aria-hidden="true" />
+                    Close
+                  </Button>
+                </div>
+              </div>
+
+              <div className="custom-agent-form__grid">
+                <Field label="Codename" htmlFor="custom-agent-codename">
+                  <Input
+                    id="custom-agent-codename"
+                    value={form.codename}
+                    disabled={isEditing}
+                    required
+                    pattern="[a-z][a-z0-9-]{1,39}"
+                    placeholder="release-captain"
+                    onChange={(event) =>
+                      updateForm("codename", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Display name" htmlFor="custom-agent-display-name">
+                  <Input
+                    id="custom-agent-display-name"
+                    value={form.displayName}
+                    required
+                    placeholder="Release Captain"
+                    onChange={(event) =>
+                      updateForm("displayName", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Role title" htmlFor="custom-agent-role-title">
+                  <Input
+                    id="custom-agent-role-title"
+                    value={form.roleTitle}
+                    required
+                    placeholder="Release coordinator"
+                    onChange={(event) =>
+                      updateForm("roleTitle", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="Schedule" htmlFor="custom-agent-schedule">
+                  <Input
+                    id="custom-agent-schedule"
+                    value={form.schedule}
+                    required
+                    placeholder="30m, daily@09:00, weekly@mon:09:00"
+                    onChange={(event) =>
+                      updateForm("schedule", event.target.value)
+                    }
+                  />
+                </Field>
+              </div>
+
+              <fieldset
+                className="custom-agent-form__engines"
+                role="radiogroup"
+              >
+                <legend>Engine</legend>
+                {ENGINE_OPTIONS.map((option) => (
                   <button
                     type="button"
-                    className="custom-agents-panel__row"
-                    data-selected={agent.codename === editingCodename ? "true" : "false"}
-                    onClick={() => selectAgent(agent)}
-                    aria-label={`Edit ${agent.display_name}`}
+                    role="radio"
+                    key={option.value}
+                    data-active={
+                      form.engine === option.value ? "true" : "false"
+                    }
+                    aria-checked={form.engine === option.value}
+                    onClick={() => updateForm("engine", option.value)}
                   >
-                    <span className="custom-agents-panel__row-main">
-                      <span className="custom-agents-panel__row-title">
-                        {agent.display_name}
-                        <Badge variant="outline">{engineLabel(agent.engine)}</Badge>
-                      </span>
-                      <span>{agent.role_title}</span>
-                    </span>
-                    <span className="custom-agents-panel__row-meta">
-                      <Badge variant="outline" data-tone={agent.enabled ? "ok" : "idle"}>
-                        {agent.enabled ? "Enabled" : "Paused"}
-                      </Badge>
-                      <span>{scheduleLabel(agent.schedule)}</span>
-                    </span>
+                    <span>{option.label}</span>
+                    <small>{option.detail}</small>
                   </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="custom-agents-panel__empty">
-              {loading ? "Loading custom agents..." : "No custom agents yet."}
-            </div>
-          )}
+                ))}
+              </fieldset>
+
+              <Field label="Purpose" htmlFor="custom-agent-purpose">
+                <Textarea
+                  id="custom-agent-purpose"
+                  value={form.purpose}
+                  required
+                  rows={2}
+                  placeholder="Checks release readiness before handoff."
+                  onChange={(event) =>
+                    updateForm("purpose", event.target.value)
+                  }
+                />
+              </Field>
+
+              <Field label="Prompt" htmlFor="custom-agent-prompt">
+                <Textarea
+                  id="custom-agent-prompt"
+                  value={form.prompt}
+                  required
+                  rows={5}
+                  placeholder="Review the target repos for release blockers, summarize risk, and file follow-up tasks when needed."
+                  onChange={(event) => updateForm("prompt", event.target.value)}
+                />
+              </Field>
+
+              <Field label="Repo scope" htmlFor="custom-agent-repos">
+                <Textarea
+                  id="custom-agent-repos"
+                  value={form.repos}
+                  rows={3}
+                  placeholder="acme/api&#10;acme/web"
+                  onChange={(event) => updateForm("repos", event.target.value)}
+                />
+              </Field>
+
+              <div className="custom-agent-form__footer">
+                <label className="custom-agent-form__switch">
+                  <Switch
+                    checked={form.enabled}
+                    onCheckedChange={(checked) =>
+                      updateForm("enabled", checked)
+                    }
+                    aria-label="Enable custom agent"
+                  />
+                  <span>
+                    {form.enabled ? "Enabled in scheduler" : "Saved but paused"}
+                  </span>
+                </label>
+                <Button type="submit" disabled={saveDisabled}>
+                  {saving ? (
+                    <RefreshCw aria-hidden="true" />
+                  ) : isEditing ? (
+                    <Save aria-hidden="true" />
+                  ) : (
+                    <Pencil aria-hidden="true" />
+                  )}
+                  {saving
+                    ? "Saving..."
+                    : isEditing
+                      ? "Save changes"
+                      : "Create agent"}
+                </Button>
+              </div>
+            </form>
+          ) : null}
         </div>
-
-        {expanded ? (
-        <form className="custom-agent-form" onSubmit={onSubmit}>
-          <div className="custom-agent-form__head">
-            <div>
-              <p className="custom-agents-panel__eyebrow">
-                {isEditing ? "Edit agent" : "New agent"}
-              </p>
-              <h3>{isEditing ? form.displayName || editingCodename : "Define a role"}</h3>
-            </div>
-            <div className="custom-agent-form__headactions">
-            {isEditing ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!canMutate}
-                onClick={() => {
-                  const agent = agents.find((item) => item.codename === editingCodename);
-                  if (agent) setPendingDelete(agent);
-                }}
-              >
-                <Trash2 aria-hidden="true" />
-                Remove
-              </Button>
-            ) : null}
-              <Button type="button" variant="ghost" size="sm" onClick={closeForm}>
-                <X aria-hidden="true" />
-                Close
-              </Button>
-            </div>
-          </div>
-
-          <div className="custom-agent-form__grid">
-            <Field label="Codename" htmlFor="custom-agent-codename">
-              <Input
-                id="custom-agent-codename"
-                value={form.codename}
-                disabled={isEditing}
-                required
-                pattern="[a-z][a-z0-9-]{1,39}"
-                placeholder="release-captain"
-                onChange={(event) => updateForm("codename", event.target.value)}
-              />
-            </Field>
-            <Field label="Display name" htmlFor="custom-agent-display-name">
-              <Input
-                id="custom-agent-display-name"
-                value={form.displayName}
-                required
-                placeholder="Release Captain"
-                onChange={(event) => updateForm("displayName", event.target.value)}
-              />
-            </Field>
-            <Field label="Role title" htmlFor="custom-agent-role-title">
-              <Input
-                id="custom-agent-role-title"
-                value={form.roleTitle}
-                required
-                placeholder="Release coordinator"
-                onChange={(event) => updateForm("roleTitle", event.target.value)}
-              />
-            </Field>
-            <Field label="Schedule" htmlFor="custom-agent-schedule">
-              <Input
-                id="custom-agent-schedule"
-                value={form.schedule}
-                required
-                placeholder="30m, daily@09:00, weekly@mon:09:00"
-                onChange={(event) => updateForm("schedule", event.target.value)}
-              />
-            </Field>
-          </div>
-
-          <fieldset className="custom-agent-form__engines" role="radiogroup">
-            <legend>Engine</legend>
-            {ENGINE_OPTIONS.map((option) => (
-              <button
-                type="button"
-                role="radio"
-                key={option.value}
-                data-active={form.engine === option.value ? "true" : "false"}
-                aria-checked={form.engine === option.value}
-                onClick={() => updateForm("engine", option.value)}
-              >
-                <span>{option.label}</span>
-                <small>{option.detail}</small>
-              </button>
-            ))}
-          </fieldset>
-
-          <Field label="Purpose" htmlFor="custom-agent-purpose">
-            <Textarea
-              id="custom-agent-purpose"
-              value={form.purpose}
-              required
-              rows={2}
-              placeholder="Checks release readiness before handoff."
-              onChange={(event) => updateForm("purpose", event.target.value)}
-            />
-          </Field>
-
-          <Field label="Prompt" htmlFor="custom-agent-prompt">
-            <Textarea
-              id="custom-agent-prompt"
-              value={form.prompt}
-              required
-              rows={5}
-              placeholder="Review the target repos for release blockers, summarize risk, and file follow-up tasks when needed."
-              onChange={(event) => updateForm("prompt", event.target.value)}
-            />
-          </Field>
-
-          <Field label="Repo scope" htmlFor="custom-agent-repos">
-            <Textarea
-              id="custom-agent-repos"
-              value={form.repos}
-              rows={3}
-              placeholder="acme/api&#10;acme/web"
-              onChange={(event) => updateForm("repos", event.target.value)}
-            />
-          </Field>
-
-          <div className="custom-agent-form__footer">
-            <label className="custom-agent-form__switch">
-              <Switch
-                checked={form.enabled}
-                onCheckedChange={(checked) => updateForm("enabled", checked)}
-                aria-label="Enable custom agent"
-              />
-              <span>{form.enabled ? "Enabled in scheduler" : "Saved but paused"}</span>
-            </label>
-            <Button type="submit" disabled={saveDisabled}>
-              {saving ? (
-                <RefreshCw aria-hidden="true" />
-              ) : isEditing ? (
-                <Save aria-hidden="true" />
-              ) : (
-                <Pencil aria-hidden="true" />
-              )}
-              {saving ? "Saving..." : isEditing ? "Save changes" : "Create agent"}
-            </Button>
-          </div>
-        </form>
-        ) : null}
-      </div>
       ) : null}
 
       <Dialog
@@ -469,14 +548,20 @@ export function CustomAgentsPanel({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Remove {pendingDelete?.display_name || "custom agent"}?</DialogTitle>
+            <DialogTitle>
+              Remove {pendingDelete?.display_name || "custom agent"}?
+            </DialogTitle>
             <DialogDescription>
-              This deletes the custom-agent manifest entry. Run deploy afterwards
-              to remove its scheduler job from this Mac.
+              This deletes the custom-agent manifest entry. Run deploy
+              afterwards to remove its scheduler job from this Mac.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPendingDelete(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+            >
               Cancel
             </Button>
             <Button
@@ -527,7 +612,9 @@ function formFromAgent(agent: CustomAgentRecord): CustomAgentForm {
 }
 
 function normalizeEngine(value: string): CustomAgentEngine {
-  return value === "claude" || value === "codex" || value === "hybrid" ? value : "hybrid";
+  return value === "claude" || value === "codex" || value === "hybrid"
+    ? value
+    : "hybrid";
 }
 
 function parseRepos(value: string): string[] {
@@ -550,7 +637,8 @@ function editableSchedule(schedule: string): string {
   const daily = schedule.match(/^cron:(\d{1,2}):(\d{2})$/);
   if (daily) return `daily@${padHour(daily[1])}:${daily[2]}`;
   const weekly = schedule.match(/^cron:([0-6]):(\d{1,2}):(\d{2})$/);
-  if (weekly) return `weekly@${weekdaySlug(weekly[1])}:${padHour(weekly[2])}:${weekly[3]}`;
+  if (weekly)
+    return `weekly@${weekdaySlug(weekly[1])}:${padHour(weekly[2])}:${weekly[3]}`;
   return schedule;
 }
 
@@ -598,7 +686,10 @@ function capitalize(value: string): string {
 
 function engineLabel(engine: string): string {
   const normalized = normalizeEngine(engine);
-  return ENGINE_OPTIONS.find((option) => option.value === normalized)?.label || "Hybrid";
+  return (
+    ENGINE_OPTIONS.find((option) => option.value === normalized)?.label ||
+    "Hybrid"
+  );
 }
 
 function messageFromError(err: unknown): string {

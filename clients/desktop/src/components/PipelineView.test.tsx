@@ -841,7 +841,9 @@ describe("PipelineView", () => {
     const inspector = screen.getByRole("complementary", {
       name: "Work item inspector",
     });
-    expect(within(inspector).getByText(/github evidence is unavailable/i)).toBeVisible();
+    expect(
+      within(inspector).getByText(/github evidence is unavailable/i),
+    ).toBeVisible();
     expect(within(inspector).queryByText("Commits")).not.toBeInTheDocument();
   });
 
@@ -911,7 +913,7 @@ describe("PipelineView", () => {
       screen.getByLabelText(/assignment target/i),
       "architect",
     );
-    await user.click(screen.getByRole("button", { name: /route/i }));
+    await user.click(screen.getByRole("button", { name: /queue/i }));
 
     expect(onQueueAction).toHaveBeenCalledWith(
       "your-org/api",

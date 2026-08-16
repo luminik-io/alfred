@@ -14,8 +14,6 @@ body:
         - [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md), [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/AWS_SETUP.md), [`docs/CLAUDE_CODE.md`](https://github.com/luminik-io/alfred/blob/main/docs/CLAUDE_CODE.md)
         - [`SUPPORT.md`](https://github.com/luminik-io/alfred/blob/main/SUPPORT.md): what's in scope
 
-        If the answer's already there, the doc gets a star, not a new issue.
-
   - type: textarea
     id: question
     attributes:

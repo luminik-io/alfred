@@ -10,6 +10,7 @@ const execFile = promisify(execFileCallback);
 const root = resolve(import.meta.dirname, "..");
 const logoPath = resolve(root, "src/assets/alfred-logo-transparent.png");
 const outPath = resolve(root, "public/brand/alfred-og.png");
+const positioning = "An autonomous engineering team that ships while you're away.";
 
 // Fonts are inlined as base64 woff2 so the Chrome headless render does not
 // depend on network access.
@@ -216,8 +217,8 @@ function html({ fontCss, logoData }) {
       </div>
       <div class="hero">
         <div class="eyebrow">specs in, PRs out</div>
-        <h1>An autonomous engineering<br />team that ships<br /><span class="away">while you're away.</span></h1>
-        <p class="sub">Alfred turns Claude Code and Codex into a spec-driven engineering team. Named agents plan the work, write the code, review each other, and open pull requests, on your machine, behind an approval gate.</p>
+        <h1 aria-label="${positioning}">An autonomous engineering<br />team that ships<br /><span class="away">while you're away.</span></h1>
+        <p class="sub">Alfred turns Claude Code and Codex into a spec-driven engineering team. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges.</p>
         <div class="stripe">
           <span><span class="dot">●</span> self-hosted</span>
           <span class="sep">·</span>

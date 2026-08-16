@@ -53,7 +53,7 @@ Role slugs show up in:
 - Worktree paths (`~/.alfred/worktrees/eng-senior-dev-backend-303-...`)
 - Logs (`/tmp/alfred.senior-dev.stdout`)
 
-If your visible roster is "agent-1 / agent-2 / agent-3" or raw slugs only, scanning the firehose becomes laborious. A coherent theme makes "Lucius failed on #303" instantly readable while keeping `senior-dev` stable underneath.
+If your visible roster is "agent-1 / agent-2 / agent-3" or raw slugs only, it takes longer to find the right run. A coherent theme makes "Lucius failed on #303" easy to scan while `senior-dev` remains the stable role slug.
 
 ### Design forcing function
 

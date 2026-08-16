@@ -437,8 +437,10 @@ describe("ComposeView (conversational)", () => {
 
   it("shows the ask-anything hero copy and no plain/technical toggle", () => {
     renderChat();
-    expect(screen.getByRole("heading", { name: /ask alfred anything/i })).toBeInTheDocument();
-    expect(screen.getByText(/ask a question, or describe a change/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /what do you want to know or change/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/ask about the codebase or describe the result/i)).toBeInTheDocument();
     // Compose always speaks plain: there is no toggle to seed, sync, or flip.
     expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
   });

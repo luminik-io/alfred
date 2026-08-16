@@ -1,4 +1,11 @@
-import { AlertTriangle, ArrowRight, ArrowUp, RotateCcw, Sparkles, Square } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  ArrowUp,
+  RotateCcw,
+  Sparkles,
+  Square,
+} from "lucide-react";
 import { useCallback, useEffect } from "react";
 import {
   AssistantRuntimeProvider,
@@ -9,7 +16,11 @@ import {
 
 import type { TabKey } from "../../lib/uiTypes";
 import { AskSurfaceProvider } from "./AskContext";
-import { AskAssistantMessage, AskUserMessage, type AskMessageContext } from "./AskMessage";
+import {
+  AskAssistantMessage,
+  AskUserMessage,
+  type AskMessageContext,
+} from "./AskMessage";
 import { RecentThreads } from "./RecentThreads";
 import { useAskThread } from "./useAskThread";
 
@@ -101,7 +112,9 @@ export function ComposeView({
           submitMode="enter"
           rows={1}
           spellCheck
-          placeholder={ask.started ? "Reply to Alfred, or add detail." : PLACEHOLDER}
+          placeholder={
+            ask.started ? "Reply to Alfred, or add detail." : PLACEHOLDER
+          }
         />
         {ask.busy ? (
           // While a turn streams, the primary control stops generation. The
@@ -124,7 +137,8 @@ export function ComposeView({
         )}
       </ComposerPrimitive.Root>
       <small className="ask__hint">
-        Enter to send, Shift + Enter for a new line. When you are planning work, Alfred shapes a plan as the chat gets clearer.
+        Enter to send, Shift + Enter for a new line. When you are planning work,
+        Alfred shapes a plan as the chat gets clearer.
       </small>
     </div>
   );
@@ -132,7 +146,12 @@ export function ComposeView({
   const starters = (
     <div className="ask__starters" aria-label="Starter prompts">
       {STARTERS.map((starter) => (
-        <StarterChip key={starter.label} text={starter.text} label={starter.label} busy={ask.busy} />
+        <StarterChip
+          key={starter.label}
+          text={starter.text}
+          label={starter.label}
+          busy={ask.busy}
+        />
       ))}
     </div>
   );
@@ -148,10 +167,13 @@ export function ComposeView({
           onOpenWork,
         }}
       >
-        <section className={`ask${ask.started ? "" : " ask--empty"}`} aria-label="Ask Alfred">
+        <section
+          className={`ask${ask.started ? "" : " ask--empty"}`}
+          aria-label="Ask Alfred"
+        >
           {ask.started ? (
             <header className="ask__head">
-              <span className="ask__eyebrow">Ask Alfred</span>
+              <h1 className="ask__head-title">Ask Alfred</h1>
               <div className="ask__head-controls">
                 <RecentThreads
                   threads={ask.recentThreads}
@@ -189,7 +211,9 @@ export function ComposeView({
                   <ThreadPrimitive.Messages
                     components={{
                       UserMessage: AskUserMessage,
-                      AssistantMessage: () => <AskAssistantMessage context={messageContext} />,
+                      AssistantMessage: () => (
+                        <AskAssistantMessage context={messageContext} />
+                      ),
                     }}
                   />
                 </div>
@@ -197,9 +221,12 @@ export function ComposeView({
             </ThreadPrimitive.Root>
           ) : (
             <div className="ask__hero">
-              <h1 className="ask__hero-title">Ask Alfred anything</h1>
+              <h1 className="ask__hero-title">
+                What do you want to know or change?
+              </h1>
               <p className="ask__hero-sub">
-                Ask a question, or describe a change you want made. Alfred answers, and when you are planning work it shapes a plan you can file as a GitHub issue.
+                Ask about the codebase or describe the result you want. Alfred
+                can answer directly or prepare a plan for GitHub.
               </p>
               {errorNotice}
               {composer}
@@ -240,7 +267,15 @@ function RestoreTextBridge({
 // A starter chip seeds the composer with a prompt and focuses it. It writes the
 // runtime composer's text directly so the seeded prompt lands in the same input
 // the person then sends.
-function StarterChip({ text, label, busy }: { text: string; label: string; busy: boolean }) {
+function StarterChip({
+  text,
+  label,
+  busy,
+}: {
+  text: string;
+  label: string;
+  busy: boolean;
+}) {
   const thread = useThreadRuntime();
   return (
     <button

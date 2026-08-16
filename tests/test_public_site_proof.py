@@ -53,9 +53,9 @@ def test_agent_readable_site_surfaces_use_the_product_truth() -> None:
     ]
     copy = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
-    assert "autonomous coding agents" not in copy.lower()
-    assert "while you are away" not in copy.lower()
-    assert "supervised" in copy.lower()
+    assert "An autonomous engineering team that ships while you're away." in copy
+    assert "supervised" not in copy.lower()
+    assert "on your own machine" not in copy.lower()
 
 
 def test_llms_surfaces_read_the_docs_home_entry() -> None:

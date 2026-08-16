@@ -37,14 +37,15 @@ export const GET: APIRoute = async ({ site }) => {
   const root = docs.find((d) => d.id === "docs");
   const summary =
     root?.data.description ??
-    "Run a supervised fleet of Claude Code and Codex agents on your own machine.";
+    "An autonomous engineering team that ships while you're away.";
 
   const out: string[] = [
     "# Alfred: full documentation",
     "",
     `> ${summary}`,
     "",
-    "Alfred is the open-source coordination and supervision layer around Claude Code and Codex.",
+    "Alfred turns Claude Code and Codex into an autonomous engineering team.",
+    "Named agents plan work, write code, test it, review changes, and open pull requests.",
     "The host scheduler starts short-lived roles. Each run gets a lock, preflight checks,",
     "limits, and an isolated git worktree. GitHub stores shared work state, and Alfred keeps",
     "local events, reviewed lessons, and reliability data.",

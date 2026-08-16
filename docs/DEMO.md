@@ -8,11 +8,8 @@ loop once, on a throwaway repo, and asks nothing of you except a working
 alfred demo
 ```
 
-<p align="center">
-  <img src="images/demo.gif" alt="alfred demo in the terminal: plan, approval, build, review, verification, and local pull-request summary" width="760">
-</p>
-
-<p align="center"><em>One run on a throwaway repo: plan, approve, build, review, verify, and create a local pull-request summary.</em></p>
+One run plans, builds, reviews, verifies, and creates a local pull-request
+summary in a throwaway repository.
 
 From a source checkout:
 
@@ -43,8 +40,9 @@ runs a compressed version of the real fleet loop against it with real
 1. **Plan.** Drake reads the sample project and drafts a short plan to add
    the missing `slugify` helper.
 2. **Approve.** The run pauses at an operator approval gate. You press Enter
-   to approve, or type `n` to decline. This is the same control you keep over
-   the real fleet: nothing proceeds without your say-so.
+   to approve, or type `n` to decline. The demo pauses once so you can inspect
+   the plan before it enters the queue. After approval, build, review, and
+   verification continue without another prompt.
 3. **Build.** Lucius implements the plan directly in the worktree.
 4. **Review.** Ra's al Ghul reviews the change. The sample
    project ships with a planted bug in its existing `titlecase` function: it
@@ -114,3 +112,16 @@ against your own repos, opens real pull requests on GitHub, and holds work at
 the approval rules you configure. Start with [`../INSTALL.md`](../INSTALL.md),
 then use Alfred Desktop to choose repos, roster names, and schedule, or use
 `alfred-init` to configure agents, repos, schedule, and Slack.
+
+## Public tour recording
+
+Maintainers can rebuild the public desktop tour from the repository fixture:
+
+```sh
+npm --prefix clients/desktop run capture:tour
+```
+
+The command records the synthetic contract data in
+`clients/desktop/e2e/alfred-api.fixture.ts`. It writes the MP4 and poster to
+`docs/media/` and `site/public/media/`. Do not record a live Alfred runtime,
+operator account, Slack workspace, or repository for public media.

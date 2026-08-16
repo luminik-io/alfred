@@ -14,10 +14,10 @@ recover from failures without watching each agent session.
 
 ## Product Purpose
 
-Alfred runs a supervised fleet of coding agents on one computer. It turns an
-approved request or specification into isolated engineering work. It schedules
-short-lived roles, gives each run a separate git worktree, records evidence, and
-keeps the operator in control of approvals and merges.
+Alfred turns Claude Code and Codex into a spec-driven engineering team. An
+approved request or specification becomes isolated engineering work. Alfred
+schedules short-lived roles, gives each run a separate git worktree, records
+evidence, and keeps the operator in control of approvals and merges.
 
 Success means that a builder can install Alfred, start a real task, understand
 what each agent is doing, and review the resulting pull request. The product
@@ -25,11 +25,11 @@ must make blocked, failed, and waiting states as clear as successful states.
 
 ## Positioning
 
-Alfred coordinates subscription-backed coding tools through the host operating
-system. Its product boundary combines role-specific scheduling, worktree
-isolation, approval gates, run evidence, local memory, and support for more than
-one coding tool. These controls apply across the full workflow instead of one
-interactive coding session.
+Alfred is for solo builders and lean engineering teams that need planned work to
+keep moving after they step away. Unlike one interactive coding session, Alfred
+carries approved work through planning, implementation, testing, review, and a
+pull request. Role-specific scheduling, worktree isolation, approval gates, run
+evidence, and local memory make the work inspectable and repeatable.
 
 ## Operating Context
 

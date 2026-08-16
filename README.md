@@ -11,16 +11,19 @@
 ![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**Run a supervised fleet of coding agents on your own machine.**
+**An autonomous engineering team that ships while you're away.**
 
-Alfred coordinates Claude Code and Codex as short-lived engineering roles. The
-roles plan work, implement changes, add tests, review diffs, and open pull
-requests. Alfred uses your existing CLI authentication. Your operating system
-schedules each run, git worktrees separate code-changing roles, and GitHub
-records the handoffs.
+Alfred turns Claude Code and Codex into a spec-driven engineering team. Named
+agents plan the work, write code, test it, review each other, and open pull
+requests. Alfred keeps working without you at the keyboard. You approve risky
+actions and decide what merges.
 
-Alfred does not replace a coding harness. It adds durable coordination and
-deterministic controls around the harnesses you already use.
+Interactive coding agents finish one prompt while you sit at the keyboard, then
+forget what the last session learned. Alfred is for work that should keep moving
+after you step away: planned features, review comments, follow-up tests,
+dependency bumps, and multi-repo rollouts. Alfred carries each one to a pull
+request you can read, diff, and merge. It remembers what it learned for next
+time.
 
 | A coding-harness session | Alfred |
 |---|---|
@@ -65,10 +68,12 @@ cd ~/alfred
 
 The demo runs the plan, approval, implementation, review, fix, and verification
 stages. See the [demo guide](docs/DEMO.md) or watch the
-[56-second product tour](docs/media/alfred-tour.mp4).
+[fixture-only product tour](docs/media/alfred-tour.mp4).
 
 <p align="center">
-  <img src="docs/images/demo.gif" alt="Alfred demo running plan, approval, build, review, and verification stages" width="760">
+  <a href="docs/media/alfred-tour.mp4">
+    <img src="docs/media/alfred-tour-poster.png" alt="Alfred Desktop showing fixture-only sample work in light mode" width="760">
+  </a>
 </p>
 
 ## Install
@@ -133,7 +138,7 @@ engine or changing GitHub, Slack, git, the scheduler, or project files. See the
 
 ## What ships
 
-### Supervised engineering workflow
+### Autonomous engineering workflow
 
 - The planner turns a request into bounded implementation work.
 - The architect can split an approved change across several repositories.
@@ -143,6 +148,10 @@ engine or changing GitHub, Slack, git, the scheduler, or project files. See the
 - Agent PRs include verification evidence by default so another person can
   check what ran and what did not.
 - Alfred leaves merge authority with a person or an explicit repository policy.
+
+After work enters the queue, the agents continue through implementation,
+testing, review, and fixes without waiting for another prompt. Configured
+controls stop only the actions that need a decision.
 
 GitHub issues, labels, branches, comments, and pull requests form the shared
 coordination layer. Slack is optional. It supports planning, status, and trusted
@@ -251,7 +260,7 @@ flowchart LR
 The host scheduler starts a fresh process for each firing. The shared runner
 performs preflight checks, creates or recovers a worktree when the role needs
 one, invokes the chosen CLI, records events, and updates GitHub. Alfred does not
-run a model gateway or a central orchestration daemon. See
+run a model gateway or a long-running coordinator. See
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Documentation

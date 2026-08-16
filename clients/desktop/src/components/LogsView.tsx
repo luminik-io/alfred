@@ -57,7 +57,9 @@ export function LogsView({
   focus: { agent: string | null; nonce: number };
 }) {
   const [subtab, setSubtab] = useState<LogsSubtab>("activity");
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(focus.agent);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(
+    focus.agent,
+  );
 
   // A feed row leads somewhere: an agent row opens that agent's latest run in
   // place; a lesson-suggestion row hands off to the Lessons subtab.
@@ -85,9 +87,10 @@ export function LogsView({
   return (
     <section className="panel logs-view animate-rise">
       <PanelHeader
-        eyebrow="Activity"
         title="Agent runs"
-        actionLabel={subtab === "activity" && unseen ? "Mark all read" : undefined}
+        actionLabel={
+          subtab === "activity" && unseen ? "Mark all read" : undefined
+        }
         onAction={subtab === "activity" && unseen ? onMarkAllSeen : undefined}
       />
       <Tabs
@@ -174,7 +177,10 @@ function LiveTailView({
   const inGlobalFeed = selectedAgent
     ? firings.some((f) => f.codename === selectedAgent)
     : true;
-  const [fetched, setFetched] = useState<{ agent: string; rows: FiringRecord[] } | null>(null);
+  const [fetched, setFetched] = useState<{
+    agent: string;
+    rows: FiringRecord[];
+  } | null>(null);
   const [fetching, setFetching] = useState(false);
   const [errorsOnly, setErrorsOnly] = useState(false);
 
@@ -213,7 +219,8 @@ function LiveTailView({
     }
     return built;
   }, [firings, selectedAgent, fetched]);
-  const activeAgent = lanes.find((l) => l.codename === selectedAgent) || lanes[0] || null;
+  const activeAgent =
+    lanes.find((l) => l.codename === selectedAgent) || lanes[0] || null;
 
   // The "Errors only" filter is per-agent: switching agents should land on the
   // new agent's full run list, not inherit the previous agent's filter and show
@@ -247,24 +254,34 @@ function LiveTailView({
       <div className="tail-agents" role="tablist" aria-label="Agents">
         {lanes.map((lane) => {
           const isActive = lane.codename === activeAgent?.codename;
-          const laneErrors = lane.firings.filter((f) => isErrorFiring(f)).length;
+          const laneErrors = lane.firings.filter((f) =>
+            isErrorFiring(f),
+          ).length;
           return (
             <button
               key={lane.codename}
-              className={isActive ? "tail-agent tail-agent--active" : "tail-agent"}
+              className={
+                isActive ? "tail-agent tail-agent--active" : "tail-agent"
+              }
               type="button"
               role="tab"
               aria-selected={isActive}
               onClick={() => onSelectAgent(lane.codename)}
             >
-              <span className={`tail-agent__dot tail-agent__dot--${toneFor(lane.status)}`} aria-hidden="true" />
+              <span
+                className={`tail-agent__dot tail-agent__dot--${toneFor(lane.status)}`}
+                aria-hidden="true"
+              />
               <span className="tail-agent__name">{lane.codename}</span>
               <span className="tail-agent__meta">
                 {lane.firings.length} run{lane.firings.length === 1 ? "" : "s"}
                 {lane.latestAt ? ` · ${friendlyTime(lane.latestAt)}` : ""}
               </span>
               {laneErrors > 0 ? (
-                <span className="tail-agent__errors" title={`${laneErrors} run(s) need attention`}>
+                <span
+                  className="tail-agent__errors"
+                  title={`${laneErrors} run(s) need attention`}
+                >
                   {laneErrors}
                 </span>
               ) : null}
@@ -282,7 +299,10 @@ function LiveTailView({
               {errorCount > 0 ? ` · ${errorCount} need attention` : ""}
             </span>
           </div>
-          <label className="tail-filter" title="Show only runs that ended in an error">
+          <label
+            className="tail-filter"
+            title="Show only runs that ended in an error"
+          >
             <Switch
               checked={errorsOnly}
               onCheckedChange={setErrorsOnly}
@@ -314,7 +334,10 @@ function LiveTailView({
             compact
           />
         ) : (
-          <ol className="run-list" aria-label={`Runs for ${activeAgent?.codename ?? "agent"}`}>
+          <ol
+            className="run-list"
+            aria-label={`Runs for ${activeAgent?.codename ?? "agent"}`}
+          >
             {visibleRuns.map((firing, index) => (
               <RunCard
                 key={firing.firing_id}
@@ -342,7 +365,8 @@ function isErrorFiring(firing: FiringRecord): boolean {
 
 function runHeadline(firing: FiringRecord): string {
   if (firing.timeline?.headline) return firing.timeline.headline;
-  if (firing.summary && firing.summary !== "(no summary)") return firing.summary;
+  if (firing.summary && firing.summary !== "(no summary)")
+    return firing.summary;
   if (firing.status === "running") return "Running";
   return "No summary captured";
 }
@@ -377,7 +401,8 @@ function RunCard({
   live: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const severity = firing.timeline?.severity ?? (firing.status === "error" ? "error" : "ok");
+  const severity =
+    firing.timeline?.severity ?? (firing.status === "error" ? "error" : "ok");
   const isError = severity === "error";
   const cause = firing.timeline?.error ?? null;
   const steps = firing.timeline?.steps ?? [];
@@ -389,18 +414,28 @@ function RunCard({
       data-severity={severity}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger className="run-card__head" aria-label={`Toggle run ${firing.firing_id}`}>
+        <CollapsibleTrigger
+          className="run-card__head"
+          aria-label={`Toggle run ${firing.firing_id}`}
+        >
           <ChevronRight className="run-card__chevron" aria-hidden="true" />
-          <span className={`run-card__dot run-card__dot--${severity}`} aria-hidden="true">
+          <span
+            className={`run-card__dot run-card__dot--${severity}`}
+            aria-hidden="true"
+          >
             {isError ? <AlertTriangle size={12} /> : <CircleDot size={12} />}
           </span>
           <span className="run-card__headline">{headline}</span>
           {isError && cause ? (
-            <span className="run-card__cause">{ERROR_CAUSE_LABEL[cause] ?? cause}</span>
+            <span className="run-card__cause">
+              {ERROR_CAUSE_LABEL[cause] ?? cause}
+            </span>
           ) : null}
           {live ? <span className="run-card__live">live</span> : null}
           <time className="run-card__time" title={exactTime(firing.started_at)}>
-            {firing.started_at ? friendlyTime(firing.started_at) : "not started"}
+            {firing.started_at
+              ? friendlyTime(firing.started_at)
+              : "not started"}
           </time>
         </CollapsibleTrigger>
         <CollapsibleContent className="run-card__body">
@@ -408,9 +443,12 @@ function RunCard({
             <p className="run-card__alert">
               <AlertTriangle size={14} aria-hidden="true" />
               <span>
-                This run failed{cause ? `: ${ERROR_CAUSE_LABEL[cause] ?? cause}` : ""}.
+                This run failed
+                {cause ? `: ${ERROR_CAUSE_LABEL[cause] ?? cause}` : ""}.
                 {firing.timeline?.outcome ? (
-                  <code className="run-card__outcome">{firing.timeline.outcome}</code>
+                  <code className="run-card__outcome">
+                    {firing.timeline.outcome}
+                  </code>
                 ) : null}
               </span>
             </p>
@@ -423,7 +461,9 @@ function RunCard({
               ))}
             </ol>
           ) : (
-            <p className="run-steps__empty">No structured steps captured for this run.</p>
+            <p className="run-steps__empty">
+              No structured steps captured for this run.
+            </p>
           )}
 
           {live ? <LiveTranscript firing={firing} baseUrl={baseUrl} /> : null}
@@ -436,9 +476,14 @@ function RunCard({
 function RunStep({ step }: { step: TimelineStep }) {
   return (
     <li className={`run-step run-step--${step.tone}`}>
-      <span className={`run-step__dot run-step__dot--${step.tone}`} aria-hidden="true" />
+      <span
+        className={`run-step__dot run-step__dot--${step.tone}`}
+        aria-hidden="true"
+      />
       <span className="run-step__label">{step.label}</span>
-      {step.detail ? <span className="run-step__detail">{step.detail}</span> : null}
+      {step.detail ? (
+        <span className="run-step__detail">{step.detail}</span>
+      ) : null}
       {step.ts ? (
         <time className="run-step__ts" title={exactTime(step.ts)}>
           {shortTime(step.ts)}
@@ -453,8 +498,16 @@ function RunStep({ step }: { step: TimelineStep }) {
  * top of the static step timeline: if the stream errors or is unavailable, this
  * stays empty and the 60s poll keeps the timeline fresh, so it degrades cleanly.
  */
-function LiveTranscript({ firing, baseUrl }: { firing: FiringRecord; baseUrl: string }) {
-  const [liveLines, setLiveLines] = useState<{ ts: string | null; text: string }[]>([]);
+function LiveTranscript({
+  firing,
+  baseUrl,
+}: {
+  firing: FiringRecord;
+  baseUrl: string;
+}) {
+  const [liveLines, setLiveLines] = useState<
+    { ts: string | null; text: string }[]
+  >([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -464,7 +517,10 @@ function LiveTranscript({ firing, baseUrl }: { firing: FiringRecord; baseUrl: st
       onLines: (raw) => {
         const formatted = raw
           .map(formatTranscriptLine)
-          .filter((line): line is { ts: string | null; text: string } => line !== null);
+          .filter(
+            (line): line is { ts: string | null; text: string } =>
+              line !== null,
+          );
         if (formatted.length) {
           setLiveLines((prev) => [...prev, ...formatted]);
         }
@@ -481,7 +537,9 @@ function LiveTranscript({ firing, baseUrl }: { firing: FiringRecord; baseUrl: st
 
   if (liveLines.length === 0) {
     return (
-      <p className="run-live__empty">Waiting for the live transcript to start streaming...</p>
+      <p className="run-live__empty">
+        Waiting for the live transcript to start streaming...
+      </p>
     );
   }
 

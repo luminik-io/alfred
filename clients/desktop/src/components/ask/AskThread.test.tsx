@@ -51,7 +51,11 @@ const streamMock = vi.mocked(streamComposeConverse);
 
 function renderChat(selectedRepos = ["your-org/frontend"]) {
   return render(
-    <ComposeView baseUrl="http://127.0.0.1:7010" selectedRepos={selectedRepos} onSwitch={vi.fn()} />,
+    <ComposeView
+      baseUrl="http://127.0.0.1:7010"
+      selectedRepos={selectedRepos}
+      onSwitch={vi.fn()}
+    />,
   );
 }
 
@@ -64,10 +68,13 @@ async function send(user: ReturnType<typeof userEvent.setup>, text: string) {
   await user.click(screen.getByRole("button", { name: /send message/i }));
 }
 
-function converseResponse(overrides: Partial<ConverseResponse> = {}): ConverseResponse {
+function converseResponse(
+  overrides: Partial<ConverseResponse> = {},
+): ConverseResponse {
   return {
     draft_id: "compose-20260603-120000-add-csv-export",
-    saved_path: "/state/planning-drafts/compose-20260603-120000-add-csv-export.json",
+    saved_path:
+      "/state/planning-drafts/compose-20260603-120000-add-csv-export.json",
     reply: "How should Alfred verify this worked?",
     readiness: { score: 62, ready: false, missing: ["a test plan"] },
     done: false,
@@ -104,7 +111,9 @@ beforeEach(() => {
     detail: "no leading control verb",
     actor_user_id: "ULOCALCLIENT",
   });
-  streamMock.mockRejectedValue(new ApiError("stream unavailable", "load failed"));
+  streamMock.mockRejectedValue(
+    new ApiError("stream unavailable", "load failed"),
+  );
 });
 
 describe("Ask adapter: onNew streaming + message conversion", () => {
@@ -112,7 +121,9 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     streamMock.mockImplementation(async (_baseUrl, _request, onToken) => {
       onToken("Which repository ");
       onToken("is the attendees table in?");
-      return converseResponse({ reply: "Which repository is the attendees table in?" });
+      return converseResponse({
+        reply: "Which repository is the attendees table in?",
+      });
     });
     const user = userEvent.setup();
     renderChat();
@@ -138,7 +149,9 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     streamMock.mockImplementation(async (_baseUrl, _request, onToken) => {
       onToken("Lucius is retrying ");
       onToken("a failed run right now.");
-      return converseResponse({ reply: "Lucius is retrying a failed run right now." });
+      return converseResponse({
+        reply: "Lucius is retrying a failed run right now.",
+      });
     });
     const user = userEvent.setup();
     renderChat();
@@ -159,7 +172,8 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     conversationAvailable = false;
     draftMock.mockResolvedValue({
       draft_id: "compose-20260603-120000-add-csv-export",
-      saved_path: "/state/planning-drafts/compose-20260603-120000-add-csv-export.json",
+      saved_path:
+        "/state/planning-drafts/compose-20260603-120000-add-csv-export.json",
       title: "Add CSV export to the attendees table",
       readiness: { ok: false, score: 40 },
       questions: [],
@@ -181,7 +195,8 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
   it("retries the live engine after one unavailable turn", async () => {
     draftMock.mockResolvedValue({
       draft_id: "compose-20260603-120000-first-turn",
-      saved_path: "/state/planning-drafts/compose-20260603-120000-first-turn.json",
+      saved_path:
+        "/state/planning-drafts/compose-20260603-120000-first-turn.json",
       title: "First turn fallback",
       readiness: { ok: false, score: 0 },
       questions: [],
@@ -227,7 +242,9 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
       await screen.findByText(/how should alfred verify this worked\?/i),
     ).toBeInTheDocument();
     expect(container.querySelector(".ask-bubble--user")).toBeInTheDocument();
-    expect(container.querySelector(".ask-bubble--assistant")).toBeInTheDocument();
+    expect(
+      container.querySelector(".ask-bubble--assistant"),
+    ).toBeInTheDocument();
     // The "You" / "Alfred" role labels come from the converted message parts.
     expect(screen.getByText(/^You$/)).toBeInTheDocument();
     expect(screen.getByText(/^Alfred$/)).toBeInTheDocument();
@@ -243,7 +260,9 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     await send(user, "Build it");
 
     // The custom alfred-draft tool-call part renders the lifecycle card.
-    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText(/plan alfred is shaping/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/^Ready to file$/)).toBeInTheDocument();
   });
 
@@ -259,7 +278,9 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
 
     await send(user, "Build it");
 
-    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText(/plan alfred is shaping/i),
+    ).toBeInTheDocument();
     expect(
       await screen.findByRole("button", { name: /regenerate this reply/i }),
     ).toBeInTheDocument();
@@ -267,7 +288,9 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
 
   it("retry after a first-hop failure replays the failed message, not an earlier turn", async () => {
     // First turn succeeds and lands in the transcript.
-    streamMock.mockImplementation(async () => converseResponse({ reply: "First reply" }));
+    streamMock.mockImplementation(async () =>
+      converseResponse({ reply: "First reply" }),
+    );
     const user = userEvent.setup();
     renderChat();
     await send(user, "first message");
@@ -283,13 +306,17 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     // Capture what the next replay actually sends.
     let replayed: string | undefined;
     streamMock.mockImplementation(async (_baseUrl, request) => {
-      const msgs = (request as { messages: { role: string; content: string }[] }).messages;
+      const msgs = (
+        request as { messages: { role: string; content: string }[] }
+      ).messages;
       replayed = [...msgs].reverse().find((m) => m.role === "user")?.content;
       return converseResponse({ reply: "Second reply" });
     });
 
     // Regenerate must replay the failed "second message", not the earlier turn.
-    await user.click(await screen.findByRole("button", { name: /regenerate this reply/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /regenerate this reply/i }),
+    );
     await waitFor(() => expect(replayed).toBe("second message"));
   });
 
@@ -309,11 +336,17 @@ describe("Ask adapter: onNew streaming + message conversion", () => {
     renderChat();
 
     await send(user, "Build it");
-    await user.click(await screen.findByRole("button", { name: /file issue/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /file issue/i }),
+    );
 
     await waitFor(() => expect(filePlanIssueMock).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/filed with agent:implement/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /view issue/i })).toBeInTheDocument();
+    expect(
+      await screen.findByText(/filed with agent:implement/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /view issue/i }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -327,7 +360,9 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     await screen.findByText(/how should alfred verify this worked\?/i);
 
     // One active thread only: nothing to switch to yet.
-    expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /recent/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("resumes a prior conversation from the recent switcher", async () => {
@@ -352,7 +387,9 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
 
     // The second conversation is the active thread, so its reply is on screen
     // and the first conversation's reply is not.
-    expect(screen.queryByText(/first conversation reply\./i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/first conversation reply\./i),
+    ).not.toBeInTheDocument();
 
     // The Recent switcher now has two entries; open it and resume the first.
     await user.click(screen.getByRole("button", { name: /recent/i }));
@@ -361,8 +398,12 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
 
     // Resuming restores the first conversation's transcript and drops the
     // second's from view.
-    expect(await screen.findByText(/first conversation reply\./i)).toBeInTheDocument();
-    expect(screen.queryByText(/second conversation reply\./i)).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/first conversation reply\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/second conversation reply\./i),
+    ).not.toBeInTheDocument();
   });
 
   it("preserves the active conversation when switching threads mid-stream", async () => {
@@ -370,20 +411,28 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     renderChat();
 
     // Two settled conversations so the Recent switcher is available.
-    streamMock.mockImplementationOnce(async () => converseResponse({ reply: "B reply." }));
+    streamMock.mockImplementationOnce(async () =>
+      converseResponse({ reply: "B reply." }),
+    );
     await send(user, "Question B");
     await screen.findByText(/b reply\./i);
     await user.click(screen.getByRole("button", { name: /new chat/i }));
-    streamMock.mockImplementationOnce(async () => converseResponse({ reply: "C reply." }));
+    streamMock.mockImplementationOnce(async () =>
+      converseResponse({ reply: "C reply." }),
+    );
     await send(user, "Question C");
     await screen.findByText(/c reply\./i);
     await user.click(screen.getByRole("button", { name: /new chat/i }));
 
     // Start conversation A with a stream that never settles, so it stays busy
     // and the settle effect does not persist it.
-    streamMock.mockImplementationOnce(() => new Promise<ConverseResponse>(() => {}));
+    streamMock.mockImplementationOnce(
+      () => new Promise<ConverseResponse>(() => {}),
+    );
     await send(user, "Question A unfinished");
-    expect(await screen.findByText(/question a unfinished/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/question a unfinished/i),
+    ).toBeInTheDocument();
 
     // Switch to B mid-stream. Without the persist-before-switch fix, A's turn is
     // dropped because the swap replaces it while busy.
@@ -396,7 +445,9 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     await user.click(screen.getByRole("button", { name: /recent/i }));
     menu = await screen.findByRole("dialog", { name: /recent chats/i });
     await user.click(within(menu).getByText(/question a unfinished/i));
-    expect(await screen.findByText(/question a unfinished/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/question a unfinished/i),
+    ).toBeInTheDocument();
   });
 
   it("rehydrates the most recent conversation on mount (and survives across mounts)", async () => {
@@ -416,7 +467,6 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     expect(await screen.findByText(/persisted reply\./i)).toBeInTheDocument();
     expect(screen.getByText(/a question to persist/i)).toBeInTheDocument();
   });
-
 });
 
 describe("Ask chat-history panel (redesigned recent switcher)", () => {
@@ -427,7 +477,8 @@ describe("Ask chat-history panel (redesigned recent switcher)", () => {
     labels: string[],
   ) {
     for (let i = 0; i < labels.length; i += 1) {
-      if (i > 0) await user.click(screen.getByRole("button", { name: /new chat/i }));
+      if (i > 0)
+        await user.click(screen.getByRole("button", { name: /new chat/i }));
       streamMock.mockImplementationOnce(async () =>
         converseResponse({ reply: `${labels[i]} reply.` }),
       );
@@ -452,8 +503,12 @@ describe("Ask chat-history panel (redesigned recent switcher)", () => {
     // The non-active thread shows a relative timestamp + its message count; the
     // active thread is labelled as the current chat. Each seeded thread has one
     // user turn plus one assistant reply = two messages.
-    expect(within(panel).getByText(/just now · 2 messages/i)).toBeInTheDocument();
-    expect(within(panel).getByText(/current chat · 2 messages/i)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/just now · 2 messages/i),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/current chat · 2 messages/i),
+    ).toBeInTheDocument();
 
     // The active row is marked for assistive tech.
     const active = within(panel).getByRole("button", { current: true });
@@ -493,12 +548,20 @@ describe("Ask chat-history panel (redesigned recent switcher)", () => {
     await user.click(screen.getByRole("button", { name: /recent/i }));
     const panel = await screen.findByRole("dialog", { name: /recent chats/i });
     await user.click(
-      within(panel).getByRole("button", { name: /delete chat: delete current/i }),
+      within(panel).getByRole("button", {
+        name: /delete chat: delete current/i,
+      }),
     );
 
-    expect(await screen.findByText(/surviving chat reply\./i)).toBeInTheDocument();
-    expect(screen.queryByText(/delete current reply\./i)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/surviving chat reply\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/delete current reply\./i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /recent/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("closes on Escape and returns focus to the trigger", async () => {
@@ -548,7 +611,9 @@ describe("Ask streaming render is incremental (perf)", () => {
     // Mid-stream: the raw text is on screen via the fast streaming container,
     // and NO highlighted code block (.ask-code) has been parsed yet.
     await waitFor(() =>
-      expect(container.querySelector(".ask-bubble__stream-text")).toBeInTheDocument(),
+      expect(
+        container.querySelector(".ask-bubble__stream-text"),
+      ).toBeInTheDocument(),
     );
     expect(container.querySelector(".ask-code")).not.toBeInTheDocument();
 
@@ -559,7 +624,9 @@ describe("Ask streaming render is incremental (perf)", () => {
     await waitFor(() =>
       expect(container.querySelector(".ask-code")).toBeInTheDocument(),
     );
-    expect(container.querySelector(".ask-bubble__stream-text")).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".ask-bubble__stream-text"),
+    ).not.toBeInTheDocument();
   });
 
   it("coalesces a burst of tokens into the final reply text", async () => {
@@ -581,20 +648,36 @@ describe("Ask streaming render is incremental (perf)", () => {
 });
 
 describe("Ask hero and copy", () => {
-  it("shows the ask-anything hero and no plain/technical toggle", () => {
+  it("shows a concrete Ask prompt and no plain/technical toggle", () => {
     renderChat();
-    expect(screen.getByRole("heading", { name: /ask alfred anything/i })).toBeInTheDocument();
-    expect(screen.getByText(/ask a question, or describe a change/i)).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: /what do you want to know or change/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /ask about the codebase or describe the result you want/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: /plain language/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows generic starter prompt cards on an empty thread", () => {
     renderChat();
     // Four repo-agnostic starters, matching the ChatGPT/Base44 empty-state
     // pattern. No real repo name appears in any of them.
-    expect(screen.getByRole("button", { name: /add tests to a module/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /fix a failing ci check/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /tidy a readme/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /add tests to a module/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /fix a failing ci check/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tidy a readme/i }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /add logging to a code path/i }),
     ).toBeInTheDocument();
@@ -604,9 +687,13 @@ describe("Ask hero and copy", () => {
     const user = userEvent.setup();
     renderChat();
 
-    await user.click(screen.getByRole("button", { name: /add tests to a module/i }));
+    await user.click(
+      screen.getByRole("button", { name: /add tests to a module/i }),
+    );
     // The starter text lands in the composer input for editing...
-    expect((chatInput() as HTMLTextAreaElement).value).toMatch(/add tests to a module/i);
+    expect((chatInput() as HTMLTextAreaElement).value).toMatch(
+      /add tests to a module/i,
+    );
     // ...but nothing was sent: no converse/stream call fired.
     expect(streamMock).not.toHaveBeenCalled();
     expect(converseMock).not.toHaveBeenCalled();
@@ -618,7 +705,9 @@ describe("Ask hero and copy", () => {
     renderChat();
 
     // Present on the empty thread.
-    expect(screen.getByRole("button", { name: /add tests to a module/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /add tests to a module/i }),
+    ).toBeInTheDocument();
 
     await send(user, "Add a CSV download button");
     await screen.findByText(/how should alfred verify this worked\?/i);
@@ -640,13 +729,15 @@ describe("Ask plan card enrichment", () => {
           problem: "Sales reps cannot export the attendees they filtered.",
           user: "Sales rep",
           current_behavior: "",
-          desired_behavior: "A download button exports the visible rows as CSV.",
+          desired_behavior:
+            "A download button exports the visible rows as CSV.",
           repos: ["your-org/frontend"],
           acceptance_criteria: [
             "The button downloads only the filtered rows.",
             "The file opens cleanly in a spreadsheet.",
           ],
-          test_plan: "A unit test asserts the exported rows match the filtered set.",
+          test_plan:
+            "A unit test asserts the exported rows match the filtered set.",
           out_of_scope: "",
           rollout: "",
           open_questions: "",
@@ -659,7 +750,9 @@ describe("Ask plan card enrichment", () => {
 
     await send(user, "Build it");
 
-    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText(/plan alfred is shaping/i),
+    ).toBeInTheDocument();
     // Structured section headers appear.
     expect(screen.getByText(/^Intent$/)).toBeInTheDocument();
     expect(screen.getByText(/^Scope$/)).toBeInTheDocument();
@@ -667,12 +760,16 @@ describe("Ask plan card enrichment", () => {
     expect(screen.getByText(/^Verified by$/)).toBeInTheDocument();
     // Their content is present.
     expect(screen.getByText(/sales reps cannot export/i)).toBeInTheDocument();
-    expect(screen.getByText(/the button downloads only the filtered rows/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/the button downloads only the filtered rows/i),
+    ).toBeInTheDocument();
     // The plain-words consequence line names the target repo.
     const consequence = container.querySelector(".ask-draft__consequence");
     expect(consequence).toBeInTheDocument();
     expect(consequence).toHaveTextContent(/files a real issue on frontend/i);
-    expect(consequence).toHaveTextContent(/engineer-agent picks it up and opens a pull request/i);
+    expect(consequence).toHaveTextContent(
+      /engineer-agent picks it up and opens a pull request/i,
+    );
   });
 
   it("omits every empty section (no bare headers) on a thin draft", async () => {
@@ -703,9 +800,13 @@ describe("Ask plan card enrichment", () => {
 
     await send(user, "Add a CSV download button");
 
-    expect(await screen.findByLabelText(/plan alfred is shaping/i)).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText(/plan alfred is shaping/i),
+    ).toBeInTheDocument();
     // No structured detail block and no section headers when there is no data.
-    expect(container.querySelector(".ask-draft__detail")).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".ask-draft__detail"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/^Intent$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Done when$/)).not.toBeInTheDocument();
     // With no repo, the card must NOT promise a real filing; it shows the neutral
@@ -727,7 +828,8 @@ describe("Ask plan card enrichment", () => {
           problem: "Sales reps cannot export attendees.",
           user: "Sales rep",
           current_behavior: "",
-          desired_behavior: "A download button exports the visible rows as CSV.",
+          desired_behavior:
+            "A download button exports the visible rows as CSV.",
           repos: [],
           acceptance_criteria: [],
           test_plan: "",
@@ -758,7 +860,8 @@ describe("Ask plan card enrichment", () => {
           problem: "Sales reps cannot export attendees.",
           user: "Sales rep",
           current_behavior: "",
-          desired_behavior: "A download button exports the visible rows as CSV.",
+          desired_behavior:
+            "A download button exports the visible rows as CSV.",
           repos: ["your-org/frontend"],
           acceptance_criteria: [],
           test_plan: "",
@@ -786,7 +889,11 @@ describe("Ask plan card enrichment", () => {
     // not promise a filing until it is actually ready.
     streamMock.mockImplementation(async () =>
       converseResponse({
-        readiness: { score: 45, ready: false, missing: ["a problem statement"] },
+        readiness: {
+          score: 45,
+          ready: false,
+          missing: ["a problem statement"],
+        },
         draft: {
           title: "Add CSV export to the attendees table",
           problem: "",
@@ -810,7 +917,9 @@ describe("Ask plan card enrichment", () => {
     await screen.findByLabelText(/plan alfred is shaping/i);
 
     // No enriched detail block and no section headers for a repo-only draft.
-    expect(container.querySelector(".ask-draft__detail")).not.toBeInTheDocument();
+    expect(
+      container.querySelector(".ask-draft__detail"),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/^Intent$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Scope$/)).not.toBeInTheDocument();
     // The repo is present but the draft is not ready, so no filing promise.
@@ -833,7 +942,8 @@ describe("Ask plan card enrichment", () => {
           problem: "Sales reps cannot export the attendees they filtered.",
           user: "Sales rep",
           current_behavior: "",
-          desired_behavior: "A download button exports the visible rows as CSV.",
+          desired_behavior:
+            "A download button exports the visible rows as CSV.",
           repos: ["your-org/frontend"],
           acceptance_criteria: ["The button downloads only the filtered rows."],
           test_plan: "",
@@ -873,10 +983,12 @@ describe("Ask plan card enrichment", () => {
           problem: "Sales reps cannot export the attendees they filtered.",
           user: "Sales rep",
           current_behavior: "",
-          desired_behavior: "A download button exports the visible rows as CSV.",
+          desired_behavior:
+            "A download button exports the visible rows as CSV.",
           repos: ["your-org/frontend", "your-org/api"],
           acceptance_criteria: [],
-          test_plan: "A unit test asserts the exported rows match the filtered set.",
+          test_plan:
+            "A unit test asserts the exported rows match the filtered set.",
           out_of_scope: "",
           rollout: "",
           open_questions: "",
@@ -898,6 +1010,8 @@ describe("Ask plan card enrichment", () => {
     expect(consequence).not.toHaveTextContent(/on frontend, api/i);
     expect(consequence).not.toHaveTextContent(/issue on api/i);
     // The note clarifies the other repos are context, not extra issues.
-    expect(consequence).toHaveTextContent(/other repos are context, not extra issues/i);
+    expect(consequence).toHaveTextContent(
+      /other repos are context, not extra issues/i,
+    );
   });
 });

@@ -1,6 +1,6 @@
 # Alfred design system
 
-Single source of truth for typography, color, layout, and motif on alfred.luminik.io. The site explains a supervised local agent fleet through an operations-style interface. Every decision below points at one of three goals:
+Single source of truth for typography, color, layout, and motif on alfred.luminik.io. The site presents Alfred as an autonomous engineering team that keeps work moving after the user steps away. The operations-style interface supplies the proof. Every decision below points at one of three goals:
 
 1. Distinct from the default dark navy developer-tool template.
 2. Shows how Alfred coordinates work, evidence, and decisions between harness runs.

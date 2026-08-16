@@ -194,8 +194,10 @@ describe("ComposeView", () => {
 
   it("shows the ask-anything hero copy and no plain/technical toggle", () => {
     renderComposeView();
-    expect(screen.getByRole("heading", { name: /ask alfred anything/i })).toBeInTheDocument();
-    expect(screen.getByText(/ask a question, or describe a change/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /what do you want to know or change/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/ask about the codebase or describe the result/i)).toBeInTheDocument();
     // The plain/technical toggle is gone: Compose always speaks plain.
     expect(screen.queryByRole("switch", { name: /plain language/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/give the outcome, repo scope, and constraints/i)).not.toBeInTheDocument();

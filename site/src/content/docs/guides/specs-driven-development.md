@@ -187,7 +187,7 @@ in planning and tighten the issue first.
 These are useful references, not Alfred dependencies:
 
 - [GitHub Spec Kit](https://github.com/github/spec-kit): a structured
-  spec-to-plan-to-tasks workflow for agentic development.
+  spec-to-plan-to-tasks workflow for software development with coding agents.
 - [AGENTS.md](https://agents.md/) and the
   [Codex AGENTS.md guide](https://developers.openai.com/codex/guides/agents-md):
   agent-readable repo instructions.

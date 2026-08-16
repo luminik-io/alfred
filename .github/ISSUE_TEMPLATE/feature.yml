@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Alfred is deliberately small. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md) before opening. Features that broaden scope (multi-tenant, hosted, web UI, vector DB) get politely declined.
+        Alfred has firm product boundaries. Read [`CONTRIBUTING.md`](https://github.com/luminik-io/alfred/blob/main/CONTRIBUTING.md) and [`ROADMAP.md`](https://github.com/luminik-io/alfred/blob/main/ROADMAP.md) before opening. Hosted multi-tenant control planes and unbounded autonomous merge authority are out of scope.
 
         Strong feature requests describe the use case first, the proposed solution second.
 
@@ -54,5 +54,5 @@ body:
       options:
         - label: My use case is single-operator. (Alfred is not multi-tenant.)
           required: true
-        - label: I'm willing to write the PR (or fund someone to write it). The framework is weekend-maintained.
+        - label: I can test the change or provide a reproducible example.
           required: false

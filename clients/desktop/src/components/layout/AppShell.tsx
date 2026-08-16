@@ -84,7 +84,10 @@ export function AppShell({
           variant="sidebar"
           className="alfred-glass-shell border-sidebar-border/70"
         >
-          <div className="hidden h-3 shrink-0 md:block" data-tauri-drag-region />
+          <div
+            className="hidden h-3 shrink-0 md:block"
+            data-tauri-drag-region
+          />
           <SidebarHeader className="gap-3 px-3 py-3">
             <SidebarBrandButton onNavigate={onNavigate} />
           </SidebarHeader>
@@ -93,7 +96,8 @@ export function AppShell({
             <SidebarGroup>
               <SidebarMenu>
                 {navItems.map((item) => {
-                  const active = item.key === "fleet" ? tab === "fleet" : tab === item.key;
+                  const active =
+                    item.key === "fleet" ? tab === "fleet" : tab === item.key;
                   const badge =
                     item.key === "fleet" && unseenCount > 0
                       ? unseenCount > 9
@@ -116,11 +120,12 @@ export function AppShell({
           </SidebarContent>
 
           <SidebarFooter className="gap-3 border-t border-sidebar-border/50 p-3">
-            <div className="group-data-[collapsible=icon]:hidden rounded-lg border border-sidebar-border/55 bg-sidebar-accent/20 p-2">
+            <div
+              className="alfred-fleet-status group-data-[collapsible=icon]:hidden"
+              title={baseUrl}
+            >
+              <span className="alfred-fleet-status__label">Local fleet</span>
               <FleetStatus snapshot={snapshot} error={error} />
-              <p className="mt-1 truncate text-[11px] text-sidebar-foreground/55" title={baseUrl}>
-                {baseUrl.replace(/^https?:\/\//, "")}
-              </p>
             </div>
             <SidebarSeparator />
             <div className="grid grid-cols-3 gap-1 group-data-[collapsible=icon]:grid-cols-1">
@@ -158,7 +163,10 @@ export function AppShell({
               <SidebarTrigger>
                 <PanelLeft aria-hidden="true" />
               </SidebarTrigger>
-              <span className="alfred-brand-mark size-7 shrink-0" aria-hidden="true">
+              <span
+                className="alfred-brand-mark size-7 shrink-0"
+                aria-hidden="true"
+              >
                 <img
                   src="/brand/alfred-logo-transparent.png"
                   alt=""
@@ -170,7 +178,10 @@ export function AppShell({
                 <FleetStatus snapshot={snapshot} error={error} compact />
               </div>
             </header>
-            <div className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5 lg:px-7">
+            <div
+              className="min-h-0 flex-1 overflow-auto px-4 py-4 sm:px-5 lg:px-7"
+              data-alfred-scroll-region
+            >
               {children}
             </div>
           </div>
@@ -180,7 +191,11 @@ export function AppShell({
   );
 }
 
-function SidebarBrandButton({ onNavigate }: { onNavigate: (key: TabKey) => void }) {
+function SidebarBrandButton({
+  onNavigate,
+}: {
+  onNavigate: (key: TabKey) => void;
+}) {
   const { isMobile, setOpenMobile } = useSidebar();
   const navigateHome = () => {
     onNavigate("home");
@@ -204,9 +219,6 @@ function SidebarBrandButton({ onNavigate }: { onNavigate: (key: TabKey) => void 
       <span className="min-w-0 group-data-[collapsible=icon]:hidden">
         <span className="block truncate font-heading text-base font-semibold">
           Alfred
-        </span>
-        <span className="block text-[10px] font-medium uppercase tracking-[0.1em] text-sidebar-foreground/55">
-          Supervised agent fleet
         </span>
       </span>
     </button>
@@ -295,41 +307,39 @@ function FleetStatus({
 }) {
   const offline = Boolean(error);
   const health = snapshot?.status.reliability.status || "checking";
-  const text =
-    offline
-      ? "Offline"
-      : health === "ok"
-        ? "Live"
-        : health === "checking"
-          ? "Checking"
-          : "Needs attention";
-  const title =
-    offline
-      ? "Alfred serve offline"
-      : health === "ok"
-        ? "Agents live"
-        : health === "checking"
-          ? "Checking agent status"
-          : "Agents need attention";
-  const variant = offline ? "destructive" : health === "ok" ? "secondary" : "outline";
-  const dot =
-    offline
-      ? "bg-destructive"
-      : health === "ok"
-        ? "bg-primary"
-        : health === "checking"
-          ? "bg-muted-foreground"
-          : "bg-[var(--warn)]";
+  const text = offline
+    ? "Offline"
+    : health === "ok"
+      ? "Live"
+      : health === "checking"
+        ? "Checking"
+        : "Needs attention";
+  const title = offline
+    ? "Alfred serve offline"
+    : health === "ok"
+      ? "Agents live"
+      : health === "checking"
+        ? "Checking agent status"
+        : "Agents need attention";
+  const variant = offline
+    ? "destructive"
+    : health === "ok"
+      ? "secondary"
+      : "outline";
+  const dot = offline
+    ? "bg-destructive"
+    : health === "ok"
+      ? "bg-primary"
+      : health === "checking"
+        ? "bg-muted-foreground"
+        : "bg-[var(--warn)]";
   return (
     <Badge
       variant={variant}
       className={compact ? "h-6 gap-1.5 px-2" : "h-7 gap-1.5 px-2"}
       title={title}
     >
-      <span
-        className={`size-1.5 rounded-full ${dot}`}
-        aria-hidden="true"
-      />
+      <span className={`size-1.5 rounded-full ${dot}`} aria-hidden="true" />
       {text}
     </Badge>
   );

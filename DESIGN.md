@@ -109,6 +109,15 @@ Alfred is a quiet operations field that reveals change at its edges. Neutral pla
 
 Signal Edge is the default appearance. Category Standard maps the same semantic contract to denser graphite panels and conventional status color. Linked Fold maps it to warm paper, fine crease geometry, and gold decision accents. Theme changes may alter material, radius, and heading character, but they do not alter information architecture, control meaning, or status semantics.
 
+### Direction contract
+
+- **THESIS:** Alfred shows autonomous work as a compact lifecycle. It rejects the generic assistant dashboard.
+- **OWN-WORLD:** Signal Edge uses quiet glass and spectral state edges. Category Standard uses compressed operations type and hard graphite panels. Linked Fold uses paper grain, connected creases, and gold decisions.
+- **STORY:** The operator sees what needs a decision, what runs now, and what shipped, then opens evidence or acts.
+- **FIRST VIEWPORT:** A compact rail, four ordered Work lanes, and a separate evidence inspector fill the desktop viewport. Narrow screens keep the same order and move evidence into a sheet.
+- **FORM:** Established-world extension, 1 of 1. Seed key `established-world:signal-edge-v1`. The approved Signal Edge, Category Standard, and Linked Fold comps are the authority; a new-world concept roll does not apply.
+- **FINISH:** unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+
 **Key Characteristics:**
 
 - Compact, fit-to-viewport operational density.

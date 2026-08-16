@@ -67,7 +67,7 @@ function snapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 }
 
 describe("MemoryView", () => {
-  it("leads with what Alfred remembered on its own, no click required", () => {
+  it("explains how to review and retire reused lessons", () => {
     render(
       <MemoryView
         snapshot={snapshot()}
@@ -79,8 +79,12 @@ describe("MemoryView", () => {
       />,
     );
 
-    // The intro reframes memory as automatic, not a review queue.
-    expect(screen.getByText(/alfred remembers what it learns on its own/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/alfred reuses approved lessons from earlier work/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/retire a lesson when it is no longer correct/i),
+    ).toBeInTheDocument();
     // The codebase lessons lead the surface.
     expect(
       screen.getByRole("heading", { name: /about your codebase/i }),
@@ -98,7 +102,10 @@ describe("MemoryView", () => {
         snapshot={snapshot({
           memoryLessons: {
             rows: [
-              lesson({ id: "lesson:memory_candidate:1", body: "GraphQL schema lives here." }),
+              lesson({
+                id: "lesson:memory_candidate:1",
+                body: "GraphQL schema lives here.",
+              }),
               // An ops lesson: about Alfred's runtime, not the codebase.
               lesson({
                 id: "lesson:memory_candidate:9",
@@ -117,7 +124,9 @@ describe("MemoryView", () => {
     );
 
     // Codebase lesson leads under the primary heading.
-    expect(screen.getByRole("heading", { name: /about your codebase/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /about your codebase/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/graphql schema lives here/i)).toBeInTheDocument();
 
     // The ops lesson lives under a secondary, CLOSED disclosure so it does not
@@ -126,7 +135,9 @@ describe("MemoryView", () => {
     const opsDetails = opsSummary.closest("details");
     expect(opsDetails).not.toBeNull();
     expect(opsDetails).not.toHaveAttribute("open");
-    expect(within(opsDetails as HTMLElement).getByText(/provider quota hit/i)).toBeInTheDocument();
+    expect(
+      within(opsDetails as HTMLElement).getByText(/provider quota hit/i),
+    ).toBeInTheDocument();
   });
 
   it("shows a friendly empty note when every lesson is an ops lesson", () => {
@@ -135,7 +146,11 @@ describe("MemoryView", () => {
         snapshot={snapshot({
           memoryLessons: {
             rows: [
-              lesson({ id: "lesson:memory_candidate:9", body: "Auth failed; ask a human.", ops: true }),
+              lesson({
+                id: "lesson:memory_candidate:9",
+                body: "Auth failed; ask a human.",
+                ops: true,
+              }),
             ],
           },
         })}
@@ -148,10 +163,16 @@ describe("MemoryView", () => {
     );
 
     // No codebase lessons yet, so the primary group explains that plainly...
-    expect(screen.getByText(/nothing about your codebase yet/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/nothing about your codebase yet/i),
+    ).toBeInTheDocument();
     // ...while the ops lesson is still available under Alfred's runs.
     const opsSummary = screen.getByText(/about alfred.s runs/i);
-    expect(within(opsSummary.closest("details") as HTMLElement).getByText(/auth failed/i)).toBeInTheDocument();
+    expect(
+      within(opsSummary.closest("details") as HTMLElement).getByText(
+        /auth failed/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("gives every auto-remembered lesson an undo affordance that retires it", async () => {
@@ -172,7 +193,10 @@ describe("MemoryView", () => {
     // Undo uses the lesson's recall id; the action layer strips it to the
     // candidate id the server retire route validates.
     await user.click(screen.getByRole("button", { name: /^undo$/i }));
-    expect(onMemoryCandidateAction).toHaveBeenCalledWith("lesson:memory_candidate:1", "retire");
+    expect(onMemoryCandidateAction).toHaveBeenCalledWith(
+      "lesson:memory_candidate:1",
+      "retire",
+    );
   });
 
   it("hides Undo on non-candidate-backed lessons so it never offers a broken action", () => {
@@ -184,9 +208,15 @@ describe("MemoryView", () => {
               // A synced / directly-reflected lesson: its id is not the
               // lesson:memory_candidate:<id> recall id, so there is no candidate
               // to retire and Undo must not appear.
-              lesson({ id: "synced-lesson-42", body: "Prefer the shared client." }),
+              lesson({
+                id: "synced-lesson-42",
+                body: "Prefer the shared client.",
+              }),
               // A candidate-backed lesson keeps its Undo.
-              lesson({ id: "lesson:memory_candidate:7", body: "GraphQL schema lives here." }),
+              lesson({
+                id: "lesson:memory_candidate:7",
+                body: "GraphQL schema lives here.",
+              }),
             ],
           },
         })}
@@ -239,7 +269,9 @@ describe("MemoryView", () => {
     expect(
       screen.getByRole("heading", { name: /waiting for your confirmation/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /use request fixtures/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /use request fixtures/i }),
+    ).toBeInTheDocument();
 
     // Keep / dismiss still work for the candidates that were not sure enough.
     await user.click(screen.getByRole("button", { name: /keep this lesson/i }));
@@ -251,7 +283,10 @@ describe("MemoryView", () => {
   it("shows the 'nothing remembered yet' empty state when there is nothing at all", () => {
     render(
       <MemoryView
-        snapshot={snapshot({ memoryCandidates: { rows: [] }, memoryLessons: { rows: [] } })}
+        snapshot={snapshot({
+          memoryCandidates: { rows: [] },
+          memoryLessons: { rows: [] },
+        })}
         actionNotice={null}
         busyMemoryAction={null}
         nativeBusy={null}
@@ -295,13 +330,23 @@ describe("MemoryView", () => {
     // the operator opens the disclosure.
     await user.click(advancedSummary);
     const advanced = within(advancedDetails as HTMLElement);
-    await user.click(advanced.getByRole("button", { name: /run memory check/i }));
-    await user.click(advanced.getByRole("button", { name: /preview redis sync/i }));
-    await user.click(advanced.getByRole("button", { name: /queue failure lessons/i }));
-    await user.click(advanced.getByRole("button", { name: /save judged lessons/i }));
+    await user.click(
+      advanced.getByRole("button", { name: /run memory check/i }),
+    );
+    await user.click(
+      advanced.getByRole("button", { name: /preview redis sync/i }),
+    );
+    await user.click(
+      advanced.getByRole("button", { name: /queue failure lessons/i }),
+    );
+    await user.click(
+      advanced.getByRole("button", { name: /save judged lessons/i }),
+    );
 
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "brain_doctor" });
-    expect(onRunLocalAction).toHaveBeenCalledWith({ action: "redis_sync_preview" });
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "redis_sync_preview",
+    });
     expect(onRunLocalAction).toHaveBeenCalledWith({
       action: "memory_harvest",
       refreshAfter: true,
@@ -315,7 +360,10 @@ describe("MemoryView", () => {
   it("hides the raw JSON evidence behind a closed disclosure on a pending candidate", () => {
     render(
       <MemoryView
-        snapshot={snapshot({ memoryCandidates: { rows: [candidate()] }, memoryLessons: { rows: [] } })}
+        snapshot={snapshot({
+          memoryCandidates: { rows: [candidate()] },
+          memoryLessons: { rows: [] },
+        })}
         actionNotice={null}
         busyMemoryAction={null}
         nativeBusy={null}
