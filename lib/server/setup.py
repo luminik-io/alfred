@@ -752,6 +752,17 @@ def engine_clis(*, deadline: float | None = None) -> list[dict[str, Any]]:
     probe_env = dict(os.environ)
     probe_env.update(runtime_env)
     probe_env["PATH"] = search
+    remaining = None if deadline is None else deadline - time.monotonic()
+    if remaining is None or remaining > 0:
+        selected_profile = runtime_facade.scheduler_environment_value(
+            "CLAUDE_CONFIG_DIR",
+            environ=probe_env,
+            timeout=2.0 if remaining is None else min(2.0, remaining),
+        )
+        if selected_profile:
+            probe_env["CLAUDE_CONFIG_DIR"] = selected_profile
+        else:
+            probe_env.pop("CLAUDE_CONFIG_DIR", None)
     deadline_seconds = 8.0
     if deadline is not None:
         deadline_seconds = max(0.0, deadline - time.monotonic())
@@ -760,6 +771,32 @@ def engine_clis(*, deadline: float | None = None) -> list[dict[str, Any]]:
         search_path=search,
         deadline_seconds=deadline_seconds,
     )
+
+
+_DEFAULT_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
+
+
+def _default_engine_route_status(engines: list[dict[str, Any]]) -> tuple[bool, str]:
+    """Evaluate setup engines with the shipped Claude-first hybrid policy."""
+
+    by_name = {str(engine.get("name")): engine for engine in engines}
+    claude = by_name.get("claude")
+    codex = by_name.get("codex")
+    if claude and claude.get("ready"):
+        return True, "Ready via Claude Code."
+    claude_state = str(claude.get("state") if claude else "missing")
+    if claude_state in _DEFAULT_ENGINE_FALLBACK_STATES and codex and codex.get("ready"):
+        return True, "Ready via Codex fallback."
+    if claude and claude_state not in _DEFAULT_ENGINE_FALLBACK_STATES:
+        return False, f"Claude Code blocks the default hybrid route ({claude_state})."
+    detected = [
+        str(engine.get("display_name") or engine.get("name"))
+        for engine in engines
+        if engine.get("installed") and not engine.get("ready")
+    ]
+    if detected:
+        return False, f"Detected but not ready: {', '.join(detected)}."
+    return False, "No compatible coding engine was found."
 
 
 def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -1682,7 +1719,7 @@ def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     """One read the client turns into the Set up checklist.
 
     Surfaces what is connected vs missing with a next action per row:
-    GitHub auth, at least one engine CLI, the watched-repo selection, and a
+    GitHub auth, a working default engine route, the watched-repo selection, and a
     demo-present flag. ``ready`` is the golden-path gate: gh authed + at least
     one engine + at least one board-visible repo selected and covered by queue
     scope (no AWS / Slack required).
@@ -1698,7 +1735,7 @@ def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     queue_repos = _setup_queue_repos_for_status(runtime_env)
     queue_missing = sorted(set(repos) - queue_repos)
     queue_covers_selected = bool(repos) and not queue_missing
-    any_engine = any(e["ready"] for e in engines)
+    engine_route_ready, _ = _default_engine_route_status(engines)
     repo_checkouts = _selected_repo_local_paths(repos, runtime_env, deadline=deadline)
     code_memory = code_memory_status(runtime_env)
     code_memory_coverage = _code_memory_coverage(
@@ -1721,7 +1758,7 @@ def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
     return {
         "github": gh,
         "engines": engines,
-        "engine_ready": any_engine,
+        "engine_ready": engine_route_ready,
         "code_memory": code_memory,
         "code_memory_coverage": code_memory_coverage,
         "capability_plane": capability_plane,
@@ -1740,7 +1777,9 @@ def bootstrap_status(*, deadline_seconds: float = 10.0) -> dict[str, Any]:
         "demo": {"present": any(load_demo_cards().values())},
         "install": install,
         "first_run": first_run,
-        "ready": bool(gh["ok"] and any_engine and repos and queue_repos and queue_covers_selected),
+        "ready": bool(
+            gh["ok"] and engine_route_ready and repos and queue_repos and queue_covers_selected
+        ),
     }
 
 
@@ -1847,32 +1886,20 @@ def _github_readiness_check(gh: dict[str, Any]) -> dict[str, Any]:
 
 
 def _engine_readiness_check(engines: list[dict[str, Any]]) -> dict[str, Any]:
-    ready = [
-        str(engine.get("display_name") or engine.get("name"))
-        for engine in engines
-        if engine.get("ready")
-    ]
-    detected = [
-        str(engine.get("display_name") or engine.get("name"))
-        for engine in engines
-        if engine.get("installed") and not engine.get("ready")
-    ]
+    ready, detail = _default_engine_route_status(engines)
+    action = (
+        "Sign in to Claude Code or select Codex for each enabled agent, then recheck setup."
+        if "blocks the default hybrid route" in detail
+        else "Install and sign in to a supported coding engine, then recheck setup."
+    )
     return _readiness_check(
         "engine_clis",
         "Coding engine",
         category="engines",
         tier="required",
-        ready=bool(ready),
-        detail=(
-            f"Ready: {', '.join(ready)}."
-            if ready
-            else (
-                f"Detected but not ready: {', '.join(detected)}."
-                if detected
-                else "No compatible coding engine was found."
-            )
-        ),
-        action="Install and sign in to a supported coding engine, then recheck setup.",
+        ready=ready,
+        detail=detail,
+        action=action,
     )
 
 

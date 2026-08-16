@@ -126,7 +126,6 @@ it that way, with no external dependencies.
 from __future__ import annotations
 
 import argparse
-import ast
 import contextlib
 import hashlib
 import json
@@ -3661,36 +3660,8 @@ def _scheduler_command(cmd: list[str], *, timeout: float) -> subprocess.Complete
         return subprocess.CompletedProcess(cmd, 124, stdout=stdout, stderr=f"{stderr}{detail}\n")
 
 
-def _decode_systemd_env_value(value: str) -> str:
-    try:
-        if value.startswith("$'") and value.endswith("'"):
-            return str(ast.literal_eval("'" + value[2:-1] + "'"))
-        if value.startswith(("'", '"')):
-            parts = shlex.split(value)
-            return parts[0] if parts else ""
-    except Exception:
-        return value
-    return value
-
-
 def _current_claude_dir() -> str:
-    if scheduler.SCHEDULER == "launchd":
-        if not shutil.which("launchctl"):
-            return os.environ.get("CLAUDE_CONFIG_DIR", "")
-        result = _launchctl(["getenv", "CLAUDE_CONFIG_DIR"])
-        if result.returncode != 0:
-            return ""
-        return result.stdout.strip()
-    if scheduler.SCHEDULER == "systemd":
-        result = _systemctl_user(["show-environment"])
-        if result.returncode != 0:
-            return os.environ.get("CLAUDE_CONFIG_DIR", "")
-        for line in result.stdout.splitlines():
-            key, _, value = line.partition("=")
-            if key == "CLAUDE_CONFIG_DIR":
-                return _decode_systemd_env_value(value)
-        return ""
-    return os.environ.get("CLAUDE_CONFIG_DIR", "")
+    return scheduler.manager_environment_value("CLAUDE_CONFIG_DIR")
 
 
 def _current_claude_label() -> str:

@@ -22,9 +22,13 @@ that way.
 
 from __future__ import annotations
 
+import ast
 import os
 import platform
+import shlex
+import shutil
 import subprocess
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 # --------------------------------------------------------------------------
@@ -53,8 +57,52 @@ def _uid() -> int:
     return os.getuid()
 
 
-def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=15)
+def _run(cmd: list[str], *, timeout: float = 15) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=timeout)
+
+
+def _decode_manager_environment_value(value: str) -> str:
+    try:
+        if value.startswith("$'") and value.endswith("'"):
+            return str(ast.literal_eval("'" + value[2:-1] + "'"))
+        if value.startswith(("'", '"')):
+            parts = shlex.split(value)
+            return parts[0] if parts else ""
+    except (SyntaxError, ValueError):
+        return value
+    return value
+
+
+def manager_environment_value(
+    name: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+    timeout: float = 15,
+    run: Callable[..., subprocess.CompletedProcess[str]] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> str:
+    """Read one value from the user scheduler environment."""
+
+    env = environ if environ is not None else os.environ
+    execute = run or _run
+    try:
+        if SCHEDULER == "launchd":
+            if which("launchctl") is None:
+                return env.get(name, "")
+            result = execute(["launchctl", "getenv", name], timeout=timeout)
+            return result.stdout.strip() if result.returncode == 0 else env.get(name, "")
+        if SCHEDULER == "systemd":
+            result = execute(["systemctl", "--user", "show-environment"], timeout=timeout)
+            if result.returncode != 0:
+                return env.get(name, "")
+            for line in result.stdout.splitlines():
+                key, _, value = line.partition("=")
+                if key == name:
+                    return _decode_manager_environment_value(value)
+            return ""
+    except (OSError, subprocess.SubprocessError):
+        return env.get(name, "")
+    return env.get(name, "")
 
 
 # --------------------------------------------------------------------------

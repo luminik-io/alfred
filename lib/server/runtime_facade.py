@@ -95,6 +95,19 @@ def engine_inventory(
     )
 
 
+def scheduler_environment_value(
+    name: str,
+    *,
+    environ: Mapping[str, str],
+    timeout: float,
+) -> str:
+    """Read one scheduler-selected value without importing scheduler at startup."""
+
+    import scheduler
+
+    return scheduler.manager_environment_value(name, environ=environ, timeout=timeout)
+
+
 def model_providers() -> frozenset[str]:
     """Return the provider names accepted by the runtime model router."""
 

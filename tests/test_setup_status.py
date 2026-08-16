@@ -89,6 +89,111 @@ def test_bootstrap_status_shares_one_deadline_across_slow_probes(
     assert before < deadlines["github"] <= before + 10.5
 
 
+def test_default_hybrid_route_blocks_on_claude_auth_even_when_codex_is_ready() -> None:
+    ready, detail = setup_mod._default_engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ]
+    )
+
+    assert ready is False
+    assert "Claude Code blocks the default hybrid route" in detail
+
+
+def test_bootstrap_status_blocks_when_claude_auth_stops_default_hybrid_route(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda **_kwargs: [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+    )
+
+    payload = setup_mod.bootstrap_status()
+    checks = {row["key"]: row for row in payload["first_run"]["checks"]}
+
+    assert payload["engine_ready"] is False
+    assert checks["engine_clis"]["ready"] is False
+    assert "blocks the default hybrid route" in checks["engine_clis"]["detail"]
+
+
+def test_default_hybrid_route_uses_codex_when_claude_is_missing() -> None:
+    ready, detail = setup_mod._default_engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": False,
+                "ready": False,
+                "state": "missing",
+            },
+            {
+                "name": "codex",
+                "display_name": "Codex",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ]
+    )
+
+    assert ready is True
+    assert detail == "Ready via Codex fallback."
+
+
+def test_engine_inventory_uses_scheduler_selected_claude_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def inventory(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(setup_mod, "_runtime_config_env", lambda: {"PATH": "/usr/bin"})
+    monkeypatch.setattr(
+        setup_mod.runtime_facade,
+        "scheduler_environment_value",
+        lambda *_args, **_kwargs: "/profiles/secondary",
+    )
+    monkeypatch.setattr(setup_mod.runtime_facade, "engine_inventory", inventory)
+
+    setup_mod.engine_clis(deadline=time.monotonic() + 5)
+
+    assert captured["environ"]["CLAUDE_CONFIG_DIR"] == "/profiles/secondary"
+
+
 def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     home = tmp_path / "home"
     alfred_home = tmp_path / ".alfred"

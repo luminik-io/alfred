@@ -36,6 +36,48 @@ def test_supported_matches_scheduler_value():
     assert scheduler.supported() == (scheduler.SCHEDULER in ("launchd", "systemd"))
 
 
+def test_manager_environment_value_reads_launchd_selection(monkeypatch):
+    monkeypatch.setattr(scheduler, "SCHEDULER", "launchd")
+    commands: list[tuple[list[str], float]] = []
+
+    def run(command: list[str], *, timeout: float):
+        commands.append((command, timeout))
+        return subprocess.CompletedProcess(command, 0, "/profiles/secondary\n", "")
+
+    value = scheduler.manager_environment_value(
+        "CLAUDE_CONFIG_DIR",
+        environ={"CLAUDE_CONFIG_DIR": "/profiles/stale"},
+        timeout=2,
+        run=run,
+        which=lambda _binary: "/bin/launchctl",
+    )
+
+    assert value == "/profiles/secondary"
+    assert commands == [(["launchctl", "getenv", "CLAUDE_CONFIG_DIR"], 2)]
+
+
+def test_manager_environment_value_decodes_systemd_selection(monkeypatch):
+    monkeypatch.setattr(scheduler, "SCHEDULER", "systemd")
+
+    def run(command: list[str], *, timeout: float):
+        assert timeout == 3
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            "OTHER=value\nCLAUDE_CONFIG_DIR='/profiles/secondary account'\n",
+            "",
+        )
+
+    value = scheduler.manager_environment_value(
+        "CLAUDE_CONFIG_DIR",
+        environ={"CLAUDE_CONFIG_DIR": "/profiles/stale"},
+        timeout=3,
+        run=run,
+    )
+
+    assert value == "/profiles/secondary account"
+
+
 def test_unit_file_extension_matches_scheduler():
     if scheduler.SCHEDULER == "launchd":
         assert scheduler.UNIT_EXT == "plist"
