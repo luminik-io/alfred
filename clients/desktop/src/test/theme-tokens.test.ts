@@ -46,6 +46,19 @@ function blockBody(css: string, selectorHead: string): string {
   return css.slice(open + 1, close);
 }
 
+function lastBlockBody(css: string, selectorHead: string): string {
+  const start = css.lastIndexOf(selectorHead);
+  if (start === -1) {
+    throw new Error(`could not find selector "${selectorHead}" in index.css`);
+  }
+  const open = css.indexOf("{", start);
+  const close = css.indexOf("}", open);
+  if (open === -1 || close === -1) {
+    throw new Error(`malformed block for "${selectorHead}" in index.css`);
+  }
+  return css.slice(open + 1, close);
+}
+
 // All --token names declared in a block body (left-hand sides only).
 function declaredTokens(body: string): Set<string> {
   const names = new Set<string>();
@@ -175,6 +188,15 @@ describe("theme token completeness (do not revert)", () => {
   it("removes the legacy Mineral and Carbon selectors", () => {
     expect(css).not.toContain('data-theme="mineral"');
     expect(css).not.toContain('data-theme="carbon"');
+  });
+
+  it("keeps Linked Fold dark on warm graphite instead of a brown field", () => {
+    const body = lastBlockBody(css, ':root[data-theme="linked-fold"].dark {');
+
+    expect(body).toMatch(/--theme-background:\s*oklch\(0\.155 0\.008 55\)/);
+    expect(body).toMatch(/--theme-surface:\s*oklch\(0\.205 0\.010 55/);
+    expect(body).toMatch(/--theme-surface-2:\s*oklch\(0\.235 0\.012 55/);
+    expect(body).toMatch(/--theme-surface-3:\s*oklch\(0\.275 0\.014 55/);
   });
 
   it("sweeps every shipped theme and no retired theme", () => {
