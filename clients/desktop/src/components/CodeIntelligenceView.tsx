@@ -99,7 +99,7 @@ export function CodeIntelligenceView({ baseUrl }: { baseUrl: string }) {
   };
 
   return (
-    <section className="space-y-4 motion-fade" aria-label="Code intelligence">
+    <section className="code-intelligence motion-fade" aria-label="Code intelligence">
       <header
         className="alfred-page-hero px-4 py-4"
         aria-label="Code intelligence summary"
@@ -161,9 +161,13 @@ export function CodeIntelligenceView({ baseUrl }: { baseUrl: string }) {
         <>
           <form
             onSubmit={onSubmit}
-            className="grid gap-3 rounded-lg border border-border/70 bg-card/45 p-3 shadow-sm backdrop-blur-xl lg:grid-cols-[minmax(11rem,0.32fr)_minmax(18rem,1fr)_auto] lg:items-end"
+            className="code-intelligence__query"
           >
-            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+            <div className="code-intelligence__query-intro">
+              <strong>Analyze a file</strong>
+              <span>Choose an indexed repository and enter a file path.</span>
+            </div>
+            <label className="code-intelligence__field">
               Repository
               <Select
                 value={selectedRepo || selectedSummary?.name || ""}
@@ -190,7 +194,7 @@ export function CodeIntelligenceView({ baseUrl }: { baseUrl: string }) {
                 </SelectContent>
               </Select>
             </label>
-            <label className="grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground">
+            <label className="code-intelligence__field">
               File path
               <Input
                 value={queryPath}
@@ -202,6 +206,7 @@ export function CodeIntelligenceView({ baseUrl }: { baseUrl: string }) {
               />
             </label>
             <Button
+              className="code-intelligence__query-action"
               type="submit"
               disabled={loading || !selectedRepo || !queryPath.trim()}
             >
@@ -229,7 +234,7 @@ export function CodeIntelligenceView({ baseUrl }: { baseUrl: string }) {
 
 function EmptyCodeMap() {
   return (
-    <section className="rounded-lg border border-dashed border-border bg-card/35 p-6 text-center">
+    <section className="code-intelligence__empty">
       <GitFork
         className="mx-auto mb-3 text-muted-foreground"
         aria-hidden="true"
@@ -241,7 +246,7 @@ function EmptyCodeMap() {
         Build the local code map once. Alfred will keep it refreshed after
         setup.
       </p>
-      <code className="mt-4 inline-block rounded-md border border-border bg-muted/60 px-3 py-2 text-xs text-foreground">
+      <code className="code-intelligence__command">
         alfred code-map build .
       </code>
     </section>
@@ -259,8 +264,11 @@ function RepositoryOverview({
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
   return (
-    <section className="space-y-4" aria-label={`${repo.name} index summary`}>
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-4">
+    <section
+      className="code-intelligence__overview"
+      aria-label={`${repo.name} index summary`}
+    >
+      <div className="code-intelligence__metrics code-intelligence__metrics--four">
         <Metric label="Files" value={repo.summary.files} />
         <Metric label="Symbols" value={repo.summary.symbols} />
         <Metric label="Imports" value={repo.summary.imports} />
@@ -270,8 +278,8 @@ function RepositoryOverview({
           tone={driftCount ? "warn" : "normal"}
         />
       </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.42fr)]">
-        <section className="rounded-lg border border-border bg-card/45 p-4 backdrop-blur-xl">
+      <div className="code-intelligence__overview-grid">
+        <section className="code-intelligence__surface code-intelligence__repository">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -282,12 +290,12 @@ function RepositoryOverview({
               </h2>
             </div>
             {repo.head_sha ? (
-              <code className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+              <code className="code-intelligence__revision">
                 {shortId(repo.head_sha)}
               </code>
             ) : null}
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="code-intelligence__repository-facts">
             <Evidence label="Routes" value={repo.route_count} icon={GitFork} />
             <Evidence
               label="Endpoints"
@@ -301,7 +309,7 @@ function RepositoryOverview({
             />
           </div>
           {repo.summary.truncated ? (
-            <div className="mt-4 flex gap-2 rounded-md border border-primary/35 bg-primary/10 p-3 text-sm text-foreground">
+            <div className="code-intelligence__limit-note">
               <AlertTriangle
                 className="mt-0.5 size-4 text-primary"
                 aria-hidden="true"
@@ -311,7 +319,7 @@ function RepositoryOverview({
             </div>
           ) : null}
         </section>
-        <section className="rounded-lg border border-border bg-card/45 p-4 backdrop-blur-xl">
+        <section className="code-intelligence__surface code-intelligence__languages">
           <h2 className="text-sm font-medium text-foreground">Languages</h2>
           <div className="mt-3 space-y-2">
             {languages.length ? (
@@ -347,7 +355,7 @@ function ImpactWorkspace({
 }) {
   if (impact.match_status === "ambiguous") {
     return (
-      <section className="rounded-lg border border-primary/40 bg-primary/10 p-4">
+      <section className="code-intelligence__notice code-intelligence__notice--choice">
         <h2 className="font-heading text-lg font-medium text-foreground">
           Choose the exact file
         </h2>
@@ -372,7 +380,7 @@ function ImpactWorkspace({
   }
   if (impact.match_status === "not_found") {
     return (
-      <section className="rounded-lg border border-border bg-card/45 p-5">
+      <section className="code-intelligence__notice">
         <h2 className="font-heading text-lg font-medium text-foreground">
           File not found in the index
         </h2>
@@ -391,8 +399,8 @@ function ImpactWorkspace({
         ? "warn"
         : "ok";
   return (
-    <section className="space-y-4" aria-label="Impact analysis">
-      <div className="rounded-lg border border-border bg-card/50 p-4 shadow-sm backdrop-blur-xl">
+    <section className="code-intelligence__impact" aria-label="Impact analysis">
+      <div className="code-intelligence__surface code-intelligence__impact-summary">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -414,14 +422,14 @@ function ImpactWorkspace({
             </p>
           </div>
           {impact.head_sha ? (
-            <code className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+            <code className="code-intelligence__revision shrink-0">
               {shortId(impact.head_sha)}
             </code>
           ) : null}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-5">
+      <div className="code-intelligence__metrics code-intelligence__metrics--five">
         <Metric label="Dependents" value={impact.counts.direct_dependents} />
         <Metric
           label="Dependencies"
@@ -437,13 +445,13 @@ function ImpactWorkspace({
         />
       </div>
 
-      <section className="grid overflow-hidden rounded-lg border border-border bg-card/40 lg:grid-cols-[minmax(0,1fr)_minmax(12rem,0.65fr)_minmax(0,1fr)]">
+      <section className="code-intelligence__surface code-intelligence__relationship-map">
         <RelationshipList
           title="Used by"
           rows={impact.direct_dependents}
           empty="No direct dependents found."
         />
-        <div className="flex min-h-32 flex-col items-center justify-center border-y border-border bg-muted/35 p-4 text-center lg:border-x lg:border-y-0">
+        <div className="code-intelligence__focus-file">
           <FileCode2 className="mb-2 text-primary" aria-hidden="true" />
           <strong className="break-all font-mono text-xs text-foreground">
             {impact.matched_file}
@@ -459,7 +467,7 @@ function ImpactWorkspace({
         />
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="code-intelligence__evidence-grid">
         <EvidenceList
           title="Symbols"
           icon={Braces}
@@ -526,7 +534,7 @@ function Metric({
 }) {
   return (
     <div
-      className={`min-w-0 bg-card px-3 py-3 ${wideOnNarrow ? "col-span-2 md:col-span-1" : ""}`}
+      className={`code-intelligence__metric ${wideOnNarrow ? "code-intelligence__metric--wide" : ""}`}
     >
       <strong
         className={tone === "warn" ? "text-destructive" : "text-foreground"}
@@ -575,7 +583,7 @@ function Evidence({
   icon: typeof GitFork;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background/35 p-2.5">
+    <div className="code-intelligence__fact">
       <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
       <div>
         <strong className="text-sm text-foreground">{value}</strong>
@@ -595,16 +603,16 @@ function RelationshipList({
   empty: string;
 }) {
   return (
-    <div className="min-w-0 p-4">
+    <div className="code-intelligence__relationship-list">
       <h3 className="text-xs font-medium uppercase text-muted-foreground">
         {title}
       </h3>
-      <div className="mt-3 space-y-2">
+      <div className="code-intelligence__relationship-rows">
         {rows.length ? (
           rows.map((row, index) => (
             <div
               key={`${row.path}-${index}`}
-              className="min-w-0 rounded-md border border-border/70 bg-background/35 p-2.5"
+              className="code-intelligence__relationship-row"
             >
               <p className="break-all font-mono text-xs text-foreground">
                 {row.path}
@@ -640,7 +648,7 @@ function EvidenceList({
 }) {
   return (
     <section
-      className={`rounded-lg border p-4 ${tone === "warn" ? "border-destructive/40 bg-destructive/10" : "border-border bg-card/45"}`}
+      className={`code-intelligence__evidence ${tone === "warn" ? "code-intelligence__evidence--warn" : ""}`}
     >
       <div className="flex items-center gap-2">
         <Icon

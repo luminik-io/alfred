@@ -189,11 +189,6 @@
   box-shadow: none;
 }
 
-:root[data-theme="signal-edge"] [aria-label="Code intelligence"] > form {
-  background: var(--surface);
-  box-shadow: none;
-}
-
 :root[data-theme="signal-edge"] .plan-detail-sheet {
   background: var(--glass-strong);
   box-shadow: -12px 0 36px
@@ -217,8 +212,7 @@
     .command-center__pulse,
     .command-center__capacity,
     .custom-agents-panel,
-    .workflow-graph,
-    [aria-label="Code intelligence"] > form
+    .workflow-graph
   ) {
   border-radius: 0;
   border-color: var(--border-strong);
@@ -362,8 +356,7 @@
     .command-center__pulse,
     .command-center__capacity,
     .custom-agents-panel,
-    .workflow-graph,
-    [aria-label="Code intelligence"] > form
+    .workflow-graph
   ) {
   border-radius: 0;
   border-color: var(--fold-line);

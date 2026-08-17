@@ -644,7 +644,11 @@ export class AlfredApiFixture {
       });
       return true;
     }
-    if (matches("/api/code-intelligence")) {
+    if (path === "/api/code-intelligence") {
+      const selectedRepo = url.searchParams.get("repo");
+      const queryPath = url.searchParams.get("path");
+      const analyzed =
+        this.mode === "ready" && Boolean(selectedRepo && queryPath);
       await this.fulfill(route, {
         schema: "alfred.code-intelligence.v1",
         generated_at: "2026-07-23T20:15:00Z",
@@ -670,9 +674,64 @@ export class AlfredApiFixture {
             : [],
         repo_count: this.mode === "ready" ? 1 : 0,
         contract_drift_count: 0,
-        selected_repo: null,
-        query_path: null,
-        impact: null,
+        selected_repo: analyzed ? selectedRepo : null,
+        query_path: analyzed ? queryPath : null,
+        impact: analyzed
+          ? {
+              kind: "impact-brief",
+              repo: selectedRepo,
+              path: queryPath,
+              matched_file: queryPath,
+              match_status: "exact",
+              head_sha: "0123456789abcdef",
+              language: "typescript",
+              level: "high",
+              reasons: ["route contract", "direct dependents"],
+              summary: "The indexed file owns one route and has two direct dependents.",
+              counts: {
+                symbols: 3,
+                direct_dependents: 2,
+                direct_dependencies: 1,
+                contract_surfaces: 1,
+                contract_drift: 1,
+                nearby_files: 2,
+              },
+              symbols: [
+                { name: "registerRoutes", line: 18 },
+                { name: "readWorkspace", line: 42 },
+                { name: "writeResponse", line: 67 },
+              ],
+              direct_dependents: [
+                { path: "src/server/app.ts", via: "./routes", kind: "import" },
+                { path: "tests/routes.test.ts", via: "route setup", kind: "test" },
+              ],
+              direct_dependencies: [
+                { path: "src/server/store.ts", via: "./store", kind: "import" },
+              ],
+              contract_surfaces: [
+                {
+                  kind: "route",
+                  method: "GET",
+                  path: "/api/workspaces",
+                  file: queryPath,
+                },
+              ],
+              contract_drift: [
+                {
+                  method: "GET",
+                  path: "/api/workspaces",
+                  normalized: "/workspaces",
+                  file: queryPath,
+                },
+              ],
+              nearby_files: ["tests/routes.test.ts", "src/server/store.ts"],
+              candidate_matches: [],
+              next_checks: [
+                "Run the route contract tests.",
+                "Check callers before changing the response shape.",
+              ],
+            }
+          : null,
       });
       return true;
     }
