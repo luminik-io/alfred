@@ -37,7 +37,8 @@ import signal
 import subprocess
 import tempfile
 import threading
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -72,7 +73,12 @@ from .memory_runtime import (
     strip_memory_reflections,
     with_memory_prompt,
 )
-from .opencode import build_opencode_command, opencode_environment, parse_opencode_events
+from .opencode import (
+    build_opencode_command,
+    opencode_environment,
+    parse_opencode_events,
+    parse_opencode_mcp_status,
+)
 from .paths import (
     CODEX_APPROVAL_POLICY,
     CODEX_DEFAULT_SANDBOX,
@@ -649,6 +655,65 @@ def _active_code_graph_tool_names(workdir: Path | None = None) -> list[str]:
     if CODE_MEMORY_MCP_SERVER in server:
         return _code_memory_tool_names()
     return []
+
+
+def _code_memory_status_for_opencode() -> Mapping[str, Any]:
+    """Read the shared code-memory readiness contract without mutating state."""
+
+    from server.setup import code_memory_status
+
+    return code_memory_status()
+
+
+def _opencode_mcp_contract(
+    workdir: Path,
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, tuple[str, ...]],
+    dict[str, str],
+]:
+    """Resolve ready managed MCP servers and scrubbed unavailable states."""
+
+    servers: dict[str, dict[str, Any]] = {}
+    tools: dict[str, tuple[str, ...]] = {}
+    unavailable: dict[str, str] = {}
+
+    if not _memory_mcp_enabled():
+        unavailable[MEMORY_MCP_SERVER] = "disabled"
+    else:
+        memory_script = _memory_mcp_script()
+        memory = _memory_mcp_server(memory_script)
+        if memory is None:
+            unavailable[MEMORY_MCP_SERVER] = "missing"
+        else:
+            servers.update(memory)
+            tools[MEMORY_MCP_SERVER] = _MEMORY_RECALL_TOOLS
+
+    if not _code_memory_mcp_enabled():
+        unavailable[CODE_MEMORY_MCP_SERVER] = "disabled"
+        return servers, tools, unavailable
+
+    try:
+        status = _code_memory_status_for_opencode()
+    except Exception:
+        unavailable[CODE_MEMORY_MCP_SERVER] = "status_failed"
+        return servers, tools, unavailable
+    binary = status.get("binary")
+    repos = status.get("repos")
+    if not isinstance(binary, Mapping) or not binary.get("resolved"):
+        unavailable[CODE_MEMORY_MCP_SERVER] = "binary_missing"
+    elif not isinstance(repos, Mapping) or not repos.get("selected"):
+        unavailable[CODE_MEMORY_MCP_SERVER] = "scope_missing"
+    elif not status.get("index_present"):
+        unavailable[CODE_MEMORY_MCP_SERVER] = "index_missing"
+    else:
+        code_memory = _code_memory_mcp_server()
+        if code_memory is None:
+            unavailable[CODE_MEMORY_MCP_SERVER] = "missing"
+        else:
+            servers.update(code_memory)
+            tools[CODE_MEMORY_MCP_SERVER] = _CODE_MEMORY_TOOLS
+    return servers, tools, unavailable
 
 
 def _subprocess_text(value: object) -> str:
@@ -1533,18 +1598,61 @@ def opencode_invoke(
         firing_id = f"{stamp}-{secrets.token_hex(2)}"
     paths = opencode_artifact_paths(agent, firing_id)
     command = build_opencode_command(readiness.binary, workdir=workdir, model=model)
+    mcp_servers, mcp_tools, mcp_unavailable = _opencode_mcp_contract(workdir)
+    attached_mcp: list[str] = []
+    mcp_startup_failures: dict[str, str] = {}
 
     try:
         with tempfile.TemporaryDirectory(prefix="alfred-opencode-") as directory:
+            started_at = time.monotonic()
             child_env = opencode_environment(
                 os.environ,
                 config_dir=Path(directory),
                 allow_writes=allow_writes,
+                workdir=workdir,
+                mcp_servers=mcp_servers,
+                mcp_tools=mcp_tools,
             )
+            if mcp_servers:
+                probe_timeout = min(10, max(1, timeout))
+                probe = _popen_run_text(
+                    [readiness.binary, "--pure", "mcp", "list"],
+                    cwd=str(workdir),
+                    timeout=probe_timeout,
+                    capture=True,
+                    env=child_env,
+                )
+                if probe.returncode == 124:
+                    states = dict.fromkeys(mcp_servers, "timeout")
+                elif probe.returncode != 0:
+                    states = dict.fromkeys(mcp_servers, "failed")
+                else:
+                    states = parse_opencode_mcp_status(
+                        "\n".join((probe.stdout or "", probe.stderr or "")),
+                        tuple(mcp_servers),
+                    )
+                attached_mcp = sorted(
+                    name for name, state in states.items() if state == "connected"
+                )
+                mcp_startup_failures = {
+                    name: state for name, state in states.items() if state != "connected"
+                }
+                ready_servers = {name: mcp_servers[name] for name in attached_mcp}
+                ready_tools = {name: mcp_tools[name] for name in attached_mcp}
+                child_env = opencode_environment(
+                    os.environ,
+                    config_dir=Path(directory),
+                    allow_writes=allow_writes,
+                    workdir=workdir,
+                    mcp_servers=ready_servers,
+                    mcp_tools=ready_tools,
+                )
+            elapsed = time.monotonic() - started_at
+            remaining_timeout = max(1, int(timeout - elapsed))
             proc = _popen_run_text(
                 command,
                 cwd=str(workdir),
-                timeout=timeout,
+                timeout=remaining_timeout,
                 capture=True,
                 env=child_env,
                 input_text=prompt,
@@ -1557,7 +1665,12 @@ def opencode_invoke(
             cost_usd=0.0,
             session_id=None,
             result_text="",
-            raw={"engine": "opencode"},
+            raw={
+                "engine": "opencode",
+                "mcp_servers_attached": attached_mcp,
+                "mcp_startup_failures": mcp_startup_failures,
+                "mcp_servers_unavailable": mcp_unavailable,
+            },
             stop_reason="error",
             error_message=f"OpenCode could not start: {type(exc).__name__}",
         )
@@ -1576,6 +1689,9 @@ def opencode_invoke(
         "tokens_used": events.tokens_used,
         "model": model,
         "worktree_write": allow_writes,
+        "mcp_servers_attached": attached_mcp,
+        "mcp_startup_failures": mcp_startup_failures,
+        "mcp_servers_unavailable": mcp_unavailable,
     }
 
     if proc.returncode == 124:

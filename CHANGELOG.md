@@ -13,6 +13,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added Alfred's read-only lesson memory and ready code graph to explicitly
+  selected OpenCode firings. OpenCode checks each server before the firing and
+  records attached and unavailable servers in local firing evidence.
 - Added a compression quality gate that compares raw output, the built-in
   compactor, and Headroom against required failures, paths, line numbers, test
   counts, and final command status before reporting token savings.
@@ -31,10 +34,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
-- OpenCode runs with an isolated temporary config, disabled external plugins,
-  disabled automatic sharing, an exact worktree, and automatic rejection of
-  unexpected permission prompts. Read-only roles deny edits and shell commands.
-  Write roles deny direct push, merge, and main-branch checkout commands.
+- OpenCode runs with an isolated temporary config root, disabled user and
+  project config, disabled external plugins and skills, disabled automatic
+  sharing, an exact worktree, and automatic rejection of unexpected permission
+  prompts. Only Alfred's named read-only MCP tools are allowed. Read-only roles
+  deny edits and shell commands. Write roles deny direct push, merge, and
+  main-branch checkout commands.
 
 ### Changed
 

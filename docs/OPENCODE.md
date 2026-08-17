@@ -69,7 +69,10 @@ Each firing starts a new non-interactive OpenCode session with:
 - automatic sharing disabled
 - automatic updates and LSP downloads disabled for the firing
 - an explicit Alfred agent and permission map
-- project subagents, skills, and MCP tools denied for the firing
+- user and project configuration excluded from the firing
+- user plugins, external skills, and project subagents denied for the firing
+- ready `alfred_memory` and `code_memory` servers checked before use
+- an exact allowlist for the read-only tools on each attached server
 
 The prompt goes through standard input. Alfred parses only completed text,
 usage, session ID, and error fields. Raw output and stderr stay in
@@ -105,9 +108,14 @@ checkout or switch to `main`. Unexpected permission requests are rejected
 because Alfred does not pass `--auto`.
 
 External paths, interactive questions, plan-mode transitions, project
-subagents, skills, and MCP tools are denied in both modes. System-managed
-OpenCode policy has final authority. Use a dedicated user, virtual machine, or
-container when the agent must not reach other files or network destinations.
+subagents, and external skills are denied in both modes. Alfred does not import
+the user's OpenCode configuration or MCP registry. It adds only its own ready
+read-only memory servers. Each server starts under OpenCode's local MCP client
+before the main firing. A failed server is removed from the firing config.
+Attached, failed, and unavailable server names are recorded in the local firing
+result without paths or command output. System-managed OpenCode policy has final
+authority. Use a dedicated user, virtual machine, or container when the agent
+must not reach other files or network destinations.
 
 ## Failure states
 
@@ -124,9 +132,12 @@ container when the agent must not reach other files or network destinations.
 
 - OpenCode is not added to the default hybrid fallback.
 - Alfred does not import user OpenCode plugins into scheduled runs.
+- Alfred does not import user or project OpenCode MCP servers.
 - Alfred does not manage provider keys or provider billing.
 - OpenCode sessions are new per firing. Cross-engine session import belongs to
   the separate session and evidence work.
 
-See [engine routing](ENGINE_ROUTING.md), [security](THREAT_MODEL.md), and the
+See [engine routing](ENGINE_ROUTING.md), [security](THREAT_MODEL.md),
+[OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/),
+[OpenCode permissions](https://opencode.ai/docs/permissions/), and the
 [OpenCode CLI documentation](https://opencode.ai/docs/cli/).
