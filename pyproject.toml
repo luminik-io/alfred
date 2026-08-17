@@ -4,7 +4,7 @@
 # unrelated projects on PyPI and Homebrew. The operator-facing CLI remains
 # `alfred`; this package entry point only exposes wheel-specific utilities.
 name = "alfred-os"
-version = "0.7.4"
+version = "0.7.5"
 description = "Run Claude Code and Codex as an autonomous engineering team with schedules, isolated worktrees, review, memory, and approval gates."
 readme = "README.md"
 license = { file = "LICENSE" }

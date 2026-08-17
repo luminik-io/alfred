@@ -18,6 +18,20 @@ The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
 currently has no pending changes.
 
+## 0.7.5 (2026-08-17)
+
+Version 0.7.5 prevents accidental collaborator removal and saved-chat deletion
+in Alfred Desktop.
+
+- Both actions now require a clear confirmation.
+- The affected collaborator or chat is named before removal.
+- Escape cancels the action without closing the parent screen.
+- The permanent Desktop audit now checks 168 fixture-backed captures across all
+  themes, modes, and supported widths.
+
+Read the complete
+[`0.7.5` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#075---2026-08-17).
+
 ## 0.7.4 (2026-08-17)
 
 Version 0.7.4 replaces the brown Linked Fold dark field with warm graphite
