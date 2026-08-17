@@ -7,10 +7,11 @@ const desktopDir = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(desktopDir, "../..");
 const sourceDir = path.join(desktopDir, "test-results", "public-gallery-source");
 const outputDir = path.join(desktopDir, "test-results", "public-gallery");
-const names = [
-  "alfred-gallery-work.png",
-  "alfred-gallery-agents.png",
-  "alfred-gallery-approval.png",
+const assets = [
+  { name: "alfred-gallery-work.png", scale: "1270:760" },
+  { name: "alfred-gallery-agents.png", scale: "1270:760" },
+  { name: "alfred-gallery-approval.png", scale: "1270:760" },
+  { name: "alfred-gallery-settings-narrow.png", scale: "760:900" },
 ];
 const mediaTargets = [
   path.join(repoRoot, "docs", "media", "gallery"),
@@ -46,13 +47,13 @@ await run(
 );
 
 await mkdir(outputDir, { recursive: true });
-for (const name of names) {
+for (const { name, scale } of assets) {
   await run("ffmpeg", [
     "-y",
     "-i",
     path.join(sourceDir, name),
     "-vf",
-    "scale=1270:760:flags=lanczos",
+    `scale=${scale}:flags=lanczos`,
     "-frames:v",
     "1",
     "-update",
@@ -64,7 +65,7 @@ for (const name of names) {
 for (const target of mediaTargets) {
   await rm(target, { recursive: true, force: true });
   await mkdir(target, { recursive: true });
-  for (const name of names) {
+  for (const { name } of assets) {
     await copyFile(path.join(outputDir, name), path.join(target, name));
   }
 }

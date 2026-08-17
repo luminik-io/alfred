@@ -23,12 +23,18 @@ def test_public_tour_is_fixture_only() -> None:
     assert 'localStorage.setItem("alfred-theme", "light")' in tour_source
     assert 'localStorage.setItem("alfred-theme", "dark")' not in tour_source
     assert "sample-data fixture" in homepage
+    assert 'video controls playsinline preload="none"' in homepage
+    assert 'type="video/mp4"' in homepage
     assert (ROOT / "docs/media/alfred-tour.mp4").read_bytes() == (
         ROOT / "site/public/media/alfred-tour.mp4"
     ).read_bytes()
     assert (ROOT / "docs/media/alfred-tour-poster.png").read_bytes() == (
         ROOT / "site/public/media/alfred-tour-poster.png"
     ).read_bytes()
+    video = (ROOT / "docs/media/alfred-tour.mp4").read_bytes()
+    assert b"ftyp" in video[:32]
+    assert 100_000 < len(video) < 2_000_000
+    assert _png_size(ROOT / "docs/media/alfred-tour-poster.png") == (1440, 900)
 
 
 def test_public_gallery_is_fixture_only_light_mode() -> None:
@@ -48,21 +54,31 @@ def test_public_gallery_is_fixture_only_light_mode() -> None:
     assert 'localStorage.setItem("alfred-theme", "dark")' not in gallery_source
     assert "width: 1440" in config_source
     assert "height: 862" in config_source
-    assert "scale=1270:760:flags=lanczos" in capture_script.read_text()
+    capture_source = capture_script.read_text()
+    assert '{ name: "alfred-gallery-work.png", scale: "1270:760" }' in capture_source
+    assert '{ name: "alfred-gallery-settings-narrow.png", scale: "760:900" }' in capture_source
+    assert "alfred-gallery-settings-narrow.png" in gallery_source
+    assert "width: 760, height: 900" in gallery_source
+    assert all(name in gallery_source for name in ("Prism", "Graphite", "Ledger"))
+    fixture_source = (ROOT / "clients/desktop/e2e/alfred-api.fixture.ts").read_text()
+    assert "Record engine settings for every run" in fixture_source
+    assert "Replace legacy appearance presets" not in fixture_source
+    assert "2026-07-23" not in fixture_source
     assert '"capture:gallery"' in desktop_package
 
-    names = (
-        "alfred-gallery-work.png",
-        "alfred-gallery-agents.png",
-        "alfred-gallery-approval.png",
-    )
-    assert {path.name for path in (ROOT / "docs/media/gallery").glob("*.png")} == set(names)
-    assert {path.name for path in (ROOT / "site/public/media/gallery").glob("*.png")} == set(names)
-    for name in names:
+    assets = {
+        "alfred-gallery-work.png": (1270, 760),
+        "alfred-gallery-agents.png": (1270, 760),
+        "alfred-gallery-approval.png": (1270, 760),
+        "alfred-gallery-settings-narrow.png": (760, 900),
+    }
+    assert {path.name for path in (ROOT / "docs/media/gallery").glob("*.png")} == set(assets)
+    assert {path.name for path in (ROOT / "site/public/media/gallery").glob("*.png")} == set(assets)
+    for name, size in assets.items():
         docs_asset = ROOT / "docs/media/gallery" / name
         site_asset = ROOT / "site/public/media/gallery" / name
         assert docs_asset.read_bytes() == site_asset.read_bytes()
-        assert _png_size(docs_asset) == (1270, 760)
+        assert _png_size(docs_asset) == size
 
 
 def test_public_docs_do_not_ship_live_operator_screenshots() -> None:

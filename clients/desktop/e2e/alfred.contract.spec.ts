@@ -80,7 +80,7 @@ test("compact Work windows open the inspector as a sheet", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Work", exact: true }).click();
   await page
-    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
 
   await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
@@ -94,7 +94,7 @@ test("standard desktop Work windows keep the inspector in a sheet", async ({ pag
   await page.goto("/");
   await page.getByRole("button", { name: "Work", exact: true }).click();
   await page
-    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
 
   await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
@@ -110,7 +110,7 @@ test("wide Work windows dock evidence without narrowing lifecycle lanes", async 
   await page.goto("/");
   await page.getByRole("button", { name: "Work", exact: true }).click();
   await page
-    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
 
   const inspector = page.getByRole("complementary", {

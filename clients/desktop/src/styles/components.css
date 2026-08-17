@@ -52,6 +52,7 @@
   }
 
   .alfred-tabs-list [role="tab"] {
+    height: 38px;
     min-height: 38px;
   }
 }
