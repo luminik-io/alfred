@@ -286,6 +286,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.alfred-stepper__mobile-label {
+  display: none;
+}
+
 /* The active step's panel: a centered column with breathing room. No box of its
  * own; it sits directly on the shell so the journey is one surface. It flexes to
  * fill the shell and scrolls internally only if a step's body is unusually tall,
@@ -464,6 +468,22 @@
  * its short axis, and the connectors tighten so
  * eight numbered dots fit on one line at 375 with no overflow. */
 @media (max-width: 480px) {
+  .alfred-stepper__count {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .alfred-stepper__mobile-label {
+    display: inline;
+    overflow: hidden;
+    color: var(--foreground);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .alfred-stepper__node {
     min-height: 36px;
     padding-inline: 0.2rem;

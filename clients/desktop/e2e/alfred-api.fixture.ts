@@ -117,6 +117,108 @@ const sampleBoard = {
   counts: { queued: 1, in_progress: 2, shipped: 2, awaiting_approval: 0 },
 };
 
+const sampleBatteries = {
+  version: 1,
+  summary: { included: 2, enabled: 1, available: 0, not_installed: 1, total: 4 },
+  batteries: [
+    {
+      id: "sqlite-memory",
+      name: "Built-in memory",
+      category: "memory",
+      what: "An embedded lesson store that needs no service.",
+      how_it_helps: "Keeps useful lessons available for later runs.",
+      builtin: true,
+      default_on: true,
+      status: "included",
+      configured: true,
+      enabled: true,
+      installed: true,
+      requires_daemon: false,
+      service: "",
+      install_kind: "included",
+      install_hint: "",
+      pip_extra: "",
+      env_keys: [],
+      docs: "docs/MEMORY_PROVIDERS.md",
+    },
+    {
+      id: "tool-compactor",
+      name: "Tool-output compactor",
+      category: "compression",
+      what: "A built-in filter for verbose command and test output.",
+      how_it_helps: "Leaves more context for the work itself.",
+      builtin: true,
+      default_on: true,
+      status: "included",
+      configured: true,
+      enabled: true,
+      installed: true,
+      requires_daemon: false,
+      service: "",
+      install_kind: "included",
+      install_hint: "",
+      pip_extra: "",
+      env_keys: [],
+      docs: "docs/COMPRESSION.md",
+    },
+    {
+      id: "code-memory-mcp",
+      name: "Codebase memory",
+      category: "code-graph",
+      what: "A local code graph for structural search and impact checks.",
+      how_it_helps: "Helps agents find the right code before they edit it.",
+      builtin: false,
+      default_on: true,
+      status: "enabled",
+      configured: true,
+      enabled: true,
+      installed: true,
+      requires_daemon: false,
+      service: "",
+      install_kind: "autofetch",
+      install_hint: "alfred code-memory install",
+      pip_extra: "",
+      env_keys: ["ALFRED_CODE_MEMORY_MCP"],
+      docs: "docs/CODE_MEMORY.md",
+    },
+    {
+      id: "pgvector-memory",
+      name: "Postgres memory",
+      category: "memory",
+      what: "An optional Postgres-backed semantic lesson store.",
+      how_it_helps: "Shares memory across a larger installation.",
+      builtin: false,
+      default_on: false,
+      status: "not_installed",
+      configured: false,
+      enabled: false,
+      installed: false,
+      requires_daemon: true,
+      service: "Postgres",
+      install_kind: "daemon",
+      install_hint: "Run Postgres with pgvector, then set the connection URL.",
+      pip_extra: "pgvector",
+      env_keys: ["ALFRED_MEMORY_PGVECTOR_URL"],
+      docs: "docs/MEMORY_PROVIDERS.md",
+    },
+  ],
+};
+
+const samplePlaybooks = {
+  playbooks: [
+    {
+      key: "fix-failing-test",
+      title: "Fix a failing test",
+      summary: "Trace one reproducible failure, repair it, and prove the fix.",
+    },
+    {
+      key: "review-pull-request",
+      title: "Review a pull request",
+      summary: "Check a pull request for correctness, risk, and missing tests.",
+    },
+  ],
+};
+
 const emptyDraft = {
   title: "",
   problem: "",
@@ -459,6 +561,14 @@ export class AlfredApiFixture {
     }
     if (matches("/api/setup/status")) {
       await this.fulfill(route, this.setupStatus());
+      return true;
+    }
+    if (matches("/api/setup/batteries")) {
+      await this.fulfill(route, sampleBatteries);
+      return true;
+    }
+    if (matches("/api/setup/playbooks")) {
+      await this.fulfill(route, samplePlaybooks);
       return true;
     }
     if (matches("/api/roster-theme")) {

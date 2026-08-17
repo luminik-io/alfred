@@ -38,6 +38,7 @@ export function Stepper({
 }) {
   const total = steps.length;
   const activeIndex = steps.findIndex((step) => step.key === activeKey);
+  const activeLabel = steps[activeIndex]?.label ?? "";
   const completed = steps.filter((step) => step.complete).length;
 
   return (
@@ -101,7 +102,10 @@ export function Stepper({
         aria-live="polite"
         aria-label={`${completed} of ${total} onboarding steps complete`}
       >
-        {completed} of {total} done
+        <span>{completed} of {total} done</span>
+        <span className="alfred-stepper__mobile-label" aria-hidden="true">
+          {activeLabel}
+        </span>
       </p>
     </nav>
   );
