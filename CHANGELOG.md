@@ -6,10 +6,25 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-- Group setup batteries as included, optional local tools, or external services. The shared
-  manifest now records source, version, licence, integrity, install, check, disable, and removal
-  data. `alfred batteries remove` removes disabled local dependencies without changing Alfred
-  configuration.
+No changes are pending.
+
+## [0.8.0] - 2026-08-17
+
+### Highlights
+
+- Added OpenCode as a full Alfred engine for scheduled roles, custom agents,
+  Desktop conversations, and Slack conversations.
+- Added measured memory recall, starter-skill, and compression benchmarks.
+  Alfred reports why each lesson was recalled and defaults only to starter
+  skills that improved the paired task.
+- Saved runs now record the engine, model, timeout, write boundary, memory
+  attachments, approvals, decisions, commit, pull request, and imported
+  transcript without storing credentials or prompt text.
+- Finished the Desktop screen pass across Prism, Graphite, and Ledger, then
+  split each primary screen into its own bundle. The initial JavaScript fell
+  from 1,489.16 kB to 495.17 kB in the v0.8.0 release build.
+- Re-recorded the public Desktop tour and gallery from fixture data on a Mac.
+  Public media uses light mode and includes wide and narrow layouts.
 
 ### Added
 
@@ -51,6 +66,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Grouped setup batteries as included, optional local tools, or external
+  services. The shared manifest records source, version, licence, integrity,
+  install, check, disable, and removal data. `alfred batteries remove` removes
+  disabled local dependencies without changing Alfred configuration.
 - Re-recorded the public Desktop tour and gallery from the v0.8 fixture on a
   Mac. Public media now uses light mode and includes a checked narrow-window
   Settings capture alongside the wide-screen tour.

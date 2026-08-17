@@ -18,13 +18,12 @@ shipped work. The canonical source is
 
 - Publish v0.8.0 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
-- Finish the [screen-by-screen Desktop quality pass](https://github.com/luminik-io/alfred/issues/652)
-  across Prism, Graphite, and Ledger. Test light and dark mode at every supported
-  size. Publish only fixture-backed light-mode media.
-- [Reduce Desktop startup work](https://github.com/luminik-io/alfred/issues/657)
-  with screen-level bundles, navigation preloading, and a checked size limit.
-- [Refresh public screenshots and video](https://github.com/luminik-io/alfred/issues/659)
-  after the v0.8.0 screens and features are stable.
+- Keep the current top-level information architecture unless task testing shows
+  that a destination is duplicated or hard to find.
+- Publish only fixture-backed light-mode screenshots and video. Keep dark-mode
+  captures in the internal visual audit.
+- Require clean Markdown, direct copy, and current verification evidence in
+  every pull request description.
 - Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.
@@ -40,19 +39,13 @@ shipped work. The canonical source is
 
 ### Session and evidence continuity
 
-- [x] [Normalize local session, turn, tool, evidence, repository, branch, PR, role,
-  and firing identifiers](https://github.com/luminik-io/alfred/issues/656) across coding CLIs.
-- [x] Import an interactive transcript only when the operator names a saved
-  run and its exact repository scope. Keep import removal local and reversible.
 - Apply redaction before any export.
 - Use the same evidence for recovery, review, and run history.
 
 ### Memory quality and proof
 
-- [Benchmark memory recall](https://github.com/luminik-io/alfred/issues/654)
-  after retrieval-policy changes. Publish the fixture, provider chain, engine,
-  false-recall rate, latency, and limitations with each result.
-- Show a lesson's source, recall reason, and validity period.
+- Re-run the memory benchmark after retrieval-policy changes. Publish the
+  fixture, provider chain, engine, false-recall rate, latency, and limitations.
 - Keep every memory change visible and reversible.
 
 ### Curated batteries
