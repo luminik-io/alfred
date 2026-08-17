@@ -5,7 +5,7 @@ description: install.sh, deploy.sh, alfred doctor, and the alfred CLI.
 
 The Alfred CLI covers the local fleet control surface: install, deploy,
 doctor, full-fleet setup, status, runner-gate enablement, pause/resume, manual
-runs, engine selection, Claude/Codex auth checks, Claude account management, and shipped-work summaries.
+runs, engine selection, engine diagnostics, Claude account management, and shipped-work summaries.
 
 ## `install.sh`
 
@@ -60,7 +60,7 @@ alfred-init
 default and configures the full engineering fleet: planner, architect,
 senior-dev, reviewer, test-engineer, fixer, triage, e2e-runner, ops-watch,
 automerge, memory, code-map, cleanup, reports, and fleet doctor. `starter` is a lab-only shortcut
-for testing the harness with a small roster; it is not the recommended product
+for testing setup with a small roster; it is not the recommended product
 path. `--repos` scopes every enabled repo-operating agent to explicit repos and
 is required for safe non-interactive setup when more than one repo is visible.
 The repo owner must match `GH_ORG`; shipped agents store bare repo names and
@@ -154,7 +154,10 @@ alfred labels check <repo>|--all
 alfred architect setup [--check-only]
 alfred setup-architect [--check-only]
 alfred engine status [codename]
-alfred engine set <codename> <claude|codex|hybrid>
+alfred engine doctor [codename]
+alfred engine set <codename> <claude|codex|opencode|hybrid>
+alfred model set <codename> <claude|codex|opencode> <model>
+alfred model clear <codename> <claude|codex|opencode>
 alfred agent list [--json]
 alfred agent add <codename> --display-name ... --role-title ... --prompt ...
 alfred agent remove <codename>
@@ -172,9 +175,10 @@ agents to `$ALFRED_HOME/state/custom-agents/custom-agents.json`; run
 `bash deploy.sh` or `alfred-deploy` after add/remove so the host scheduler gets
 the new units. `enable` / `disable` update
 `$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
-such as the architect role. `engine` persists per-agent Claude/Codex mode under
+such as the architect role. `engine` persists the per-agent coding engine under
 `$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
-checks Claude and Codex auth surfaces. `brain` inspects and seeds the local
+checks Claude and Codex auth surfaces. `engine doctor` also verifies OpenCode's
+version, command contract, and stored provider login. `brain` inspects and seeds the local
 fleet-brain memory store. `memory doctor` checks the full memory plane:
 provider chain, Redis Agent Memory, FleetBrain, code-memory, code-map, and
 read-only MCP tools. `status` reports local locks, pauses, recent firings,

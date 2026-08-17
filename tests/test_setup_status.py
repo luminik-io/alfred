@@ -184,6 +184,31 @@ def test_default_hybrid_route_uses_codex_when_claude_is_missing() -> None:
     assert detail == "Ready via Codex fallback."
 
 
+def test_explicit_opencode_route_uses_only_opencode_readiness() -> None:
+    ready, detail = setup_mod._engine_route_status(
+        [
+            {
+                "name": "claude",
+                "display_name": "Claude Code",
+                "installed": True,
+                "ready": False,
+                "state": "auth_required",
+            },
+            {
+                "name": "opencode",
+                "display_name": "OpenCode",
+                "installed": True,
+                "ready": True,
+                "state": "ready",
+            },
+        ],
+        mode="opencode",
+    )
+
+    assert ready is True
+    assert detail == "Ready via configured OpenCode route."
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -220,7 +245,7 @@ def test_bootstrap_status_blocks_invalid_fleet_engine_mode(
         "ALFRED_ENGINE is invalid; coding engine dispatch is disabled."
     )
     assert checks["engine_clis"]["action"] == (
-        "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+        "Set ALFRED_ENGINE to claude, codex, opencode, or hybrid, then recheck setup."
     )
 
 
@@ -554,16 +579,16 @@ def test_bootstrap_rejects_detected_candidate_engine(
         "engine_clis",
         lambda **_kwargs: [
             {
-                "name": "opencode",
-                "display_name": "OpenCode",
+                "name": "cline",
+                "display_name": "Cline",
                 "installed": True,
                 "protocol_compatible": True,
                 "ready": False,
                 "dispatchable": False,
                 "state": "needs_validation",
-                "detail": "OpenCode still needs a deep permission probe.",
-                "path": "/usr/local/bin/opencode",
-                "version": "opencode 2.0.0",
+                "detail": "Cline still needs a deep permission probe.",
+                "path": "/usr/local/bin/cline",
+                "version": "cline 1.0.0",
                 "capabilities": ["text"],
                 "failures": ["deep_probe_required"],
             }
@@ -575,7 +600,7 @@ def test_bootstrap_rejects_detected_candidate_engine(
 
     assert payload["engine_ready"] is False
     assert checks["engine_clis"]["ready"] is False
-    assert checks["engine_clis"]["detail"] == "Detected but not ready: OpenCode."
+    assert checks["engine_clis"]["detail"] == "Detected but not ready: Cline."
 
 
 def _git_repo_with_origin(path: Path, slug: str) -> None:
@@ -1360,15 +1385,19 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
     assert setup_mod._repo_list_owners() == ["env-org"]
 
 
-def test_engine_inventory_does_not_execute_candidate_harnesses_during_setup(
+def test_engine_inventory_probes_supported_opencode_during_setup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runtime = tmp_path / "runtime"
     runtime.mkdir()
-    marker = tmp_path / "candidate-called"
     opencode = tmp_path / "opencode"
     opencode.write_text(
-        f"#!/bin/sh\nprintf called >> {marker}\n",
+        "#!/bin/sh\n"
+        'if [ "$1" = "--version" ]; then echo \'opencode 1.18.18\'; exit 0; fi\n'
+        'if [ "$1" = "--help" ]; then echo \'--pure\'; exit 0; fi\n'
+        'if [ "$1 $2" = "run --help" ]; then echo \'--format --model --dir --agent\'; exit 0; fi\n'
+        'if [ "$1 $2" = "auth list" ]; then echo \'1 credential\'; exit 0; fi\n'
+        "exit 1\n",
         encoding="utf-8",
     )
     opencode.chmod(0o755)
@@ -1379,10 +1408,9 @@ def test_engine_inventory_does_not_execute_candidate_harnesses_during_setup(
 
     engines = {item["name"]: item for item in setup_mod.engine_clis()}
 
-    assert marker.exists() is False
     assert engines["opencode"]["installed"] is True
-    assert engines["opencode"]["state"] == "needs_validation"
-    assert engines["opencode"]["protocol_compatible"] is False
+    assert engines["opencode"]["state"] == "ready"
+    assert engines["opencode"]["protocol_compatible"] is True
 
 
 def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(

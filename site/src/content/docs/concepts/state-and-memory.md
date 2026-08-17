@@ -140,9 +140,9 @@ the memory provider chain, with embedded SQLite first by default.
 ## Privacy model
 
 Alfred stores run state, transcripts, lessons, and local ledgers under
-`$ALFRED_HOME`. The selected harness sends prompt context to its model provider.
+`$ALFRED_HOME`. The selected coding CLI sends prompt context to its model provider.
 Alfred can also contact GitHub, optional Slack, telemetry when enabled, and
-package or battery download endpoints. Harnesses, skills, MCP servers, and
+package or battery download endpoints. Coding CLIs, skills, MCP servers, and
 project commands can add other destinations.
 
 Deleting `$ALFRED_HOME/` removes Alfred's local state. It does not remove data

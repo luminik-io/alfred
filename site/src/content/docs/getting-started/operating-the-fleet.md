@@ -32,7 +32,7 @@ alfred status               # local fleet health, locks, pauses, approval waits
 alfred agents               # configured agents, schedule, enable state, host-unit status
 alfred shipped              # merged PRs, issues, LOC, and config changes
 alfred shipped --period weekly
-alfred engine status        # one line per codename, resolved Claude/Codex mode
+alfred engine status        # one line per codename, resolved coding engine
 alfred auth status          # Claude + Codex auth surface check
 alfred codex probe          # one tiny Codex request end-to-end
 alfred claude status        # show which Claude account scheduled firings use

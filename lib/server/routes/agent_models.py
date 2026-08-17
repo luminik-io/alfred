@@ -1,4 +1,4 @@
-"""Per-agent Claude and Codex model controls."""
+"""Per-agent model controls for every dispatchable coding engine."""
 
 from __future__ import annotations
 
@@ -83,6 +83,7 @@ def _agent_payload(request: Request, agent: str) -> dict[str, Any]:
         "agent": agent,
         "claude": _selection_payload(request, agent, "claude"),
         "codex": _selection_payload(request, agent, "codex"),
+        "opencode": _selection_payload(request, agent, "opencode"),
     }
 
 
@@ -107,7 +108,9 @@ async def api_save_agent_model(request: Request) -> JSONResponse:
     if not isinstance(agent, str) or agent not in _known_codenames(request):
         return JSONResponse({"error": "unknown agent"}, status_code=404)
     if not isinstance(provider, str) or provider not in runtime_facade.model_providers():
-        return JSONResponse({"error": "provider must be claude or codex"}, status_code=400)
+        return JSONResponse(
+            {"error": "provider must be claude, codex, or opencode"}, status_code=400
+        )
     if "model" not in body or (body["model"] is not None and not isinstance(body["model"], str)):
         return JSONResponse({"error": "model must be a string or null"}, status_code=400)
 

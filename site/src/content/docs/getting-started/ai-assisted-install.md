@@ -43,7 +43,7 @@ Rules:
 - Do not enable every discovered repo. Configure only the repos listed in REPOS.
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
-- Keep `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` unset. Use the Claude Code and Codex CLI login flows.
+- Do not paste provider keys into Alfred setup. Authenticate the selected coding CLI with its own login flow.
 - Use the full engineering fleet: `planner` (Drake), `architect` (Batman),
   `senior-dev` (Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane),
   `fixer` (Nightwing), `triage` (Robin), `e2e-runner` (Huntress),
@@ -68,11 +68,11 @@ unless you explicitly want Alfred to operate on specs issues or PRs.
 
 ## Installer vs Engine
 
-Claude Code or Codex can be the assistant that installs Alfred. Separately,
-Alfred can use Claude Code or Codex as an engine for scheduled agents.
+Claude Code, Codex, or OpenCode can be the assistant that installs Alfred.
+Separately, Alfred can use any of them as an engine for scheduled agents.
 
-Codex is optional. If Codex is not installed or authenticated, Alfred can still
-run Claude-backed agents.
+Each optional engine can be absent. Configure only engines that are installed
+and signed in.
 
 Check readiness with:
 
@@ -80,6 +80,7 @@ Check readiness with:
 alfred auth status
 alfred codex status
 alfred codex probe
+alfred engine doctor
 ```
 
 ## Safer First Run

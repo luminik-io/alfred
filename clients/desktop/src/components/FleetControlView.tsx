@@ -222,6 +222,7 @@ export function FleetControlView({
             agent,
             claude: { resolved: null, persisted: null, source: "provider-default" as const },
             codex: { resolved: null, persisted: null, source: "provider-default" as const },
+            opencode: { resolved: null, persisted: null, source: "provider-default" as const },
           };
           return {
             ...current,

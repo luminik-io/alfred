@@ -114,9 +114,9 @@ Deploy never claims or removes an unmarked AMS service. If one occupies Alfred's
 reserved service path, deploy stops with a cleanup instruction instead of
 leaving a stale daemon running or overwriting operator-owned configuration.
 
-## Install With Claude Code or Codex
+## Install With a Coding Assistant
 
-Claude Code, Codex, or another local coding assistant can drive setup if you
+Claude Code, Codex, OpenCode, or another local coding assistant can drive setup if you
 give it explicit values and guardrails. Use the copy-paste prompt in
 [`docs/AI_ASSISTED_INSTALL.md`](https://github.com/luminik-io/alfred/blob/main/docs/AI_ASSISTED_INSTALL.md).
 
@@ -185,7 +185,8 @@ Point Alfred at your fleet's Slack channel and (optionally) AWS:
 
 - [Slack setup](/guides/slack/): create the app, mint the webhook.
 - [AWS setup](/guides/aws/): IAM-per-agent, Secrets Manager.
-- [Claude Code and Codex](/guides/claude-code/): Pro vs Max sizing, account routing, engine routing.
+- [Claude Code and Codex](/guides/claude-code/): login, account routing, and hybrid behavior.
+- [OpenCode](/guides/opencode/): provider login, explicit routing, permissions, and diagnostics.
 
 Then try the fleet safely:
 

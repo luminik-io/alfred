@@ -26,7 +26,7 @@ fetched at runtime without review.
 
 | Profile | Use it when | Required pieces |
 | --- | --- | --- |
-| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, embedded SQLite memory, optional Slack webhook. |
+| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code, Codex, or OpenCode, embedded SQLite memory, optional Slack webhook. |
 | Alfred + personal memory | You want Alfred to consult your own notes or knowledge base as a fallback. | Standalone Alfred plus a read-only provider such as `gbrain`. |
 | Alfred + control gateway | You want chat control, MCP registration, skills, durable task boards, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/control layer. |
 

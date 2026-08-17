@@ -9,7 +9,7 @@ co-authors a structured development spec, and judges when the spec is ready.
 Design notes:
 
 * Turn-by-turn core. One model invocation per HTTP call, routed through the
-  existing ``invoke_agent_engine`` dispatch (Claude / Codex / hybrid). The
+  existing ``invoke_agent_engine`` dispatch (Claude / Codex / OpenCode / hybrid). The
   optional streaming HTTP route still runs one turn, but tails Claude's
   stream-json transcript while that turn is running so the client can render
   incremental assistant text before the final reconciled result.
@@ -1614,7 +1614,7 @@ def converse_engine_from_env() -> str:
     """Resolve the engine driving the interrogator.
 
     Explicit conversational and fleet-wide choices win. A batteries-included
-    desktop install then uses whichever subscription CLI is already available.
+    desktop install then uses whichever Claude Code or Codex CLI is already available.
     When both are present, hybrid starts with Claude and the invocation below
     opts into provider failover, because binary presence does not prove either
     CLI is authenticated or has quota. Hosts without either CLI retain the
@@ -1664,7 +1664,7 @@ def hydrate_engine_paths(engine: str) -> None:
     mode = engine.strip().lower()
     selected = ("claude", "codex") if mode == "hybrid" else (mode,)
     for name in selected:
-        if name not in {"claude", "codex"}:
+        if name not in {"claude", "codex", "opencode"}:
             continue
         env_name = f"{name.upper()}_BIN"
         path = _engine_cli_path(name)
@@ -1756,6 +1756,7 @@ def _build_summarizer(
                 claude_max_turns=CONDENSER_MAX_TURNS,
                 claude_model=model,
                 codex_model=model,
+                opencode_model=model,
                 codex_timeout=CONDENSER_TIMEOUT,
                 hybrid_fallback_on_provider_failure=True,
             )

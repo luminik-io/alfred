@@ -19,7 +19,7 @@ Public surface:
 
 What this module does NOT own:
 
-* Shelling out to the Claude or Codex CLIs -> ``process.py``.
+* Shelling out to coding-engine CLIs -> ``process.py``.
 * Per-firing ledger / spend tracking -> ``state.py``.
 * Transcript reading -> ``transcripts.py``.
 """
@@ -96,7 +96,8 @@ _OVERLOAD_RESULT_RE = re.compile(
 )
 
 _AUTH_RESULT_RE = re.compile(
-    r"authentication_(?:error|failed)|failed to authenticate|invalid authentication credentials"
+    r"authentication_(?:error|failed)|authentication failed|failed to authenticate"
+    r"|invalid authentication credentials"
     r"|\bAPI Error:\s*401\b|\b401\b[^\n]{0,120}authentication"
     r"|not logged in|please run /login",
     re.IGNORECASE,

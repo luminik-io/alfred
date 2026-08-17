@@ -1,6 +1,6 @@
 """LLM judge for gated memory auto-promotion.
 
-The operator's explicit ask: let Claude/Codex itself decide what is safe to
+The operator's explicit ask: let the selected coding engine decide what is safe to
 auto-promote, on top of (never instead of) the existing structural rails. For
 each pending candidate that already cleared the structural gates in
 ``FleetBrain.auto_promote_candidates`` (has evidence, no dedup conflict), the

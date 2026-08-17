@@ -6,7 +6,7 @@ head:
   - tag: title
     content: "Alfred: autonomous coding agents for lean engineering teams"
 hero:
-  tagline: "Claude Code and Codex plan work, write code, test it, review each other, and open pull requests. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges."
+  tagline: "Claude Code, Codex, or OpenCode plan work, write code, test it, review changes, and open pull requests. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges."
   image:
     file: ../../assets/alfred-logo-transparent.png
     alt: Alfred shield logo
@@ -25,7 +25,7 @@ import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
 ## What Alfred does
 
-Alfred coordinates authenticated Claude Code and Codex CLIs as short-lived
+Alfred coordinates authenticated Claude Code, Codex, and OpenCode CLIs as short-lived
 engineering roles. A planner scopes work. A developer implements it in an
 isolated git worktree. Separate roles review the diff and add tests. The result
 is a pull request with evidence that a person can inspect.
@@ -34,9 +34,9 @@ The host operating system schedules each run. GitHub stores the shared work
 state. Alfred keeps local run events, lessons, and reliability data under
 `ALFRED_HOME`.
 
-Alfred does not replace a coding harness or proxy model traffic. It adds the
+Alfred does not replace a coding CLI or proxy model traffic. It adds the
 workflow, memory, isolation, and decision controls needed to operate several
-harness sessions as one autonomous engineering team.
+CLI sessions as one autonomous engineering team.
 
 ```mermaid
 flowchart LR
@@ -74,7 +74,7 @@ flowchart LR
 
 ## What ships
 
-- Claude Code and Codex engine routing with authentication and readiness checks.
+- Claude Code, Codex, and OpenCode engine routing with authentication and readiness checks.
 - Stable roles for planning, architecture, implementation, review, testing,
   fixes, triage, end-to-end checks, and operations.
 - Single-repository and approved multi-repository planning flows.
@@ -130,7 +130,7 @@ flowchart LR
 ## Product boundaries
 
 - One operator or small team, one trusted host, one local configuration.
-- Local harness authentication, not a hosted model gateway.
+- Local coding CLI authentication, not a hosted model gateway.
 - Explicit repository scope for scheduling and indexing. This is not a
   filesystem or network sandbox.
 - Short-lived scheduled processes, not an always-running orchestrator.
@@ -141,15 +141,15 @@ Alfred runs with the local user's permissions. Use a dedicated user, virtual
 machine, or container when other files or network destinations must be outside
 the agent boundary.
 
-Read the [roadmap](/about/roadmap/) for active harness, evidence, memory, and
+Read the [roadmap](/about/roadmap/) for active engine, evidence, memory, and
 launch work. Read the [changelog](/about/changelog/) for shipped changes.
 
 ## Status
 
 Release tags and package downloads are on
-[GitHub Releases](https://github.com/luminik-io/alfred/releases). Claude Code
-and Codex are the validated execution engines. OpenCode and other harnesses
-remain evaluation work until they pass the same authentication, permission,
+[GitHub Releases](https://github.com/luminik-io/alfred/releases). Claude Code,
+Codex, and OpenCode are validated execution engines. Any other detected CLI
+remains unsupported until it passes the same authentication, permission,
 isolation, and event-contract checks.
 
 License: [MIT](https://github.com/luminik-io/alfred/blob/main/LICENSE).

@@ -1,10 +1,15 @@
 # Engine routing
 
-How Alfred decides whether a codename's next firing runs through Claude Code, Codex, or a Claude-first hybrid with Codex fallback.
+How Alfred decides whether a codename's next firing runs through Claude Code,
+Codex, OpenCode, or a Claude-first hybrid with Codex fallback.
 
-Alfred is the scheduler and guardrail layer. The actual LLM work is done by the engine: a local CLI you have already authenticated. The framework owns the per-codename decision of which engine that is. Default posture is local subscription auth; Alfred does not need Anthropic or OpenAI API keys for the normal Claude Code or Codex CLI flow.
+Alfred is the scheduler and control layer. The actual model work is done by an
+authenticated local CLI. Claude Code and Codex can use their subscription
+login. OpenCode uses a provider stored by `opencode auth login`. Alfred does not
+store provider keys.
 
-This page covers the three modes, the precedence chain, the fallback behavior, the default routing matrix for the shipped fleet, and where the multi-engine roadmap is going.
+This page covers the four modes, the precedence chain, fallback behavior, and
+the engine contract.
 
 ## Readiness is a verified contract
 
@@ -14,18 +19,18 @@ runtime depends on, and a signed-in account. Probe output is discarded so accoun
 details cannot leak into setup status or logs. A changed or expired CLI fails
 closed and onboarding tells the operator what needs attention.
 
-The desktop app may detect additional harnesses under **Advanced: engine probe**.
-Setup checks only whether an OpenCode or Cline executable is present. Setup does
-not run these candidate harnesses. Alfred does not dispatch work to them. Each
-harness needs a runtime adapter and a temporary-worktree test suite before Alfred
-can support it. Detection is not support.
+The desktop app may detect another coding CLI under **Advanced: engine probe**.
+Detection is not support. A CLI becomes dispatchable only after its version,
+protocol, authentication, permissions, repository scope, event stream, failure
+mapping, and process cleanup have passing tests.
 
-## Three modes
+## Four modes
 
 | Mode | Behavior |
 |---|---|
 | `claude` | Use Claude Code only. No fallback. |
 | `codex` | Use Codex only. No fallback. |
+| `opencode` | Use OpenCode only. No fallback. |
 | `hybrid` | Use Claude Code first. Retry the same engine on transient faults; fall back to Codex only on a capability gap (engine ran, produced nothing useful). Default for most codenames. |
 
 `hybrid` is the default for builder agents because it gives them a second shot when Claude ran but produced no usable result, without hiding quota, auth, or transport faults behind another provider. Reviewer agents that are happy with either engine often run pure `codex` so they preserve Claude quota for builders.
@@ -46,9 +51,11 @@ alfred engine status                 # one line per codename, resolved mode
 alfred engine status senior-dev          # one codename, plus where the value came from
 alfred engine set senior-dev hybrid      # persist to $ALFRED_HOME/state/engines/senior-dev
 alfred engine set reviewer codex
+alfred engine set release-check opencode
+alfred engine doctor release-check
 alfred codex status                  # check the Codex CLI is reachable
 alfred codex probe                   # run one tiny non-interactive request
-alfred auth status                   # auth-surface check across both engines
+alfred auth status                   # Claude and Codex auth check
 ```
 
 Set the env-var form in `$ALFRED_HOME/.env` when you want the override to follow the operator's shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
@@ -65,18 +72,18 @@ alfred model status
 alfred model status senior-dev
 alfred model set senior-dev claude opus
 alfred model set senior-dev codex gpt-5-codex
+alfred model set release-check opencode anthropic/claude-sonnet-4-5
 alfred model clear senior-dev claude
 ```
 
 The same choices are available under **Agents** in Alfred Desktop. Open an
-agent, enter a Claude or Codex alias, and save it. The drawer shows when a
+agent, enter a provider model, and save it. The drawer shows when a
 per-agent or fleet environment variable is taking precedence over the saved
 choice.
 
-Model names are intentionally not hard-coded into Alfred. Claude Code and Codex
-change their available model aliases independently, so the provider CLI remains
-the source of truth. Alfred validates the alias as one safe command argument and
-passes it only to the matching provider.
+Model names are intentionally not hard-coded into Alfred. Each engine remains
+the source of truth. Alfred validates the model as one safe command argument and
+passes it only to the matching engine. OpenCode models use `provider/model`.
 
 Resolution is per provider. The first configured value wins:
 
@@ -85,8 +92,17 @@ Resolution is per provider. The first configured value wins:
 3. `$ALFRED_HOME/state/models/<role>/<engine>`, written atomically by `alfred model set`.
 4. The provider CLI default.
 
-`alfred model clear` removes only the named provider. Claude and Codex use separate
-state files, so simultaneous updates cannot overwrite each other.
+`alfred model clear` removes only the named provider. Each engine uses a separate
+state file, so simultaneous updates cannot overwrite each other.
+
+## OpenCode boundary
+
+OpenCode is always explicit. It is not part of `hybrid`, and installing it does
+not change an existing route. Each firing uses `--pure`, a temporary config,
+an exact worktree, and JSON events. Unexpected permission requests are rejected.
+Read-only roles deny edits and shell commands. Write roles use the same approved
+write decision already made by the calling role. See [OpenCode](OPENCODE.md) for
+the complete permission and failure contract.
 
 ## Hybrid fallback behavior
 
@@ -148,20 +164,24 @@ The shipped fleet has the following defaults. Override per codename when your ac
 
 These are starting points, not laws. If you have a Claude Max plan and abundant quota, push more codenames to pure `claude`. If you have OpenAI credits to burn and want a second opinion on every PR, push more reviewers to pure `codex`. The override surface is per-codename for exactly this reason.
 
-## Subscription economics
+## Provider accounts and billing
 
-Alfred's default posture is to use the local CLI subscription auth you have already paid for. It does not need API keys for normal operation.
+Alfred uses the account already authenticated in the selected coding CLI. It
+does not proxy model traffic or add an Alfred model fee.
 
 - Claude Code with a Pro or Max plan: keep `ANTHROPIC_API_KEY` unset. Claude Code gives env-var API keys priority over subscription auth, which silently moves a firing onto API billing.
 - Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset. Alfred never treats a generic SDK key as proof that the Codex CLI can run.
+- OpenCode: select a provider with `opencode auth login`. Provider billing and limits apply to each firing.
 - AWS: only used when an agent needs Secrets Manager, and only with per-agent IAM (see [AWS setup](./AWS_SETUP.md)).
 
-The shipped fleet is designed to run on subscriptions you already have. No double billing. Alfred accepts Codex's own login state or its documented `CODEX_ACCESS_TOKEN` automation context. A generic `OPENAI_API_KEY` value alone is not an authentication contract and never makes the engine ready.
+Alfred accepts Codex's own login state or its documented
+`CODEX_ACCESS_TOKEN` automation context. A generic `OPENAI_API_KEY` value alone
+is not an authentication contract and never makes the engine ready.
 
 ## Multi-engine contract
 
-Claude Code and Codex are dispatchable today. The registry also knows how to
-identify OpenCode and Cline without pretending they are ready. `AgentResult`
+Claude Code, Codex, and OpenCode are dispatchable today. The registry can also
+identify Cline without pretending it is ready. `AgentResult`
 carries `success`, `subtype`, `num_turns`, `cost_usd`, `session_id`, and
 `result_text` regardless of which engine produced it.
 
@@ -180,7 +200,7 @@ A new engine needs all of the following before it can join a fleet:
 6. Failure mappings for retry, breaker, and fallback classification.
 
 The registry reports inventory and readiness. It is not a runtime adapter. A new
-harness also needs a command builder, an output parser, cancellation behavior,
+engine also needs a command builder, an output parser, cancellation behavior,
 and failure mapping before Alfred can dispatch work to it.
 
 ## See also

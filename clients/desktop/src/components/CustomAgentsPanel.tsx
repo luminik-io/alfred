@@ -43,9 +43,10 @@ const ENGINE_OPTIONS: Array<{
   label: string;
   detail: string;
 }> = [
-  { value: "hybrid", label: "Hybrid", detail: "Route per task" },
-  { value: "codex", label: "Codex", detail: "Code-heavy agent" },
-  { value: "claude", label: "Claude", detail: "Planning and prose" },
+  { value: "hybrid", label: "Hybrid", detail: "Claude Code first, Codex fallback" },
+  { value: "claude", label: "Claude Code", detail: "Use your Claude Code login" },
+  { value: "codex", label: "Codex", detail: "Use your Codex login" },
+  { value: "opencode", label: "OpenCode", detail: "Use your OpenCode provider login" },
 ];
 
 const EMPTY_FORM = {
@@ -458,6 +459,7 @@ export function CustomAgentsPanel({
                       form.engine === option.value ? "true" : "false"
                     }
                     aria-checked={form.engine === option.value}
+                    aria-label={option.label}
                     onClick={() => updateForm("engine", option.value)}
                   >
                     <span>{option.label}</span>
@@ -612,7 +614,7 @@ function formFromAgent(agent: CustomAgentRecord): CustomAgentForm {
 }
 
 function normalizeEngine(value: string): CustomAgentEngine {
-  return value === "claude" || value === "codex" || value === "hybrid"
+  return value === "claude" || value === "codex" || value === "opencode" || value === "hybrid"
     ? value
     : "hybrid";
 }

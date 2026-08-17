@@ -51,7 +51,7 @@ seam keep working.
 
 Privacy: the FleetBrain ledger is a SQLite file in your
 ``$ALFRED_HOME``. It never leaves your machine. The only outbound
-surface is prompt context sent to Claude Code or Codex on your
+surface is prompt context sent to the selected coding engine on your
 existing CLI auth, plus anonymous usage totals if telemetry is left
 on. No raw prompts, transcripts, or candidate text are sent by
 telemetry.

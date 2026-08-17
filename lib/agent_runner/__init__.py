@@ -1,4 +1,4 @@
-"""alfred-os: shared library for host-scheduled Claude Code and Codex agents.
+"""alfred-os: shared library for host-scheduled coding agents.
 
 This is the public entry point. The library is internally factored into
 nine focused modules (see :mod:`lib.agent_runner.paths`,
@@ -16,7 +16,7 @@ High-level groupings:
   ``codex_sandbox_for_agent``, ``doctor_requested``, ``doctor_mode``, ``is_dry_run``,
   ``set_dry_run``, ``dry_run_log``.
 * **Subprocess + invocations**: ``run``, ``gh_json``, ``short``,
-  ``claude_invoke``, ``claude_invoke_streaming``, ``codex_invoke``,
+  ``claude_invoke``, ``claude_invoke_streaming``, ``codex_invoke``, ``opencode_invoke``,
   ``invoke_agent_engine``.
 * **Result**: ``ClaudeResult``, ``STOP_REASON_HEALTHY``,
   ``STOP_REASON_FAIL``, ``dry_run_claude_result``.
@@ -38,7 +38,8 @@ High-level groupings:
   ``SLACK_SEVERITY_WARN``, ``SLACK_SEVERITY_ALERT``.
 * **Metadata**: ``agent_role``, ``codename_with_role``,
   ``commit_trailer``, ``HandoffTable``, ``HANDOFFS``, ``load_prompt``.
-* **Transcripts**: ``transcript_path``, ``codex_artifact_paths``.
+* **Transcripts**: ``transcript_path``, ``codex_artifact_paths``,
+  ``opencode_artifact_paths``.
 * **Runtime memory**: ``parse_memory_reflections``,
   ``strip_memory_reflections``, ``format_memory_context``.
 * **Orchestrator**: ``preflight``, ``PreflightSpec``,
@@ -268,6 +269,7 @@ from .paths import (
     GLOBAL_BLOCKED_FILE,
     HOME,
     LIB_DIR,
+    OPENCODE_TRANSCRIPTS_ROOT,
     PAUSED_REPOS_FILE,
     PROMPTS_ROOT,
     SHARED_AGENT,
@@ -305,6 +307,7 @@ from .process import (
     engine_readiness_allows_dispatch_attempt,
     gh_json,
     invoke_agent_engine,
+    opencode_invoke,
     pid_start_key,
     resolve_grader_engine,
     run,
@@ -427,6 +430,7 @@ from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
     codex_artifact_paths,
+    opencode_artifact_paths,
     transcript_path,
 )
 
@@ -439,6 +443,7 @@ __all__ = [
     "CODEX_BIN",
     "CODEX_DEFAULT_SANDBOX",
     "CODEX_TRANSCRIPTS_ROOT",
+    "OPENCODE_TRANSCRIPTS_ROOT",
     "FLEET_DIR",
     "FLEET_ENABLED_FILE",
     "GH_ORG",
@@ -521,6 +526,7 @@ __all__ = [
     "claude_invoke",
     "claude_invoke_streaming",
     "codex_invoke",
+    "opencode_invoke",
     "engine_readiness_allows_dispatch_attempt",
     "gh_json",
     "invoke_agent_engine",
@@ -551,6 +557,7 @@ __all__ = [
     "run_rubric_loop",
     # transcripts
     "codex_artifact_paths",
+    "opencode_artifact_paths",
     "transcript_path",
     # metadata
     "HANDOFFS",

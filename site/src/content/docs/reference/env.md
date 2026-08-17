@@ -33,8 +33,10 @@ For the local config template, see [`.env.example`](https://github.com/luminik-i
 | `CLAUDE_BIN` | `agent_runner.claude_invoke` | `claude` (PATH) |
 | `CLAUDE_CONFIG_DIR` | `claude` auth profile selection | Set by `alfred claude` for scheduled agents |
 | `CODEX_BIN` | `agent_runner.codex_invoke` | `codex` (PATH) |
+| `OPENCODE_BIN` | `agent_runner.opencode_invoke` | `opencode` (PATH) |
 | `ALFRED_CLAUDE_MODEL` | fleet-wide Claude model override | (Claude default) |
 | `ALFRED_CODEX_MODEL` | fleet-wide Codex model override | (Codex default) |
+| `ALFRED_OPENCODE_MODEL` | fleet-wide OpenCode model override | (OpenCode default) |
 | `CODEX_SANDBOX` | `codex exec --sandbox` | `read-only` |
 | `CODEX_APPROVAL_POLICY` | `codex exec -c approval_policy=...` | `never` |
 

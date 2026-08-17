@@ -32,16 +32,16 @@ shipped work. The canonical source is
   guide, threat model, and benchmark method. Submit only to directories whose
   published scope matches the shipped product.
 
-### Harness capability contract
+### Engine capability contract
 
-- [Validate OpenCode isolation, permissions, structured events, and failure
-  behavior](https://github.com/luminik-io/alfred/issues/653) before enabling dispatch.
 - Keep CLI detection separate from support status.
+- Recheck OpenCode's CLI, permission, and event contracts before changing the
+  tested minimum version.
 
 ### Session and evidence continuity
 
 - [Normalize local session, turn, tool, evidence, repository, branch, PR, role,
-  and firing identifiers](https://github.com/luminik-io/alfred/issues/656) across harnesses.
+  and firing identifiers](https://github.com/luminik-io/alfred/issues/656) across coding CLIs.
 - Link imported interactive sessions to scheduled work only when the operator
   chooses the repository scope.
 - Apply redaction before any export.
@@ -62,14 +62,14 @@ shipped work. The canonical source is
   on task outcomes before expanding the default set.
 - Pin external tools and record checksums, versions, licenses, and provenance.
 - Package small, opt-in skill and MCP sets by use case.
-- Preserve user-owned harness configuration during setup and removal.
+- Preserve user-owned CLI configuration during setup and removal.
 
 ## Next
 
 - Version the `alfred serve` API and add contract tests.
 - Expand engine diagnostics to report permissions, MCPs, skills, and config
   ownership alongside the shipped authentication and profile checks.
-- Generate reversible role-specific harness configuration from one capability
+- Generate reversible role-specific CLI configuration from one capability
   model.
 - Track approved multi-repository work to a final merged, dropped, or blocked
   state with one evidence rollup.
@@ -78,10 +78,10 @@ shipped work. The canonical source is
 
 ## Explore
 
-- Gemini, Ollama, Cline, and other harness adapters.
+- Gemini, Ollama, Cline, and other engine adapters.
 - Local replay and evaluation of normalized sessions.
 - Portable role packs for documentation, release, and repository maintenance.
-- A local fleet workspace command that measures harness readiness, worktree
+- A local fleet workspace command that measures engine readiness, worktree
   capacity, repository scope, and queue pressure before it assigns work.
 - More code-graph backends with measured retrieval quality.
 - Optional remote workers that keep Alfred's scope and approval controls.

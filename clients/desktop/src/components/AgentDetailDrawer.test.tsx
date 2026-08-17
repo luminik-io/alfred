@@ -54,7 +54,12 @@ function DrawerHost() {
         // draft. This isolates the keying fix from the effect path.
         editableScheduleValue={() => "10m"}
         scheduleOptions={() => OPTIONS}
-        modelStatus={undefined}
+        modelStatus={{
+          agent: codename,
+          claude: { resolved: null, persisted: null, source: "provider-default" },
+          codex: { resolved: null, persisted: null, source: "provider-default" },
+          opencode: { resolved: null, persisted: null, source: "provider-default" },
+        }}
         modelsLoading={false}
         modelBusy={null}
         modelError={null}
@@ -67,6 +72,14 @@ function DrawerHost() {
 }
 
 describe("AgentDetailDrawer", () => {
+  it("shows a distinct model row for every supported provider", () => {
+    render(<DrawerHost />);
+
+    expect(screen.getByText("Claude Code")).toBeInTheDocument();
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("OpenCode")).toBeInTheDocument();
+  });
+
   it("resets the cadence draft per agent when switching with the drawer open", async () => {
     render(<DrawerHost />);
     const user = userEvent.setup();

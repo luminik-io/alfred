@@ -35,7 +35,7 @@ unexpected.
 
 | Action | What it does | Auto-proceeds? |
 |---|---|---|
-| `check_engine` | Shows whether your Claude and Codex CLIs are ready. | Yes, read-only |
+| `check_engine` | Shows whether Claude Code, Codex, or OpenCode is ready. | Yes, read-only |
 | `connect_github` | Starts the GitHub sign-in flow. | No, click to run |
 | `set_repos` | Scopes the fleet to the repositories you named. | No, click Approve |
 | `pick_agents` | Records which roles you want surfaced. | No, click Approve |

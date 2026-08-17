@@ -14,7 +14,7 @@ recover from failures without watching each agent session.
 
 ## Product Purpose
 
-Alfred turns Claude Code and Codex into a spec-driven engineering team. An
+Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team. An
 approved request or specification becomes isolated engineering work. Alfred
 schedules short-lived roles, gives each run a separate git worktree, records
 evidence, and keeps the operator in control of approvals and merges.
@@ -35,7 +35,7 @@ evidence, and local memory make the work inspectable and repeatable.
 
 Alfred runs on a developer workstation. The operating system starts scheduled
 jobs through launchd on macOS or systemd on Linux. Agents use local command-line
-tools such as Claude Code and Codex. GitHub issues and pull requests hold work
+tools such as Claude Code, Codex, and OpenCode. GitHub issues and pull requests hold work
 state and review evidence. Operators use the Alfred CLI, the optional desktop
 app, the local JSON API, or Slack to inspect and steer the fleet.
 
@@ -51,7 +51,7 @@ decisions, review, and merge policy.
 - The operating system owns scheduling. Alfred does not depend on a permanent
   orchestration process.
 - Alfred invokes installed coding tools. It does not provide a model gateway.
-- Claude Code and Codex are the validated dispatch engines. Other detected tools
+- Claude Code, Codex, and OpenCode are the validated dispatch engines. Other detected tools
   must pass the same capability, permission, and isolation checks before Alfred
   can dispatch work to them.
 - Agent roles are runtime identities. Display themes can rename those roles but

@@ -189,6 +189,22 @@ always exits 0: an absent local CLI
 state is a valid, reportable condition, not a command failure. Scripts can read
 the `available` flag in the `--json` payload to detect that case.
 
+## Engine and model controls
+
+```sh
+alfred engine status [codename]
+alfred engine doctor [codename]
+alfred engine set <codename> <claude|codex|opencode|hybrid>
+alfred model status [codename]
+alfred model set <codename> <claude|codex|opencode> <model>
+alfred model clear <codename> <claude|codex|opencode>
+```
+
+`engine doctor` checks the selected binary, minimum version, required
+non-interactive commands, and authentication without starting a model turn.
+OpenCode models use `provider/model`. See [engine routing](ENGINE_ROUTING.md)
+and [OpenCode](OPENCODE.md).
+
 ## `alfred logs`
 
 Inspect stream-JSON transcripts for one codename. Three modes:

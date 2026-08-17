@@ -69,13 +69,12 @@ in depth.
 - **dry-run**: Mode toggled by `--dry-run` or `ALFRED_DRY_RUN=1` that
   narrates a full firing lifecycle without LLM calls or side effects.
   See also: [Dry-run mode](/getting-started/dry-run/).
-- **engine**: The coding backend an agent invokes; Claude Code, Codex, or a
-  hybrid that retries transient Claude failures and uses Codex only for a
-  classified capability gap.
-  See also: [Claude Code and Codex](/guides/claude-code/).
+- **engine**: The coding CLI an agent invokes: Claude Code, Codex, OpenCode, or
+  the Claude-first hybrid route.
+  See also: [Engine routing](/concepts/engine-routing/).
 - **engine routing**: Per-agent assignment of which engine to use, set via
-  `ALFRED_<AGENT>_ENGINE` (`claude`, `codex`, or `hybrid`).
-  See also: [Claude Code and Codex](/guides/claude-code/).
+  `ALFRED_<AGENT>_ENGINE` (`claude`, `codex`, `opencode`, or `hybrid`).
+  See also: [Engine routing](/concepts/engine-routing/).
 - **fast-cleanup**: `agent-cleanup`'s sub-pass that runs after every Lucius
   firing to delete just-closed worktrees without waiting for the nightly sweep.
   See also: [The agent fleet](/concepts/fleet/).
@@ -89,6 +88,9 @@ in depth.
   first and falls back to Codex only when Claude ran but produced no useful
   result.
   See also: [Claude Code and Codex](/guides/claude-code/).
+- **OpenCode**: An explicit Alfred engine that uses OpenCode 1.18.18 or newer,
+  a stored provider login, isolated firing config, and JSON events.
+  See also: [OpenCode](/guides/opencode/).
 - **IAM-per-agent**: AWS pattern where each agent gets its own IAM identity
   and Secrets Manager scope, so a compromised agent can only reach its own keys.
   See also: [AWS](/guides/aws/).

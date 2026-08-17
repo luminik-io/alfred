@@ -89,6 +89,7 @@ const MODELS = {
     agent: codename,
     claude: { resolved: null, persisted: null, source: "provider-default" as const },
     codex: { resolved: null, persisted: null, source: "provider-default" as const },
+    opencode: { resolved: null, persisted: null, source: "provider-default" as const },
   })),
   count: 2,
 };
@@ -430,9 +431,9 @@ describe("FleetControlView", () => {
     await openDrawer(user, "lucius");
 
     await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalled());
-    await user.type(screen.getByLabelText("Claude"), "opus");
+    await user.type(screen.getByLabelText("Claude Code"), "opus");
     await user.click(
-      screen.getByRole("button", { name: /save claude model for senior-dev/i }),
+      screen.getByRole("button", { name: /save claude code model for senior-dev/i }),
     );
 
     expect(agentApiMocks.saveAgentModel).toHaveBeenCalledWith(
@@ -478,9 +479,9 @@ describe("FleetControlView", () => {
     );
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
-    await user.type(screen.getByLabelText("Claude"), "runtime-a");
+    await user.type(screen.getByLabelText("Claude Code"), "runtime-a");
     await user.click(
-      screen.getByRole("button", { name: /save claude model for senior-dev/i }),
+      screen.getByRole("button", { name: /save claude code model for senior-dev/i }),
     );
 
     rerender(<FleetControlView baseUrl="http://runtime-b" {...props} />);
@@ -530,9 +531,9 @@ describe("FleetControlView", () => {
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
     await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalledTimes(1));
-    await user.type(screen.getByLabelText("Claude"), "new-model");
+    await user.type(screen.getByLabelText("Claude Code"), "new-model");
     await user.click(
-      screen.getByRole("button", { name: /save claude model for senior-dev/i }),
+      screen.getByRole("button", { name: /save claude code model for senior-dev/i }),
     );
 
     rerender(<FleetControlView modelRefreshVersion={2} {...props} />);
@@ -566,6 +567,7 @@ describe("FleetControlView", () => {
           agent: "senior-dev",
           claude: { resolved: model, persisted: model, source: "state" as const },
           codex: { resolved: null, persisted: null, source: "provider-default" as const },
+          opencode: { resolved: null, persisted: null, source: "provider-default" as const },
         },
       ],
       count: 1,
@@ -638,13 +640,13 @@ describe("FleetControlView", () => {
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
     await waitFor(() => expect(agentApiMocks.loadAgentModels).toHaveBeenCalled());
-    await user.type(screen.getByLabelText("Claude"), "unsaved-lucius-model");
+    await user.type(screen.getByLabelText("Claude Code"), "unsaved-lucius-model");
 
     await user.click(screen.getByRole("button", { name: /select bane/i }));
 
-    expect(screen.getByLabelText("Claude")).toHaveValue("");
+    expect(screen.getByLabelText("Claude Code")).toHaveValue("");
     expect(
-      screen.getByRole("button", { name: /save claude model for test-engineer/i }),
+      screen.getByRole("button", { name: /save claude code model for test-engineer/i }),
     ).toBeDisabled();
   });
 
@@ -656,7 +658,7 @@ describe("FleetControlView", () => {
     renderView();
     const user = userEvent.setup();
     await openDrawer(user, "lucius");
-    await waitFor(() => expect(screen.getByLabelText("Claude")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Claude Code")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /select bane/i }));
 

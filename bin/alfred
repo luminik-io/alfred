@@ -34,19 +34,19 @@ Subcommands today:
   alfred enabled-agents       Print the parsed list of enabled codenames
                               (or explain that the gate file is missing).
   alfred engine status [agent]
-                              Show resolved Claude/Codex engine mode for one
+                              Show the resolved coding engine for one
                               agent or the configured LLM runner fleet.
   alfred engine doctor [agent]
                               Verify protocol, version, and authentication
                               readiness for configured engine selections.
-  alfred engine set <agent> <claude|codex|hybrid>
+  alfred engine set <agent> <claude|codex|opencode|hybrid>
                               Persist an engine override in
                               $ALFRED_HOME/state/engines/<agent>.
                               Alias: provider.
-  alfred model status [agent] Show resolved Claude and Codex model overrides.
-  alfred model set <agent> <claude|codex> <model>
+  alfred model status [agent] Show resolved model overrides for each engine.
+  alfred model set <agent> <claude|codex|opencode> <model>
                               Persist a provider-specific model for one agent.
-  alfred model clear <agent> <claude|codex>
+  alfred model clear <agent> <claude|codex|opencode>
                               Clear persisted state and use the next configured
                               model source.
   alfred codex [status|probe] Show Codex CLI availability and run a tiny
@@ -1857,7 +1857,7 @@ def _engine_mode_readiness(
 ) -> tuple[bool, str, str]:
     """Evaluate one mode with the same fallback boundary as scheduled dispatch."""
     if mode == agent_runner.DISABLED_ENGINE:
-        return False, "invalid_configuration", "Choose claude, codex, or hybrid."
+        return False, "invalid_configuration", "Choose claude, codex, opencode, or hybrid."
 
     def probe(engine: str):
         if engine not in probes:
@@ -3997,7 +3997,9 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_agent_add.add_argument("--purpose", default="")
     p_agent_add.add_argument("--prompt", default="")
     p_agent_add.add_argument("--prompt-file")
-    p_agent_add.add_argument("--engine", choices=("claude", "codex", "hybrid"), default="hybrid")
+    p_agent_add.add_argument(
+        "--engine", choices=("claude", "codex", "opencode", "hybrid"), default="hybrid"
+    )
     p_agent_add.add_argument("--schedule", default="1h")
     p_agent_add.add_argument("--repo", action="append", default=[])
     p_agent_add.add_argument("--disabled", action="store_true")
@@ -4219,7 +4221,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_engine_doctor.set_defaults(func=cmd_engine_doctor)
     p_engine_set = engine_sub.add_parser("set", help="set one agent's engine")
     p_engine_set.add_argument("agent")
-    p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid"])
+    p_engine_set.add_argument("mode", choices=["claude", "codex", "opencode", "hybrid"])
     p_engine_set.set_defaults(func=cmd_engine_set)
 
     p_model = sub.add_parser("model", help="manage per-agent model overrides")
@@ -4229,12 +4231,12 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_model_status.set_defaults(func=cmd_model_status)
     p_model_set = model_sub.add_parser("set", help="set one agent's provider model")
     p_model_set.add_argument("agent")
-    p_model_set.add_argument("provider", choices=["claude", "codex"])
+    p_model_set.add_argument("provider", choices=["claude", "codex", "opencode"])
     p_model_set.add_argument("model")
     p_model_set.set_defaults(func=cmd_model_set)
     p_model_clear = model_sub.add_parser("clear", help="clear one persisted model override")
     p_model_clear.add_argument("agent")
-    p_model_clear.add_argument("provider", choices=["claude", "codex"])
+    p_model_clear.add_argument("provider", choices=["claude", "codex", "opencode"])
     p_model_clear.set_defaults(func=cmd_model_clear)
 
     p_claude = sub.add_parser("claude", help="manage Claude Code account routing")

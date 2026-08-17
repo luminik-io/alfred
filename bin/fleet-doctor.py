@@ -448,7 +448,7 @@ def check_claude_credential(
 def check_engine_quota_backoff(
     *,
     backoff_reader: Callable[[str], dict[str, str] | None] = engine_quota_backoff,
-    engines: Sequence[str] = ("claude", "codex"),
+    engines: Sequence[str] = ("claude", "codex", "opencode"),
 ) -> Finding:
     """Surface any engine currently parked by a quota-exhaustion backoff.
 

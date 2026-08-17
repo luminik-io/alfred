@@ -36,7 +36,7 @@ export const GET: APIRoute = async ({ site }) => {
     "",
     `> ${summary}`,
     "",
-    "Alfred turns Claude Code and Codex into an autonomous engineering team.",
+    "Alfred turns Claude Code, Codex, or OpenCode into an autonomous engineering team.",
     "Named agents plan work, write code, test it, review changes, and open pull requests.",
     "The host scheduler starts short-lived roles. Each run gets a lock, preflight checks,",
     "limits, and an isolated git worktree. GitHub stores shared work state, and Alfred keeps",

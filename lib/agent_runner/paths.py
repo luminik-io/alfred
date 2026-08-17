@@ -7,8 +7,8 @@ This module owns the operator-facing filesystem and binary contract:
 * Derived state and workspace paths (``STATE_ROOT``, ``WORKTREE_ROOT``,
   ``TRANSCRIPTS_ROOT``, ``CODEX_TRANSCRIPTS_ROOT``, ``LIB_DIR``,
   ``BIN_DIR``, ``PROMPTS_ROOT``, ``SHARED_AGENT``).
-* Resolution for the load-bearing external CLIs (``CLAUDE_BIN``,
-  ``CODEX_BIN``) and the codex defaults sourced from env.
+* Resolution for the load-bearing Claude and Codex CLIs and the Codex defaults
+  sourced from env. Other engine binaries resolve through the registry.
 * Two stdlib datetime helpers (``now_iso``, ``today_str``) used widely
   enough that they belong with the path constants rather than in a
   hidden corner of ``process.py``.
@@ -148,6 +148,7 @@ BIN_DIR: Path = ALFRED_HOME / "bin"
 TRANSCRIPTS_ROOT: Path = STATE_ROOT / "transcripts"
 PROMPTS_ROOT: Path = ALFRED_HOME / "prompts"
 CODEX_TRANSCRIPTS_ROOT: Path = STATE_ROOT / "codex"
+OPENCODE_TRANSCRIPTS_ROOT: Path = STATE_ROOT / "opencode"
 SHARED_AGENT: Path = ALFRED_HOME / "shared" / ".agent"
 
 # Fleet + lifecycle state files

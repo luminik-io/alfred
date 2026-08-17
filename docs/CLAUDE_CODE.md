@@ -23,7 +23,7 @@ Keep `ANTHROPIC_API_KEY` unset for subscription-backed Claude Code runs. Claude 
 There are two separate switches:
 
 - **Claude account routing**: `alfred claude primary|secondary|swap` chooses which local Claude Code auth directory future scheduled firings use. This is account/quota routing for Claude only.
-- **Agent engine routing**: `alfred engine set <codename> <claude|codex|hybrid>` chooses whether a codename runs through Claude Code, Codex, or Claude-first hybrid fallback.
+- **Agent engine routing**: `alfred engine set <codename> <claude|codex|opencode|hybrid>` chooses Claude Code, Codex, OpenCode, or Claude-first fallback. OpenCode has a separate [runtime guide](OPENCODE.md).
 
 Engine modes:
 

@@ -7,13 +7,13 @@ import MetricRow from "../components/marketing/MetricRow.astro";
 
 <MarketingLayout
   title="Pricing | Alfred is free, MIT"
-  description="MIT license. No vendor account. Alfred uses the Claude Code and Codex CLI subscriptions you already pay for."
+  description="MIT license. No Alfred account or vendor fee. Bring an authenticated Claude Code, Codex, or OpenCode CLI."
   path="/pricing/"
 >
   <Hero
     eyebrow="PRICING"
     headline="Alfred is free."
-    sub="MIT license. No vendor account. Alfred uses the Claude Code and Codex CLI subscriptions you already pay for."
+    sub="MIT license. No Alfred account or vendor fee. Bring an authenticated Claude Code, Codex, or OpenCode CLI."
     headlineSize="lg"
     primaryCta={{ label: "Install", href: "/getting-started/install/" }}
     secondaryCta={{ label: "GitHub", href: "https://github.com/luminik-io/alfred" }}
@@ -27,6 +27,7 @@ import MetricRow from "../components/marketing/MetricRow.astro";
       <MetricRow label="alfred vendor fee" value="$0" state="live" />
       <MetricRow label="claude code (yours)" value="from $20 / mo" glyph="arrow" state="info" />
       <MetricRow label="codex (optional)" value="from $20 / mo" glyph="arrow" state="info" />
+      <MetricRow label="opencode (optional)" value="provider rate" glyph="arrow" state="info" />
       <MetricRow label="Alfred SaaS fee" value="$0" state="live" />
     </div>
   </Hero>
@@ -35,8 +36,8 @@ import MetricRow from "../components/marketing/MetricRow.astro";
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT YOU PAY"
-        title="The CLIs you already pay for."
-        lede="Alfred drives Claude Code and Codex through their official CLIs. Your subscription, your auth, your spend cap."
+        title="Your coding CLI and provider account."
+        lede="Alfred invokes Claude Code, Codex, or OpenCode. Authentication, billing, and limits remain with the selected provider."
       />
       <div class="cards">
         <article class="m-card">
@@ -47,6 +48,10 @@ import MetricRow from "../components/marketing/MetricRow.astro";
           <h3 class="m-h3">Codex CLI (optional)</h3>
           <p>OpenAI's coding CLI. Use it for hybrid routing: Claude for plans, Codex for implementation, or split builders and reviewers.</p>
         </article>
+        <article class="m-card">
+          <h3 class="m-h3">OpenCode (optional)</h3>
+          <p>Select any provider account stored by OpenCode. Alfred records OpenCode's reported usage and cost for each firing.</p>
+        </article>
       </div>
     </div>
   </section>
@@ -56,12 +61,12 @@ import MetricRow from "../components/marketing/MetricRow.astro";
       <SectionHeader
         eyebrow="WHAT YOU DO NOT PAY"
         title="No vendor account."
-        lede="Three lines that almost always show up on a coding-agent product. None of them apply here."
+        lede="Alfred adds none of these charges."
       />
       <div class="cards">
         <article class="m-card">
-          <h3 class="m-h3">No LLM API key bill</h3>
-          <p>Alfred does not call the Anthropic or OpenAI API directly. There is no per-token line item under an Alfred account.</p>
+          <h3 class="m-h3">No Alfred model bill</h3>
+          <p>Alfred does not proxy model traffic. Model charges, if any, come from the provider account selected in your coding CLI.</p>
         </article>
         <article class="m-card">
           <h3 class="m-h3">No Alfred SaaS fee</h3>
@@ -80,7 +85,7 @@ import MetricRow from "../components/marketing/MetricRow.astro";
       <SectionHeader
         eyebrow="HOST REQUIREMENTS"
         title="A supported Mac or Linux host you control."
-        lede="The host runs the scheduler, authenticated harness CLIs, project tools, and local Alfred state. Size it for the repositories and builds you plan to run."
+        lede="The host runs the scheduler, authenticated coding CLIs, project tools, and local Alfred state. Size it for the repositories and builds you plan to run."
       />
       <div class="cards">
         <article class="m-card">

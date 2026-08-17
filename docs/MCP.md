@@ -3,12 +3,12 @@
 Alfred attaches Model Context Protocol (MCP) servers to **Claude-engine
 firings** so the fleet agents get *tools the model can call on demand* instead
 of guessing. MCP is a Claude Code feature: the servers and their tools are
-wired in `claude_invoke` and `claude_invoke_streaming` only. **Codex-routed
-firings do not get MCP servers or tools** (`codex_invoke` builds a `codex exec`
-command with no `--mcp-config`, and Codex does not expose Claude's tool
-allowlist). An agent routed to Codex reads and greps the working tree directly.
+wired in `claude_invoke` and `claude_invoke_streaming` only. **Codex and
+OpenCode firings do not get Alfred-managed MCP servers.** Those adapters do not
+import the operator's CLI configuration. They read and grep the working
+tree through their own bounded tool contract.
 See [ENGINE_ROUTING.md](ENGINE_ROUTING.md) for how a codename is routed to
-Claude versus Codex.
+Claude, Codex, or OpenCode.
 
 Two servers ship with Alfred:
 

@@ -107,7 +107,7 @@ export function useOnboardingActions({
             }
             return {
               ok: false,
-              note: "No compatible coding engine is ready. Install or sign in to Claude Code or Codex, then try again.",
+              note: "No compatible coding engine is ready. Install or sign in to Claude Code, Codex, or OpenCode, then try again.",
             };
           }
           case "connect_github": {

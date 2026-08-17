@@ -59,7 +59,7 @@ Every side-effecting boundary is stubbed behind a single `is_dry_run()` helper i
 
 | Boundary | Dry-run behaviour |
 |---|---|
-| `claude_invoke`, `codex_invoke`, `invoke_agent_engine` | Return a clearly-marked synthetic result (`cost_usd=0.0`, `result_text` labelled `[dry-run] synthetic ...`). No LLM is ever invoked. |
+| `claude_invoke`, `codex_invoke`, `opencode_invoke`, `invoke_agent_engine` | Return a clearly-marked synthetic result (`cost_usd=0.0`, `result_text` labelled `[dry-run] synthetic ...`). No model is invoked. |
 | `SpendState` | Write a separate `spend-dryrun-<date>.json` ledger. The real per-day counters are never touched, so a dry-run can't trip a daily cap. |
 | `set_global_block` | Log the provider-limit block it would set; the real scheduler block file is never written. |
 | `slack_post` | Log the line it would post (severity included) and return success. The webhook is never hit. |

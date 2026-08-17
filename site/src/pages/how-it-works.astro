@@ -14,7 +14,7 @@ const lifecycle = [
   {
     n: "02",
     title: "Safety checks run first",
-    body: "Before any paid call, the agent checks that GitHub and the Claude Code or Codex command line are signed in, that you are under your spending limit, and that you are not rate-limited. If any check fails, the run stops cleanly.",
+    body: "Before any provider call, the agent checks GitHub and the selected coding CLI. It stops when authentication, quota, or readiness checks fail.",
     log: "[12:00:01] preflight ok  spend=$3.21/$20.00",
   },
   {
@@ -31,8 +31,8 @@ const lifecycle = [
   },
   {
     n: "05",
-    title: "Claude Code or Codex writes the code",
-    body: "The agent hands the task to Claude Code or Codex on the command line, with the full project in context. Alfred saves the run log under ALFRED_HOME.",
+    title: "The selected coding engine writes the code",
+    body: "The agent hands the task to Claude Code, Codex, or OpenCode with the full project in context. Alfred saves the run log under ALFRED_HOME.",
     log: "[12:00:06] claude_invoke pid=84217  log=state/logs/12000305.log",
   },
   {
