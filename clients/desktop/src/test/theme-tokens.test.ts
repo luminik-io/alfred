@@ -98,6 +98,7 @@ const THEME_PRIMITIVES = [
 ];
 
 const css = readIndexCss();
+const polishCss = readFileSync(resolve(srcDir, "styles/polish.css"), "utf8");
 const baseTokens = declaredTokens(blockBody(css, ":root {"));
 const radixVariants = readFileSync(
   resolve(srcDir, "styles/radix-variants.css"),
@@ -193,10 +194,36 @@ describe("theme token completeness (do not revert)", () => {
   it("keeps Ledger dark on warm graphite instead of a brown field", () => {
     const body = lastBlockBody(css, ':root[data-theme="linked-fold"].dark {');
 
-    expect(body).toMatch(/--theme-background:\s*oklch\(0\.155 0\.008 55\)/);
-    expect(body).toMatch(/--theme-surface:\s*oklch\(0\.205 0\.010 55/);
-    expect(body).toMatch(/--theme-surface-2:\s*oklch\(0\.235 0\.012 55/);
-    expect(body).toMatch(/--theme-surface-3:\s*oklch\(0\.275 0\.014 55/);
+    expect(body).toMatch(/--theme-background:\s*oklch\(0\.18 0\.006 55\)/);
+    expect(body).toMatch(/--theme-surface:\s*oklch\(0\.225 0\.008 55/);
+    expect(body).toMatch(/--theme-surface-2:\s*oklch\(0\.255 0\.009 55/);
+    expect(body).toMatch(/--theme-surface-3:\s*oklch\(0\.295 0\.010 55/);
+    expect(body).toMatch(/--fold-line:\s*oklch\([^/]+\/ 0\.045\)/);
+  });
+
+  it("keeps dark appearance primitives in the token source", () => {
+    expect(polishCss).not.toMatch(/--theme-(?:background|surface|primary|sidebar|border):/);
+  });
+
+  it("keeps display-font overrides out of body copy", () => {
+    expect(css).not.toContain("@fontsource-variable/roboto-condensed");
+    expect(css).not.toContain("Roboto Condensed");
+    expect(polishCss).not.toMatch(
+      /:root\[data-theme="category-standard"\] body\s*\{[^}]*Roboto Condensed/s,
+    );
+    expect(polishCss).not.toMatch(
+      /:root\[data-theme="linked-fold"\] body\s*\{[^}]*Roboto Condensed/s,
+    );
+  });
+
+  it("keeps the Ledger dark canvas quiet", () => {
+    const body = blockBody(
+      polishCss,
+      ':root[data-theme="linked-fold"].dark .alfred-app-atmosphere {',
+    );
+
+    expect(body).toMatch(/background:\s*var\(--background\)/);
+    expect(body).not.toContain("repeating-linear-gradient");
   });
 
   it("sweeps every shipped theme and no retired theme", () => {

@@ -10,6 +10,10 @@ complete primitive contract and the Prism light default. Each appearance
 and mode defines the same primitive set. A single mapping exposes stable
 semantic tokens to components.
 
+The inline bootstrap in `clients/desktop/index.html` applies the saved
+appearance and mode before the loading screen paints. A saved dark theme must
+not flash Prism light while the client starts.
+
 Prism uses a quiet neutral field with mint, rose, and violet reserved for
 active or uncertain edges. Graphite uses compact panels and familiar blue,
 green, amber, and red status colors. Ledger uses warm paper, ink, crease lines,

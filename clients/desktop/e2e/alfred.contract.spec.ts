@@ -10,6 +10,20 @@ test.afterEach(async ({ page }) => {
   assertAlfredApiComplete(page);
 });
 
+test("saved dark appearances apply before the client bundle starts", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("alfred-theme-name", "linked-fold");
+    localStorage.setItem("alfred-theme", "dark");
+  });
+  await page.route("**/assets/index-*.js", (route) => route.abort());
+
+  await page.goto("/");
+
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "linked-fold");
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  await expect(page.getByText("Starting Alfred")).toBeVisible();
+});
+
 test("fresh onboarding owns the window before application navigation", async ({ page }) => {
   await installAlfredApi(page, "onboarding");
 

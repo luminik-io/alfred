@@ -207,64 +207,7 @@
   padding: 0 1rem 1rem;
 }
 
-:root[data-theme="signal-edge"].dark {
-  --theme-background: oklch(0.17 0.018 245);
-  --theme-surface: oklch(0.225 0.022 245 / 0.92);
-  --theme-surface-2: oklch(0.26 0.024 245 / 0.94);
-  --theme-surface-3: oklch(0.305 0.026 245 / 0.97);
-  --theme-primary: oklch(0.76 0.105 205);
-  --theme-border: oklch(0.91 0.018 220 / 0.13);
-  --theme-border-strong: oklch(0.91 0.018 220 / 0.24);
-  --theme-glass: oklch(0.215 0.023 245 / 0.78);
-  --theme-glass-strong: oklch(0.245 0.024 245 / 0.93);
-  --theme-sidebar: oklch(0.19 0.021 245 / 0.91);
-  --theme-sidebar-accent: oklch(0.29 0.04 205 / 0.8);
-  --theme-glass-highlight: rgba(218, 247, 250, 0.11);
-  --theme-glass-shadow: rgba(1, 7, 18, 0.48);
-  --signal-mint: oklch(0.79 0.12 165);
-  --signal-rose: oklch(0.76 0.16 350);
-  --signal-violet: oklch(0.74 0.15 295);
-}
-
-:root[data-theme="category-standard"].dark {
-  --theme-background: oklch(0.15 0.012 250);
-  --theme-surface: oklch(0.205 0.014 250 / 0.96);
-  --theme-surface-2: oklch(0.235 0.016 250 / 0.97);
-  --theme-surface-3: oklch(0.285 0.018 250 / 0.98);
-  --theme-primary: oklch(0.68 0.17 252);
-  --theme-sidebar: oklch(0.135 0.012 250 / 0.98);
-  --theme-sidebar-accent: oklch(0.255 0.035 250 / 0.9);
-  --theme-border: oklch(0.92 0.012 230 / 0.12);
-  --theme-border-strong: oklch(0.92 0.012 230 / 0.22);
-}
-
-:root[data-theme="linked-fold"].dark {
-  --theme-background: oklch(0.155 0.008 55);
-  --theme-surface: oklch(0.205 0.010 55 / 0.96);
-  --theme-surface-2: oklch(0.235 0.012 55 / 0.97);
-  --theme-surface-3: oklch(0.275 0.014 55 / 0.98);
-  --theme-sidebar: oklch(0.145 0.009 55 / 0.97);
-  --theme-sidebar-accent: oklch(0.255 0.028 72 / 0.84);
-  --theme-border: oklch(0.89 0.025 82 / 0.13);
-  --theme-border-strong: oklch(0.89 0.025 82 / 0.24);
-  --theme-primary: oklch(0.73 0.12 76);
-  --theme-warn: oklch(0.76 0.13 76);
-}
-
 /* Graphite --------------------------------------------------------------- */
-
-:root[data-theme="category-standard"] body {
-  --theme-font-heading: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
-  --theme-font-body: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
-  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
-}
-
-:root[data-theme="category-standard"] :is(.font-heading, h1, h2, h3) {
-  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
-  font-stretch: condensed;
-  font-weight: 660;
-  letter-spacing: -0.025em;
-}
 
 :root[data-theme="category-standard"]
   :is(
@@ -320,7 +263,6 @@
 
 :root[data-theme="category-standard"] .alfred-pipeline__column-head {
   border-bottom-color: var(--border-strong);
-  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
   font-size: 0.73rem;
   font-weight: 690;
   letter-spacing: 0.055em;
@@ -354,12 +296,6 @@
 
 /* Ledger ----------------------------------------------------------------- */
 
-:root[data-theme="linked-fold"] body {
-  --theme-font-heading: "Source Serif 4 Variable", Georgia, serif;
-  --theme-font-body: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
-  font-family: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
-}
-
 :root[data-theme="linked-fold"] :is(.font-heading, h1, h2, h3) {
   font-family: "Source Serif 4 Variable", Georgia, serif;
   font-weight: 610;
@@ -385,6 +321,10 @@
       transparent 34%
     ),
     var(--background);
+}
+
+:root[data-theme="linked-fold"].dark .alfred-app-atmosphere {
+  background: var(--background);
 }
 
 :root[data-theme="linked-fold"] .alfred-app-atmosphere::before {
