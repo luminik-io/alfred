@@ -90,7 +90,16 @@ def test_run_evidence_links_local_run_facts_without_external_reads(tmp_path: Pat
                 subtype="success",
                 success=True,
             ),
-            _event("plan_approved", 5, "operator", number=42),
+            _event(
+                "plan_approved",
+                5,
+                "operator",
+                repo="example/app",
+                issue=42,
+                number=42,
+                decision="approve",
+                decision_record="/state/architect/approval-decisions/42.json",
+            ),
             _event(
                 "pre_push_checks_passed",
                 6,
@@ -142,6 +151,16 @@ def test_run_evidence_links_local_run_facts_without_external_reads(tmp_path: Pat
         "review",
     }
     assert {fact.source for fact in record.facts} == {"alfred", "engine", "github", "operator"}
+    approval = next(fact for fact in record.facts if fact.kind == "approval")
+    assert approval.data == {
+        "number": 42,
+        "issue": 42,
+        "repo": "example/app",
+        "decision": "approve",
+        "decision_record": "/state/architect/approval-decisions/42.json",
+    }
+    commit = next(fact for fact in record.facts if fact.kind == "commit")
+    assert commit.data["commit_sha"] == "a" * 40
     assert [artifact.status for artifact in record.artifacts] == ["available", "available"]
 
 

@@ -71,6 +71,7 @@ from architect_lifecycle import (  # noqa: E402
     SlackReporter,
 )
 from labels import PLAN_PENDING_APPROVAL  # noqa: E402
+from server.plan_approvals import decision_record_path  # noqa: E402
 
 CODENAME = os.environ.get("AGENT_CODENAME", "architect")
 ARCHITECT_ENGINE = agent_engine(CODENAME, default="hybrid")
@@ -446,6 +447,14 @@ def _run_lifecycle_body(
             lifecycle.report(plan, _empty_result_reason(reason=verdict.verdict))
             return 0, verdict.verdict
         print(f"[ARCHITECT-APPROVED] elapsed={verdict.elapsed_s:.0f}s")
+        events.emit(
+            "plan_approved",
+            repo=parent_repo,
+            issue=parent_issue_number,
+            number=parent_issue_number,
+            decision="approve",
+            decision_record=str(decision_record_path(STATE_ROOT, parent_issue_number)),
+        )
         # Approval landed: clear the pending state before execute so the
         # next firing doesn't think we're still waiting.
         _clear_pending_envelope(parent_repo, parent_issue_number)

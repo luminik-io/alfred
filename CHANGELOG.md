@@ -51,6 +51,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Run evidence now links an approved Architect plan to its durable decision
+  record and records the full commit SHA after senior-dev or fixer pushes.
 - Limited the default first-party starter set to `spec-to-issues`,
   `review-security`, and `add-observability`. Each improved deterministic task
   results and passed every skill-assisted fixture. The other first-party skills

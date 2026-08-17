@@ -848,7 +848,15 @@ def main() -> int:
             pr_num,
             f"{AGENT.title()}: fixed in {new_sha[:7]} (re: comment {cid} from {cuser})",
         )
-        events.emit("fix_pushed", comment_id=cid, commit_sha=new_sha[:7], reviewer=cuser)
+        events.emit(
+            "fix_pushed",
+            repo=f"{GH_ORG}/{repo}",
+            pull_request=pr_num,
+            branch=head_ref,
+            comment_id=cid,
+            commit_sha=new_sha,
+            reviewer=cuser,
+        )
         fixes_landed += 1
         fix_summary.append(f"- {new_sha[:7]}: {cuser} comment {cid}")
         # Persist so the next firing's pick_target() skips this comment
