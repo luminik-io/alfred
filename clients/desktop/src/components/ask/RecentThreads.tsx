@@ -1,6 +1,15 @@
 import { History, MessageSquare, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -37,6 +46,8 @@ export function RecentThreads({
 }) {
   const [open, setOpen] = useState(false);
   const [retiring, setRetiring] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<RecentThread | null>(null);
+  const deleteAffirmRef = useRef<HTMLButtonElement>(null);
 
   // The trigger exists to SWITCH chats, so its lifecycle keys on whether any
   // non-active thread remains, not on the raw list length: deleting the ACTIVE
@@ -125,7 +136,7 @@ export function RecentThreads({
                   type="button"
                   className="ask__history-delete"
                   aria-label={`Delete chat: ${thread.title}`}
-                  onClick={() => onDelete(thread.id)}
+                  onClick={() => setPendingDelete(thread)}
                 >
                   <Trash2 size={14} aria-hidden="true" />
                 </button>
@@ -133,6 +144,50 @@ export function RecentThreads({
             </li>
           ))}
         </ul>
+        <Dialog
+          open={Boolean(pendingDelete)}
+          onOpenChange={(nextOpen) => !nextOpen && setPendingDelete(null)}
+        >
+          <DialogContent
+            role="alertdialog"
+            showCloseButton={false}
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              deleteAffirmRef.current?.focus();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Delete saved chat?</DialogTitle>
+              <DialogDescription>
+                {pendingDelete
+                  ? `“${pendingDelete.title}” will be removed from this Mac. `
+                  : "This saved chat will be removed from this Mac. "}
+                This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPendingDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                ref={deleteAffirmRef}
+                onClick={() => {
+                  if (!pendingDelete || !onDelete) return;
+                  onDelete(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
+              >
+                Delete chat
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </SheetContent>
     </Sheet>
   );
