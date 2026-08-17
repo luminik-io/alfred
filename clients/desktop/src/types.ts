@@ -965,8 +965,8 @@ export type SetupSelectReposResponse = {
   keys: string[];
 };
 
-// One battery in the picker. Built-ins need no dependency, default_on tools are
-// part of a fresh install, and the rest are advanced integrations. Mirrors
+// One battery in the picker. Setup groups separate included tools, optional
+// local tools, and external services. Mirrors
 // lib/batteries.py so the CLI and desktop app read one manifest.
 export type SetupBattery = {
   id: string;
@@ -976,6 +976,7 @@ export type SetupBattery = {
   how_it_helps: string;
   builtin: boolean;
   default_on: boolean;
+  setup_group: "included" | "optional-local" | "external-service" | string;
   status: "included" | "enabled" | "available" | "not_installed" | string;
   configured: boolean;
   enabled: boolean;
@@ -987,6 +988,14 @@ export type SetupBattery = {
   pip_extra: string;
   env_keys: string[];
   docs: string;
+  version: string;
+  license: string;
+  source_url: string;
+  integrity: string;
+  install_command: string;
+  check_command: string;
+  disable_command: string;
+  remove_command: string;
 };
 
 export type SetupBatteryManifest = {

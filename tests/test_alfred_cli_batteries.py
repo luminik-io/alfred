@@ -154,3 +154,91 @@ def test_print_command_includes_follow_up_enable_without_mutating_config(
     assert "&& alfred batteries enable dense-embeddings --yes" in output
     env_path = tmp_path / ".alfred" / ".env"
     assert not env_path.exists() or "ALFRED_MEMORY_SQLITE_DENSE=1" not in env_path.read_text()
+
+
+def test_remove_refuses_to_change_an_enabled_battery(
+    cli, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    original = "ALFRED_COMPRESSION_ENGINE=headroom\n"
+    env_path.write_text(original, encoding="utf-8")
+
+    assert cli.main(["batteries", "remove", "headroom-compression", "--yes"]) == 1
+
+    assert "disable headroom-compression first" in capsys.readouterr().out
+    assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_remove_prints_exact_local_uninstall_without_mutating_config(
+    cli, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    original = "ALFRED_COMPRESSION_ENGINE=builtin\n"
+    env_path.write_text(original, encoding="utf-8")
+
+    assert cli.main(["batteries", "remove", "headroom-compression", "--print-command"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"{sys.executable} -m pip uninstall -y headroom-ai" in output
+    assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_remove_runs_local_uninstall_without_mutating_config(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    original = "ALFRED_MEMORY_SQLITE_DENSE=0\n"
+    env_path.write_text(original, encoding="utf-8")
+    commands: list[list[str]] = []
+
+    def run(command, *, timeout, env=None):
+        assert timeout > 0
+        commands.append(command)
+        return 0
+
+    monkeypatch.setattr(cli, "_run_subcommand", run)
+
+    assert cli.main(["batteries", "remove", "dense-embeddings", "--yes"]) == 0
+    assert commands == [[sys.executable, "-m", "pip", "uninstall", "-y", "sqlite-vec"]]
+    assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_remove_external_service_prints_operator_guidance(
+    cli, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    original = "ALFRED_MEMORY_PROVIDERS=sqlite,fleet\n"
+    env_path.write_text(original, encoding="utf-8")
+
+    assert cli.main(["batteries", "remove", "redis-ams", "--yes"]) == 0
+
+    assert "operator-managed service" in capsys.readouterr().out
+    assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_list_uses_plain_setup_groups(
+    cli, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import batteries
+
+    monkeypatch.setattr(batteries, "_graphify_available", lambda _env: False)
+    monkeypatch.setattr(batteries, "_ams_reachable", lambda _env: False)
+    monkeypatch.setattr(batteries, "_headroom_available", lambda _env: False)
+    monkeypatch.setattr(batteries, "_find_spec", lambda _name: False)
+    build_manifest = batteries.manifest
+    monkeypatch.setattr(
+        batteries,
+        "manifest",
+        lambda: build_manifest({"ALFRED_HOME": "/missing"}),
+    )
+
+    assert cli.main(["batteries", "list"]) == 0
+    output = capsys.readouterr().out
+    assert "Included" in output
+    assert "Optional local tools" in output
+    assert "External services" in output
+    assert "Advanced integrations" not in output

@@ -6,6 +6,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+- Group setup batteries as included, optional local tools, or external services. The shared
+  manifest now records source, version, licence, integrity, install, check, disable, and removal
+  data. `alfred batteries remove` removes disabled local dependencies without changing Alfred
+  configuration.
+
 ### Added
 
 - Added a compression quality gate that compares raw output, the built-in

@@ -148,7 +148,7 @@ def test_get_batteries_endpoint(alfred_home: Path, tmp_path: Path) -> None:
     resp = client.get("/api/setup/batteries")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["version"] == 1
+    assert body["version"] == 2
     assert body["summary"]["total"] == len(body["batteries"])
 
 
