@@ -375,7 +375,15 @@ export class AlfredApiFixture {
     if (matches("/api/slack/trusted-users")) {
       await this.fulfill(route, {
         operator_user_id: null,
-        users: [],
+        users: [
+          {
+            user_id: "UTEAM12345",
+            sources: ["state"],
+            added_at: "2026-07-23T19:45:00Z",
+            added_by: "desktop",
+            can_remove: true,
+          },
+        ],
         state_path: "state/slack-trusted-users.json",
       });
       return true;

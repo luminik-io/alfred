@@ -560,4 +560,80 @@ describe("SettingsView", () => {
       refreshAfter: true,
     });
   });
+
+  it("confirms before removing a trusted collaborator", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home"),
+    );
+    const user = userEvent.setup();
+    const onRemoveTrustedUser = vi.fn();
+
+    render(
+      renderSettings("http://127.0.0.1:7010", {
+        trustedSlack: {
+          operator_user_id: "UOPERATOR",
+          users: [
+            {
+              user_id: "U0123ABCDEF",
+              sources: ["state"],
+              added_at: null,
+              added_by: null,
+              can_remove: true,
+            },
+          ],
+          state_path: "/tmp/alfred-home/state/slack-trusted-users.json",
+        },
+        onRemoveTrustedUser,
+      }),
+    );
+
+    await user.click(screen.getByRole("tab", { name: /^Collaborators/ }));
+    await user.click(screen.getByRole("button", { name: "Remove U0123ABCDEF" }));
+
+    expect(onRemoveTrustedUser).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Remove collaborator" }),
+    ).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Remove collaborator" }));
+    expect(onRemoveTrustedUser).toHaveBeenCalledWith("U0123ABCDEF");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("cancels collaborator removal with Escape", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home"),
+    );
+    const user = userEvent.setup();
+    const onRemoveTrustedUser = vi.fn();
+
+    render(
+      renderSettings("http://127.0.0.1:7010", {
+        trustedSlack: {
+          operator_user_id: "UOPERATOR",
+          users: [
+            {
+              user_id: "U0123ABCDEF",
+              sources: ["state"],
+              added_at: null,
+              added_by: null,
+              can_remove: true,
+            },
+          ],
+          state_path: "/tmp/alfred-home/state/slack-trusted-users.json",
+        },
+        onRemoveTrustedUser,
+      }),
+    );
+
+    await user.click(screen.getByRole("tab", { name: /^Collaborators/ }));
+    await user.click(screen.getByRole("button", { name: "Remove U0123ABCDEF" }));
+    await user.keyboard("{Escape}");
+
+    expect(onRemoveTrustedUser).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
 });
