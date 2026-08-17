@@ -49,12 +49,14 @@ Design contract (same rules as ``benchmark`` and ``transcripts``):
   stdlib-only) are imported lazily by the *seeding* and *default recall*
   helpers, and ``agent_runner`` only by the real-engine solver, so the metric
   code imports and runs on a host that has not deployed the full runtime.
-* Tolerant reads. A missing fixture file or a malformed entry is skipped, never
-  raised, mirroring the base harness.
+* Legacy A/B fixtures use tolerant reads. Recall-quality fixtures fail on a
+  malformed file, duplicate key, or unknown lesson reference so a broken gate
+  cannot report a partial run as complete.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -65,12 +67,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from benchmark import TokenUsage, extract_token_usage
 
 if TYPE_CHECKING:
-    from fleet_brain import Lesson
+    from fleet_brain import Lesson, Severity
+    from memory.sqlite_hybrid import SqliteHybridProvider
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +92,8 @@ DEFAULT_BENCH_REPO = "acme-org/widgets"
 # (``format_memory_context(limit=3)``) so the benchmark recalls exactly as many
 # lessons as a real firing would inject.
 DEFAULT_RECALL_LIMIT = 3
+DEFAULT_RECALL_PROMPT_MAX_CHARS = 8000
+RECALL_QUALITY_FIXTURE_SCHEMA_VERSION = 1
 
 
 # --------------------------------------------------------------------------
@@ -240,6 +246,156 @@ class Fixture:
     repo: str = DEFAULT_BENCH_REPO
 
 
+@dataclass(frozen=True)
+class RecallQualityCase:
+    """One deterministic provider-recall check.
+
+    ``relevant_lesson_ids`` is empty for a true miss. Any lesson returned for a
+    true miss is a false injection. ``category`` keeps exact, wording,
+    scope, validity, contradiction, and miss cases visible in the report.
+    """
+
+    case_id: str
+    category: str
+    query: str
+    repo: str
+    relevant_lesson_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RecallQualitySeedLesson:
+    """One typed lesson used by the provider recall-quality fixture."""
+
+    lesson_id: str
+    body: str
+    repo: str
+    codename: str = DEFAULT_BENCH_CODENAME
+    tags: tuple[str, ...] = ()
+    severity: str = "info"
+    kind: str = "note"
+    created_at: datetime = datetime(2026, 1, 1, tzinfo=UTC)
+    valid_until: datetime | None = None
+    superseded_by: str | None = None
+    provenance: str | None = None
+
+
+@dataclass(frozen=True)
+class RecallQualityFixture:
+    """Typed lessons and queries for the provider-only recall benchmark."""
+
+    cases: tuple[RecallQualityCase, ...]
+    lessons: tuple[RecallQualitySeedLesson, ...]
+    codename: str = DEFAULT_BENCH_CODENAME
+
+
+@dataclass
+class _RecallFailureLog:
+    providers: list[str] = field(default_factory=list)
+
+    def take(self) -> tuple[str, ...]:
+        failures = tuple(dict.fromkeys(self.providers))
+        self.providers.clear()
+        return failures
+
+
+class _ObservedRecallProvider:
+    """Record one chain member failure before the shipped chain falls through."""
+
+    def __init__(self, provider: Any, failures: _RecallFailureLog) -> None:
+        self._provider = provider
+        self._failures = failures
+        self.name = str(provider.name)
+
+    def recall(self, **kwargs: Any) -> list[Lesson]:
+        try:
+            return self._provider.recall(**kwargs)
+        except Exception:
+            self._failures.providers.append(self.name)
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._provider, name)
+
+
+@dataclass(frozen=True)
+class RecallQualityResult:
+    """Observed output for one recall-quality case."""
+
+    case_id: str
+    category: str
+    recalled_lesson_ids: tuple[str, ...]
+    relevant_lesson_ids: tuple[str, ...]
+    latency_ms: float
+    prompt_bytes: int
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RecallQualityMetrics:
+    """Aggregate provider recall metrics with explicit denominators."""
+
+    cases: int = 0
+    cases_with_relevant: int = 0
+    relevant_total: int = 0
+    recalled_total: int = 0
+    recalled_relevant: int = 0
+    false_injections: int = 0
+    empty_miss_cases: int = 0
+    nonempty_misses: int = 0
+    precision: float | None = None
+    recall: float | None = None
+    false_injection_rate: float | None = None
+    empty_miss_rate: float | None = None
+    mean_latency_ms: float | None = None
+    prompt_bytes: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class RecallQualityReport:
+    """Provider-level recall benchmark without an LLM or network dependency."""
+
+    generated_at: datetime
+    provider: str
+    codename: str
+    fixture: str
+    limit: int
+    metrics: RecallQualityMetrics
+    results: tuple[RecallQualityResult, ...]
+    fixture_schema_version: int = RECALL_QUALITY_FIXTURE_SCHEMA_VERSION
+    fixture_digest: str = "unrecorded"
+    prompt_max_chars: int = DEFAULT_RECALL_PROMPT_MAX_CHARS
+    model: str = "none"
+    network: bool = False
+    limitations: tuple[str, ...] = (
+        "fixed-fixture-provider-recall",
+        "no-model-reasoning",
+        "no-live-operator-data",
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "generated_at": self.generated_at.isoformat(),
+            "provider": self.provider,
+            "codename": self.codename,
+            "fixture": self.fixture,
+            "fixture_schema_version": self.fixture_schema_version,
+            "fixture_digest": self.fixture_digest,
+            "limit": self.limit,
+            "prompt_max_chars": self.prompt_max_chars,
+            "model": self.model,
+            "network": self.network,
+            "limitations": list(self.limitations),
+            "metrics": self.metrics.to_dict(),
+            "results": [result.to_dict() for result in self.results],
+        }
+
+
 def _load_json_list(path: Path) -> list[dict[str, Any]]:
     """Read a JSON list of objects, tolerating a missing/garbled file."""
     try:
@@ -251,6 +407,137 @@ def _load_json_list(path: Path) -> list[dict[str, Any]]:
         logger.warning("mem-bench: %s is not a JSON list", path)
         return []
     return [item for item in raw if isinstance(item, dict)]
+
+
+def _parse_fixture_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"invalid recall fixture timestamp: {text}") from exc
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _load_recall_fixture_items(path: Path) -> list[dict[str, Any]]:
+    """Read one recall-quality fixture file without dropping bad records."""
+    if not path.is_file():
+        raise FileNotFoundError(f"memory recall fixture file not found: {path}")
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid recall fixture JSON in {path}: {exc}") from exc
+    if not isinstance(raw, list) or any(not isinstance(item, dict) for item in raw):
+        raise ValueError(f"recall fixture must contain a JSON list of objects: {path}")
+    return raw
+
+
+def _recall_case_from_dict(item: dict[str, Any]) -> RecallQualityCase | None:
+    case_id = str(item.get("case_id") or "").strip()
+    query = str(item.get("query") or "").strip()
+    repo = str(item.get("repo") or "").strip()
+    if not case_id or not query or not repo:
+        return None
+    return RecallQualityCase(
+        case_id=case_id,
+        category=str(item.get("category") or "other").strip() or "other",
+        query=query,
+        repo=repo,
+        relevant_lesson_ids=_as_str_tuple(item.get("relevant_lesson_ids")),
+    )
+
+
+def _recall_seed_from_dict(item: dict[str, Any]) -> RecallQualitySeedLesson | None:
+    lesson_id = str(item.get("lesson_id") or "").strip()
+    body = str(item.get("body") or "").strip()
+    repo = str(item.get("repo") or "").strip()
+    if not lesson_id or not body or not repo:
+        return None
+    return RecallQualitySeedLesson(
+        lesson_id=lesson_id,
+        body=body,
+        repo=repo,
+        codename=str(item.get("codename") or DEFAULT_BENCH_CODENAME).strip(),
+        tags=_as_str_tuple(item.get("tags")),
+        severity=str(item.get("severity") or "info"),
+        kind=str(item.get("kind") or "note"),
+        created_at=(
+            _parse_fixture_datetime(item.get("created_at")) or datetime(2026, 1, 1, tzinfo=UTC)
+        ),
+        valid_until=_parse_fixture_datetime(item.get("valid_until")),
+        superseded_by=str(item.get("superseded_by") or "").strip() or None,
+        provenance=str(item.get("provenance") or "").strip() or None,
+    )
+
+
+def load_recall_quality_fixture(
+    fixture_dir: Path,
+    *,
+    codename: str = DEFAULT_BENCH_CODENAME,
+) -> RecallQualityFixture:
+    """Load typed recall cases and lessons from a fixture directory."""
+    fixture_dir = Path(fixture_dir)
+    if not fixture_dir.is_dir():
+        raise FileNotFoundError(f"memory recall fixture dir not found: {fixture_dir}")
+    case_items = _load_recall_fixture_items(fixture_dir / "cases.json")
+    lesson_items = _load_recall_fixture_items(fixture_dir / "lessons.json")
+    parsed_cases = [_recall_case_from_dict(item) for item in case_items]
+    parsed_lessons = [_recall_seed_from_dict(item) for item in lesson_items]
+    if any(case is None for case in parsed_cases):
+        raise ValueError("recall cases require case_id, query, and repo")
+    if any(lesson is None for lesson in parsed_lessons):
+        raise ValueError("recall lessons require lesson_id, body, and repo")
+    cases = tuple(case for case in parsed_cases if case is not None)
+    lessons = tuple(lesson for lesson in parsed_lessons if lesson is not None)
+
+    case_ids = [case.case_id for case in cases]
+    lesson_ids = [lesson.lesson_id for lesson in lessons]
+    if len(set(case_ids)) != len(case_ids):
+        raise ValueError("recall fixture case_id values must be unique")
+    if len(set(lesson_ids)) != len(lesson_ids):
+        raise ValueError("recall fixture lesson_id values must be unique")
+    known_lessons = set(lesson_ids)
+    for case in cases:
+        for lesson_id in case.relevant_lesson_ids:
+            if lesson_id not in known_lessons:
+                raise ValueError(
+                    f"recall case {case.case_id} references unknown lesson {lesson_id}"
+                )
+    for lesson in lessons:
+        if lesson.superseded_by is not None and lesson.valid_until is None:
+            raise ValueError(
+                f"recall lesson {lesson.lesson_id} must set valid_until with superseded_by"
+            )
+        if lesson.superseded_by and lesson.superseded_by not in known_lessons:
+            raise ValueError(
+                f"recall lesson {lesson.lesson_id} supersedes unknown lesson {lesson.superseded_by}"
+            )
+    return RecallQualityFixture(cases=cases, lessons=lessons, codename=codename)
+
+
+def recall_quality_fixture_digest(fixture: RecallQualityFixture) -> str:
+    """Return a stable SHA-256 identity for one normalized fixture."""
+    payload = {
+        "schema_version": RECALL_QUALITY_FIXTURE_SCHEMA_VERSION,
+        "codename": fixture.codename,
+        "cases": [asdict(case) for case in fixture.cases],
+        "lessons": [
+            {
+                **asdict(lesson),
+                "created_at": lesson.created_at.isoformat(),
+                "valid_until": lesson.valid_until.isoformat() if lesson.valid_until else None,
+            }
+            for lesson in fixture.lessons
+        ],
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def load_fixture(
@@ -286,6 +573,29 @@ def load_fixture(
 # --------------------------------------------------------------------------
 
 
+def _in_memory_default_chain() -> tuple[RecallProvider, SqliteHybridProvider]:
+    """Build the shipped chain and return its concrete writable fixture store."""
+    from memory.config import load_provider
+    from memory.providers import ChainedMemoryProvider
+    from memory.sqlite_hybrid import SqliteHybridProvider
+
+    provider = load_provider(
+        {
+            "ALFRED_MEMORY_SQLITE_DB": ":memory:",
+            "ALFRED_FLEET_BRAIN_DB": ":memory:",
+        }
+    )
+    if not isinstance(provider, ChainedMemoryProvider):
+        raise RuntimeError("default memory chain is unavailable")
+    writer = next(
+        (member for member in provider.providers if isinstance(member, SqliteHybridProvider)),
+        None,
+    )
+    if writer is None:
+        raise RuntimeError("default memory chain has no SQLite lesson store")
+    return provider, writer
+
+
 def seed_default_provider(
     lessons: Sequence[SeedLesson],
     *,
@@ -300,18 +610,7 @@ def seed_default_provider(
     databases are in memory, so a benchmark cannot read or change operator
     state.
     """
-    from memory.config import load_provider
-
-    provider = load_provider(
-        {
-            "ALFRED_MEMORY_SQLITE_DB": ":memory:",
-            "ALFRED_FLEET_BRAIN_DB": ":memory:",
-        }
-    )
-    members = getattr(provider, "providers", None)
-    if not isinstance(members, list) or not members:
-        raise RuntimeError("default memory chain has no writable lesson store")
-    writer = members[0]
+    provider, writer = _in_memory_default_chain()
     moment = base_time or datetime(2026, 1, 1, tzinfo=UTC)
     for offset, lesson in enumerate(lessons):
         if not lesson.body:
@@ -321,9 +620,31 @@ def seed_default_provider(
             repo=repo,
             body=lesson.body,
             tags=lesson.tags,
-            severity=lesson.severity,
+            severity=cast("Severity", lesson.severity),
             memory_id=lesson.lesson_id,
             created_at=moment + timedelta(minutes=offset),
+        )
+    return provider
+
+
+def seed_recall_quality_provider(
+    lessons: Sequence[RecallQualitySeedLesson],
+) -> RecallProvider:
+    """Return the shipped in-memory chain seeded with typed fixture lessons."""
+    provider, writer = _in_memory_default_chain()
+    for seed in lessons:
+        writer.reflect(
+            codename=seed.codename,
+            repo=seed.repo,
+            body=seed.body,
+            tags=seed.tags,
+            severity=cast("Severity", seed.severity),
+            created_at=seed.created_at,
+            memory_id=seed.lesson_id,
+            kind=seed.kind,
+            provenance=seed.provenance,
+            valid_until=seed.valid_until,
+            superseded_by=seed.superseded_by,
         )
     return provider
 
@@ -457,6 +778,175 @@ def default_inject_fn(
     except Exception:
         logger.exception("mem-bench: inject failed for task %s", task.task_id)
         return ""
+
+
+RecallQualityContextFn = Callable[
+    [Sequence["Lesson"], RecallQualityCase, str, int],
+    str,
+]
+
+
+def _recall_quality_context(
+    lessons: Sequence[Lesson],
+    case: RecallQualityCase,
+    codename: str,
+    limit: int,
+    *,
+    max_chars: int,
+) -> str:
+    """Format the scored recall result without another provider lookup."""
+    from agent_runner.memory_runtime import format_recalled_memory_context
+
+    return format_recalled_memory_context(lessons, limit=limit, max_chars=max_chars)
+
+
+def _recall_quality_metrics(
+    results: Sequence[RecallQualityResult],
+) -> RecallQualityMetrics:
+    relevant_total = 0
+    recalled_total = 0
+    recalled_relevant = 0
+    false_injections = 0
+    cases_with_relevant = 0
+    empty_miss_cases = 0
+    nonempty_misses = 0
+    total_latency_ms = 0.0
+    prompt_bytes = 0
+    for result in results:
+        relevant = set(result.relevant_lesson_ids)
+        recalled = set(result.recalled_lesson_ids)
+        recalled_total += len(recalled)
+        recalled_relevant += len(relevant & recalled)
+        false_injections += len(recalled - relevant)
+        relevant_total += len(relevant)
+        if relevant:
+            cases_with_relevant += 1
+        else:
+            empty_miss_cases += 1
+            if recalled:
+                nonempty_misses += 1
+        total_latency_ms += result.latency_ms
+        prompt_bytes += result.prompt_bytes
+    count = len(results)
+    return RecallQualityMetrics(
+        cases=count,
+        cases_with_relevant=cases_with_relevant,
+        relevant_total=relevant_total,
+        recalled_total=recalled_total,
+        recalled_relevant=recalled_relevant,
+        false_injections=false_injections,
+        empty_miss_cases=empty_miss_cases,
+        nonempty_misses=nonempty_misses,
+        precision=(recalled_relevant / recalled_total) if recalled_total else None,
+        recall=(recalled_relevant / relevant_total) if relevant_total else None,
+        false_injection_rate=(false_injections / recalled_total) if recalled_total else None,
+        empty_miss_rate=(
+            (empty_miss_cases - nonempty_misses) / empty_miss_cases if empty_miss_cases else None
+        ),
+        mean_latency_ms=(total_latency_ms / count) if count else None,
+        prompt_bytes=prompt_bytes,
+    )
+
+
+def _install_recall_diagnostics(provider: RecallProvider) -> _RecallFailureLog | None:
+    """Observe chain-member failures that the shipped chain must fall through."""
+    existing = getattr(provider, "_benchmark_recall_failures", None)
+    if isinstance(existing, _RecallFailureLog):
+        existing.take()
+        return existing
+    members = getattr(provider, "providers", None)
+    if not isinstance(members, list):
+        return None
+    failures = _RecallFailureLog()
+    mutable_provider = cast(Any, provider)
+    mutable_provider.providers = [_ObservedRecallProvider(member, failures) for member in members]
+    mutable_provider._benchmark_recall_failures = failures
+    return failures
+
+
+def run_recall_quality(
+    cases: Sequence[RecallQualityCase],
+    *,
+    provider: RecallProvider,
+    codename: str = DEFAULT_BENCH_CODENAME,
+    fixture: str = "custom",
+    limit: int = DEFAULT_RECALL_LIMIT,
+    context_fn: RecallQualityContextFn | None = None,
+    clock: Callable[[], float] = perf_counter,
+    now: datetime | None = None,
+    fixture_digest: str = "unrecorded",
+    prompt_max_chars: int = DEFAULT_RECALL_PROMPT_MAX_CHARS,
+) -> RecallQualityReport:
+    """Measure provider recall, false injection, latency, and prompt bytes.
+
+    This benchmark does not call a model. Provider failures are recorded as an
+    empty result with ``provider_lookup_failed`` so one unavailable backend does
+    not abort the complete benchmark. Prompt formatting is measured separately
+    from provider latency and uses the same runtime formatter as a firing.
+    """
+    failure_log = _install_recall_diagnostics(provider)
+    results: list[RecallQualityResult] = []
+    for case in cases:
+        if failure_log is not None:
+            failure_log.take()
+        error: str | None = None
+        started = clock()
+        try:
+            lessons = provider.recall(
+                query=case.query,
+                codename=codename,
+                repo=case.repo,
+                limit=limit,
+            )
+        except Exception:
+            logger.exception("mem-bench: recall-quality lookup failed for %s", case.case_id)
+            lessons = []
+            error = "provider_lookup_failed"
+        latency_ms = max(0.0, (clock() - started) * 1000.0)
+        member_failures = failure_log.take() if failure_log is not None else ()
+        if member_failures:
+            error = f"provider_member_failed:{','.join(member_failures)}"
+        recalled_ids = tuple(
+            str(getattr(lesson, "id", "")) for lesson in lessons if getattr(lesson, "id", "")
+        )
+        try:
+            if context_fn is None:
+                context = _recall_quality_context(
+                    lessons,
+                    case,
+                    codename,
+                    limit,
+                    max_chars=prompt_max_chars,
+                )
+            else:
+                context = context_fn(lessons, case, codename, limit)
+        except Exception:
+            logger.exception("mem-bench: recall-quality context failed for %s", case.case_id)
+            context = ""
+            error = error or "context_format_failed"
+        results.append(
+            RecallQualityResult(
+                case_id=case.case_id,
+                category=case.category,
+                recalled_lesson_ids=recalled_ids,
+                relevant_lesson_ids=case.relevant_lesson_ids,
+                latency_ms=latency_ms,
+                prompt_bytes=len(context.encode("utf-8")),
+                error=error,
+            )
+        )
+    result_tuple = tuple(results)
+    return RecallQualityReport(
+        generated_at=now or datetime.now(UTC),
+        provider=_provider_label(provider),
+        codename=codename,
+        fixture=fixture,
+        limit=limit,
+        metrics=_recall_quality_metrics(result_tuple),
+        results=result_tuple,
+        fixture_digest=fixture_digest,
+        prompt_max_chars=prompt_max_chars,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -1008,3 +1498,8 @@ def run_memory_ab(
 def default_fixture_dir() -> Path:
     """Location of the built-in mem-bench fixture inside the repo checkout."""
     return Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "mem-bench"
+
+
+def default_recall_quality_fixture_dir() -> Path:
+    """Location of the built-in provider recall-quality fixture."""
+    return Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "memory-recall-quality"

@@ -306,6 +306,45 @@ Memory A/B run                     (ILLUSTRATIVE until a real --engine run fills
 Keep the OFF/ON pair together so the delta is legible, always next to N and the
 per-task rows.
 
+### Provider recall-quality gate
+
+Run the provider-only fixture before you change retrieval signals or defaults:
+
+```sh
+alfred benchmark memory-recall
+alfred benchmark memory-recall --json > memory-recall-before.json
+alfred benchmark memory-recall --fixture ./my-recall-fixture
+```
+
+This command uses the shipped `sqlite,fleet` chain in memory. It does not read
+operator data. It does not call a model or use the network.
+
+The built-in fixture covers seven cases:
+
+- exact technical terms
+- a wording variant for the same instruction
+- repository scope
+- a superseded temporal value
+- a newer instruction that contradicts an older instruction
+- expired guidance
+- a true query miss
+
+The report includes precision, recall, false-injection rate, true-miss rate,
+provider latency, and prompt bytes. It also lists the expected and recalled
+lesson IDs for each case. The JSON record includes the fixture schema, fixture
+SHA-256 digest, provider chain, recall limit, fixed 8,000-character prompt
+budget, case category, and any provider or context-format error.
+
+Each case makes one provider call. Provider latency measures that call only.
+Prompt bytes measure the same recalled lessons after the runtime memory
+formatter applies the recorded limit and prompt budget. The benchmark does not
+perform a second recall. It exits with status 2 if a provider member or the
+formatter fails, even when the chain returns a fallback result.
+
+This fixed fixture tests lexical provider behavior. It does not measure model
+reasoning or the quality of arbitrary repositories and queries. Compare the
+fixture digest before you compare results from separate runs.
+
 ### Real-engine result (v0.6.0, engine:claude)
 
 This is a **real** `--engine claude` run of the template above, not the stub. It

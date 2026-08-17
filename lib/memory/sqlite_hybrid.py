@@ -491,6 +491,8 @@ class SqliteHybridProvider:
         memory_id: str | None = None,
         kind: str | None = None,
         provenance: str | None = None,
+        valid_until: datetime | str | None = None,
+        superseded_by: str | None = None,
         anchors: Iterable[tuple[str, str]] | None = None,
     ) -> Lesson:
         """Persist a promoted lesson. Idempotent on ``memory_id``.
@@ -504,15 +506,22 @@ class SqliteHybridProvider:
         serialized string, so a string is a first-class input here; it is parsed
         back to a ``datetime`` so the returned :class:`Lesson` stays well-typed.
 
-        Phase 2 optional args, all backward-compatible: ``kind`` types the lesson
-        (unknown folds to ``note``); ``provenance`` records the firing/PR that
-        created it (defaults to ``firing_id``); ``anchors`` is an iterable of
-        ``(anchor_type, anchor_ref)`` pairs linking the lesson to code entities.
+        Optional args are backward-compatible. ``kind`` types the lesson
+        (unknown folds to ``note``). ``provenance`` records the firing or PR
+        that created it and defaults to ``firing_id``. ``valid_until`` and
+        ``superseded_by`` restore an audited validity state for a trusted
+        fixture import. ``anchors`` links the lesson to code entities as
+        ``(anchor_type, anchor_ref)`` pairs.
         """
         if isinstance(created_at, str):
             created = _from_iso(created_at)
         else:
             created = created_at or datetime.now(UTC)
+        valid: datetime | None
+        if isinstance(valid_until, str):
+            valid = _from_iso(valid_until)
+        else:
+            valid = valid_until
         lesson = Lesson(
             id=memory_id or new_id(),
             codename=codename.strip(),
@@ -523,6 +532,8 @@ class SqliteHybridProvider:
             firing_id=firing_id,
             severity=severity,
             kind=normalize_kind(kind),
+            valid_until=valid,
+            superseded_by=(superseded_by or "").strip() or None,
             provenance=(provenance or firing_id or None),
         )
         with self._connect() as conn, conn:

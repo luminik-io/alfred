@@ -8,6 +8,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added a provider-only memory recall benchmark for exact terms, wording
+  changes, repository scope, current guidance, expired guidance, and true
+  misses. The report records precision, recall, false injections, provider
+  latency, and prompt bytes without reading operator data or calling a model.
 - Added OpenCode as an explicit engine for scheduled roles, custom agents,
   Desktop conversations, and Slack conversations.
 - Added bounded OpenCode version, protocol, and authentication checks. Alfred
