@@ -113,6 +113,23 @@ async function capture(
   });
 }
 
+async function captureTakeover(page: Page, name: string): Promise<void> {
+  expect(
+    await page.evaluate(() => window.scrollY),
+    `${name} moved the onboarding viewport`,
+  ).toBe(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    `${name} overflowed the onboarding viewport`,
+  ).toBe(true);
+  await page.screenshot({
+    path: resolve(outputDir, `${test.info().titlePath[1]}-${name}.png`),
+    animations: "disabled",
+  });
+}
+
 async function assertShellContract(
   page: Page,
   viewport: ViewportName,
@@ -360,6 +377,71 @@ for (const appearance of appearances) {
 
         await page.getByRole("tab", { name: "Diagnostics" }).click();
         await capture(page, viewportName, "settings-diagnostics");
+      });
+    });
+  }
+}
+
+const onboardingSteps = [
+  { key: "engine", label: "Tools", heading: "Let's find your coding tools." },
+  { key: "github", label: "GitHub", heading: "Connect GitHub." },
+  { key: "repos", label: "Repositories", heading: "Where should Alfred work?" },
+  { key: "batteries", label: "Tools included", heading: "Your tools are included." },
+  { key: "team", label: "Team", heading: "Name your team." },
+  { key: "slack", label: "Slack", heading: "Want approvals in Slack?" },
+  { key: "request", label: "First request", heading: "Give Alfred its first job." },
+] as const;
+
+for (const appearance of appearances) {
+  for (const [viewportName, viewport] of Object.entries(viewports) as Array<
+    [ViewportName, (typeof viewports)[ViewportName]]
+  >) {
+    test.describe(`${appearance.theme}-${appearance.mode}-${viewportName}-onboarding`, () => {
+      test.beforeEach(async ({ page }) => {
+        await mkdir(outputDir, { recursive: true });
+        await page.setViewportSize(viewport);
+        await page.addInitScript(({ theme, mode }) => {
+          localStorage.setItem("alfred-theme-name", theme);
+          localStorage.setItem("alfred-theme", mode);
+        }, appearance);
+        await installAlfredApi(page, "onboarding");
+        await page.goto("/");
+      });
+
+      test.afterEach(async ({ page }) => {
+        assertAlfredApiComplete(page);
+      });
+
+      test("setup journey", async ({ page }) => {
+        const stepper = page.getByRole("navigation", {
+          name: "Onboarding progress",
+        });
+        await expect(
+          page.getByRole("heading", { name: "Let's get you set up." }),
+        ).toBeVisible();
+        if (viewportName === "mobile") {
+          await expect(
+            stepper.locator(".alfred-stepper__mobile-label"),
+          ).toHaveText("Welcome");
+        }
+        await captureTakeover(page, "welcome");
+
+        await page.getByRole("button", { name: "Get started" }).click();
+
+        for (const step of onboardingSteps) {
+          if (step.key !== "engine") {
+            await stepper.getByRole("button", { name: step.label }).click();
+          }
+          await expect(
+            page.getByRole("heading", { name: step.heading }),
+          ).toBeVisible();
+          if (viewportName === "mobile") {
+            await expect(
+              stepper.locator(".alfred-stepper__mobile-label"),
+            ).toHaveText(step.label);
+          }
+          await captureTakeover(page, step.key);
+        }
       });
     });
   }
