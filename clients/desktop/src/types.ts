@@ -473,6 +473,13 @@ export type MemoryLesson = {
   severity: "info" | "warning" | "blocker" | string;
   created_at: string;
   firing_id?: string | null;
+  match_reason: string;
+  recall_provider: string;
+  provenance?: string | null;
+  valid_until?: string | null;
+  memory_status: "active" | "expired" | "superseded" | string;
+  age_seconds?: number | null;
+  scope?: { codename?: string | null; repo?: string | null };
   // True when the lesson is about Alfred's own runtime rather than the
   // underlying codebase (see MemoryCandidate.ops). Drives the codebase-vs-runs
   // grouping in the Learnings tab.

@@ -58,6 +58,19 @@
   font-size: 0.72rem;
 }
 
+.active-lesson__why {
+  color: var(--foreground);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.active-lesson__details {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  overflow-wrap: anywhere;
+}
+
 .active-lesson__undo {
   flex: none;
 }

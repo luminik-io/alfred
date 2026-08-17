@@ -198,6 +198,7 @@ function ActiveLessonRow({
 }) {
   const canUndo = isCandidateBackedLesson(lesson.id);
   const isRetiring = busyMemoryAction === `${lesson.id}:retire`;
+  const source = activeLessonSource(lesson.provenance);
   return (
     <li className="active-lesson">
       <div className="active-lesson__text">
@@ -206,6 +207,16 @@ function ActiveLessonRow({
           {prettyAgent(lesson.codename)}
           {lesson.repo ? ` · ${lesson.repo}` : ""} ·{" "}
           {friendlyTime(lesson.created_at)}
+        </span>
+        <span className="active-lesson__why">
+          <strong>Why:</strong> {lesson.match_reason}
+        </span>
+        <span className="active-lesson__details">
+          Provider: {memoryProviderName(lesson.recall_provider)}
+          {source ? ` · Source: ${source}` : ""}
+          {lesson.valid_until
+            ? ` · Expires ${friendlyTime(lesson.valid_until)}`
+            : " · No expiry"}
         </span>
       </div>
       {canUndo ? (
@@ -222,6 +233,28 @@ function ActiveLessonRow({
       ) : null}
     </li>
   );
+}
+
+function memoryProviderName(provider: string): string {
+  const names: Record<string, string> = {
+    sqlite: "SQLite",
+    sqlite_hybrid: "SQLite",
+    fleet: "Fleet ledger",
+    pgvector: "PostgreSQL",
+    redis: "Redis",
+    gbrain: "Code graph",
+    chained: "Provider chain",
+  };
+  return names[provider.toLowerCase()] || provider;
+}
+
+function activeLessonSource(provenance?: string | null): string | null {
+  if (!provenance) return null;
+  const pullRequest = provenance.match(/\/pull\/(\d+)$/);
+  if (pullRequest) return `PR #${pullRequest[1]}`;
+  const firing = provenance.match(/(?:firing:|firing\/)([^/]+)$/i);
+  if (firing) return `run ${firing[1]}`;
+  return provenance;
 }
 
 // Where a lesson came from, in words the designer recognises. The server

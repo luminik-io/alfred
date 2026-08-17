@@ -455,9 +455,9 @@ def format_memory_context(
     budget are dropped; if even the first lesson overflows on its own it is still
     injected but hard-truncated with a clear marker. If the cap is set below the
     header length itself, no block is injected at all (the empty string is
-    returned) rather than emitting a header that exceeds the cap. With every knob
-    at its default the output is byte-for-byte identical to the pre-ranking
-    behavior.
+    returned) rather than emitting a header that exceeds the cap. Each injected
+    lesson ends with one short reason. The reason names matched
+    request concepts when available and otherwise states the active scope.
     """
     if provider is None or getattr(provider, "name", "") == "null":
         return ""
@@ -528,7 +528,13 @@ def format_memory_context(
     pairs = memory_ranking.deprioritize_ops(pairs)
     if not pairs:
         return ""
-    context, injected = _format_memory_pairs(pairs, limit=limit, max_chars=None)
+    context, injected = _format_memory_pairs(
+        pairs,
+        limit=limit,
+        max_chars=None,
+        query=query,
+        repo=repo,
+    )
     if injected:
         # Reinforce the lessons that actually made it into the prompt and, for
         # delta, remember them against this firing so a later turn does not
@@ -552,6 +558,8 @@ def format_recalled_memory_context(
         [(lesson, None) for lesson in lessons],
         limit=limit,
         max_chars=max_chars,
+        query=None,
+        repo=None,
     )
     return context
 
@@ -561,6 +569,8 @@ def _format_memory_pairs(
     *,
     limit: int,
     max_chars: int | None,
+    query: str | None,
+    repo: str | None,
 ) -> tuple[str, list[object]]:
     """Render ordered lesson pairs and return the lessons that fit the budget."""
     header = [
@@ -575,7 +585,10 @@ def _format_memory_pairs(
         tag_text = f" [{', '.join(tags)}]" if tags else ""
         body = str(getattr(lesson, "body", "")).strip()
         if body:
-            lesson_lines.append(f"{idx}. {severity}{tag_text} {body}".strip())
+            from memory.explanations import memory_match_reason
+
+            reason = memory_match_reason(lesson, query=query, repo=repo)
+            lesson_lines.append(f"{idx}. {severity}{tag_text} {body} Why: {reason}".strip())
             line_lessons.append(lesson)
     budget = _inject_max_chars() if max_chars is None else int(max_chars)
     lines = _apply_inject_budget(header, lesson_lines, budget)

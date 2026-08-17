@@ -40,6 +40,11 @@ function lesson(overrides: Partial<MemoryLesson> = {}): MemoryLesson {
     severity: "info",
     created_at: "2026-05-30T12:00:00Z",
     firing_id: null,
+    match_reason: "Active lesson for your-org/api.",
+    recall_provider: "sqlite",
+    provenance: "pr:https://github.com/your-org/api/pull/12",
+    valid_until: "2026-08-30T12:00:00Z",
+    memory_status: "active",
     ...overrides,
   };
 }
@@ -90,6 +95,12 @@ describe("MemoryView", () => {
       screen.getByRole("heading", { name: /about your codebase/i }),
     ).toBeInTheDocument();
     expect(screen.getByText(/graphql schema lives in/i)).toBeInTheDocument();
+    expect(
+      document.querySelector(".active-lesson__why")?.textContent,
+    ).toMatch(/why: active lesson for your-org\/api/i);
+    expect(screen.getByText(/provider: sqlite/i)).toBeInTheDocument();
+    expect(screen.getByText(/source: pr #12/i)).toBeInTheDocument();
+    expect(screen.getByText(/expires/i)).toBeInTheDocument();
     // No pile of "keep this lesson" cards as the primary action.
     expect(
       screen.queryByRole("button", { name: /keep this lesson/i }),

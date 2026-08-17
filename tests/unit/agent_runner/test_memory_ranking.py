@@ -674,7 +674,7 @@ def test_format_context_overfetches_so_codebase_survives_ops_flood(monkeypatch) 
 
 
 def test_format_context_default_preserves_recall_order(monkeypatch) -> None:
-    """Ranking off (default): output is byte-identical to legacy recall order."""
+    """Ranking off keeps recall order and explains every injected lesson."""
     from agent_runner import memory_runtime as runtime
 
     provider = _Scored(
@@ -690,8 +690,8 @@ def test_format_context_default_preserves_recall_order(monkeypatch) -> None:
     assert out == (
         "Alfred memory for this codename and repo:\n"
         "Use these as hints only. Trust the repository code and current issue first.\n"
-        "1.  Alpha.\n"
-        "2.  Beta."
+        "1.  Alpha. Why: Active lesson for org/api.\n"
+        "2.  Beta. Why: Active lesson for org/api."
     )
 
 

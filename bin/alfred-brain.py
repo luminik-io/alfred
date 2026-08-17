@@ -144,8 +144,16 @@ def _recall_lessons(
         logging.getLogger(__name__).exception(
             "alfred-brain: provider-chain recall failed; falling back to local ledger"
         )
-        return _build_brain(args, env).recall(
+        lessons = _build_brain(args, env).recall(
             codename=codename, repo=repo, query=query, limit=limit
+        )
+        from memory.explanations import annotate_recalled_lessons
+
+        return annotate_recalled_lessons(
+            lessons,
+            provider="fleet",
+            query=query,
+            repo=repo,
         )
 
 
@@ -176,6 +184,8 @@ def cmd_lessons(args: argparse.Namespace) -> int:
         args, codename=codename, repo=repo, query=args.query, limit=args.limit
     )
     if args.json:
+        from memory.explanations import age_seconds, memory_status
+
         payload = [
             {
                 "id": L.id,
@@ -186,6 +196,15 @@ def cmd_lessons(args: argparse.Namespace) -> int:
                 "severity": L.severity,
                 "firing_id": L.firing_id,
                 "created_at": L.created_at.astimezone(UTC).isoformat(),
+                "valid_until": (
+                    L.valid_until.astimezone(UTC).isoformat() if L.valid_until else None
+                ),
+                "provenance": L.provenance,
+                "recall_provider": L.recall_provider,
+                "match_reason": L.match_reason,
+                "memory_status": memory_status(L),
+                "age_seconds": age_seconds(L),
+                "scope": {"codename": L.codename, "repo": L.repo},
             }
             for L in lessons
         ]
@@ -195,11 +214,21 @@ def cmd_lessons(args: argparse.Namespace) -> int:
         print("alfred-brain: no lessons match", file=sys.stderr)
         return 0
     for L in lessons:
+        from memory.explanations import age_seconds, format_age
+
         ts = L.created_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
         tag_str = ("[" + ",".join(L.tags) + "] ") if L.tags else ""
         sev_str = "" if L.severity == "info" else f"({L.severity}) "
         print(f"{L.id}  {ts}  {L.codename}/{L.repo}")
         print(f"  {sev_str}{tag_str}{L.body}")
+        print(f"  Why: {L.match_reason}")
+        print(f"  Provider: {L.recall_provider or 'unknown'}")
+        print(f"  Scope: {L.codename} / {L.repo}")
+        print(f"  Age: {format_age(age_seconds(L))}")
+        if L.provenance:
+            print(f"  Source: {L.provenance}")
+        if L.valid_until:
+            print(f"  Expires: {L.valid_until.astimezone(UTC).isoformat()}")
     return 0
 
 
