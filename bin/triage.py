@@ -439,6 +439,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
     events.emit(
         "llm_invoke_done",
         engine=engine_used,
+        session_id=getattr(result, "session_id", None),
         turns=result.num_turns,
         subtype=result.subtype,
         success=result.success,

@@ -11,7 +11,7 @@ import { loadAgentFirings, streamFiringTail } from "../api/snapshot";
 import { exactTime, friendlyTime } from "../format";
 import { formatTranscriptLine } from "../lib/transcript";
 import type { FeedItem, FeedTarget } from "../lib/notifications";
-import type { FiringRecord, TimelineStep } from "../types";
+import type { EvidenceFact, FiringRecord, TimelineStep } from "../types";
 import {
   Collapsible,
   CollapsibleContent,
@@ -473,11 +473,109 @@ function RunCard({
             </p>
           )}
 
+          {firing.evidence ? <RunEvidence firing={firing} /> : null}
+
           {live ? <LiveTranscript firing={firing} baseUrl={baseUrl} /> : null}
         </CollapsibleContent>
       </Collapsible>
     </li>
   );
+}
+
+const EVIDENCE_KIND_LABEL: Record<string, string> = {
+  repository: "Repository",
+  issue: "Issue",
+  worktree: "Worktree",
+  engine_session: "Engine session",
+  approval: "Approval",
+  check: "Check",
+  branch: "Branch",
+  commit: "Commit",
+  pull_request: "Pull request",
+  review: "Review",
+};
+
+const EVIDENCE_SOURCE_LABEL: Record<string, string> = {
+  alfred: "Alfred",
+  engine: "Engine",
+  github: "GitHub",
+  operator: "Operator",
+};
+
+function RunEvidence({ firing }: { firing: FiringRecord }) {
+  const evidence = firing.evidence;
+  if (!evidence) return null;
+
+  return (
+    <section className="run-evidence" aria-label="Run evidence">
+      <header className="run-evidence__head">
+        <strong>Run evidence</strong>
+        <span>
+          {evidence.event_count} event{evidence.event_count === 1 ? "" : "s"}
+        </span>
+      </header>
+      {evidence.facts.length > 0 ? (
+        <ol className="run-evidence__facts">
+          {evidence.facts.map((fact, index) => (
+            <li key={`${fact.event_type}-${fact.event_seq ?? index}-${fact.kind}`}>
+              <span className="run-evidence__kind">
+                {EVIDENCE_KIND_LABEL[fact.kind] ?? sentenceCase(fact.kind)}
+              </span>
+              <span className="run-evidence__value">{evidenceFactSummary(fact)}</span>
+              <span className={`run-evidence__source run-evidence__source--${fact.source}`}>
+                {EVIDENCE_SOURCE_LABEL[fact.source] ?? sentenceCase(fact.source)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="run-evidence__empty">No linked work was recorded.</p>
+      )}
+      <div className="run-evidence__artifacts" aria-label="Run artifacts">
+        {evidence.artifacts.map((artifact) => (
+          <span
+            key={artifact.kind}
+            className={`run-evidence__artifact run-evidence__artifact--${artifact.status}`}
+            title={artifact.path ?? undefined}
+          >
+            {artifact.kind === "events" ? "Event log" : sentenceCase(artifact.kind)} {" "}
+            {artifact.status === "available" ? "ready" : "unavailable"}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function evidenceFactSummary(fact: EvidenceFact): string {
+  const data = fact.data;
+  const parts: string[] = [];
+  if (typeof data.repo === "string") parts.push(data.repo);
+  if (typeof data.number === "number") parts.push(`#${data.number}`);
+  if (typeof data.path === "string") parts.push(data.path);
+  if (typeof data.engine === "string") parts.push(data.engine);
+  if (typeof data.session_id === "string") parts.push(data.session_id);
+  if (typeof data.turns === "number") {
+    parts.push(`${data.turns} turn${data.turns === 1 ? "" : "s"}`);
+  }
+  if (typeof data.command === "string") parts.push(data.command);
+  if (typeof data.branch === "string") parts.push(data.branch);
+  const sha =
+    typeof data.commit_sha === "string"
+      ? data.commit_sha
+      : typeof data.sha === "string"
+        ? data.sha
+        : null;
+  if (sha) parts.push(sha.slice(0, 10));
+  if (typeof data.url === "string") parts.push(data.url);
+  if (typeof data.decision === "string") parts.push(data.decision);
+  if (parts.length > 0) return parts.join(" · ");
+  return sentenceCase(fact.event_type);
+}
+
+function sentenceCase(value: string): string {
+  const plain = value.replace(/_/g, " ").trim();
+  return plain ? `${plain[0].toUpperCase()}${plain.slice(1)}` : "Recorded fact";
 }
 
 function RunStep({ step }: { step: TimelineStep }) {

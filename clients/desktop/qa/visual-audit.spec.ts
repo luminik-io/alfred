@@ -374,6 +374,13 @@ for (const appearance of appearances) {
         ).toBeVisible();
         await capture(page, viewportName, "agents-activity");
 
+        await page.getByRole("tab", { name: "Latest run" }).click();
+        await expect(
+          page.getByRole("region", { name: "Run evidence" }),
+          "the fixture-backed visual audit must exercise the saved run evidence record",
+        ).toBeVisible();
+        await capture(page, viewportName, "agents-latest-run");
+
         await page.getByRole("tab", { name: "Learnings" }).click();
         await expect(
           page.getByText("Keep fixture data separate from operator data."),

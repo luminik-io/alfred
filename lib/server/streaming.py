@@ -37,6 +37,8 @@ from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
+from .run_evidence import discover_transcript_by_run_id
+
 
 def _env_float(name: str, default: float) -> float:
     """Read a float from env, falling back to ``default`` on absence/garbage."""
@@ -60,7 +62,7 @@ TAIL_READ_CHUNK = 256 * 1024
 
 
 def find_transcript(state_root: Path, firing_id: str) -> Path | None:
-    """Locate the transcript JSONL for ``firing_id`` under any codename.
+    """Locate a known engine transcript for ``firing_id`` under any codename.
 
     Mirrors ``transcripts.list_firings`` layout
     (``transcripts/<codename>/<YYYY-MM>/<firing_id>.jsonl``) but searches by
@@ -69,20 +71,7 @@ def find_transcript(state_root: Path, firing_id: str) -> Path | None:
     """
     if not _safe_id(firing_id):
         return None
-    root = state_root / "transcripts"
-    if not root.is_dir():
-        return None
-    target = f"{firing_id}.jsonl"
-    for codename_dir in root.iterdir():
-        if not codename_dir.is_dir():
-            continue
-        for month_dir in codename_dir.iterdir():
-            if not month_dir.is_dir():
-                continue
-            candidate = month_dir / target
-            if candidate.is_file():
-                return candidate
-    return None
+    return discover_transcript_by_run_id(state_root, firing_id)
 
 
 def firing_is_done(state_root: Path, firing_id: str) -> bool:

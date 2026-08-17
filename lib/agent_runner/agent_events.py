@@ -34,6 +34,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from event_provenance import EVENT_SOURCE_VALUES, EventSource, infer_event_source
+
+EVENT_SCHEMA_VERSION = 1
+
 
 # ---------------------------------------------------------------------------
 # Closed event vocabulary
@@ -213,8 +217,25 @@ REQUIRED_PAYLOAD_KEYS: dict[str, tuple[str, ...]] = {
 
 # Top-level envelope keys that must never be shadowed by a payload kwarg.
 _RESERVED_KEYS: frozenset[str] = frozenset(
-    {"seq", "ts", "type", "event", "agent", "firing_id", "stage"}
+    {
+        "schema_version",
+        "source",
+        "seq",
+        "ts",
+        "type",
+        "event",
+        "agent",
+        "firing_id",
+        "stage",
+    }
 )
+
+
+def source_for_event(event_type: str | EventType) -> str:
+    """Return the system that directly observed ``event_type``."""
+
+    typ = coerce_type(event_type)
+    return infer_event_source(typ)
 
 
 class UnknownEventType(ValueError):
@@ -281,6 +302,8 @@ class Event:
     type: str
     agent: str
     firing_id: str
+    schema_version: int = EVENT_SCHEMA_VERSION
+    source: str = EventSource.ALFRED.value
     payload: dict[str, Any] = field(default_factory=dict)
     stage: str | None = None
 
@@ -311,6 +334,8 @@ class Event:
             type=typ,
             agent=agent,
             firing_id=firing_id,
+            schema_version=EVENT_SCHEMA_VERSION,
+            source=source_for_event(typ),
             payload=body,
             stage=stage,
         )
@@ -325,6 +350,8 @@ class Event:
         fields the strict parser uses.
         """
         record: dict[str, Any] = {
+            "schema_version": self.schema_version,
+            "source": self.source,
             "seq": self.seq,
             "ts": self.ts,
             "agent": self.agent,
@@ -367,6 +394,12 @@ def parse_record(record: Mapping[str, Any]) -> Event | None:
     firing_id = str(record.get("firing_id") or "")
     stage_val = record.get("stage")
     stage = str(stage_val) if stage_val is not None else None
+    try:
+        schema_version = int(record.get("schema_version", 0))
+    except (TypeError, ValueError):
+        schema_version = 0
+    raw_source = str(record.get("source") or "").strip()
+    source = raw_source if raw_source in EVENT_SOURCE_VALUES else source_for_event(typ)
     payload = {k: v for k, v in record.items() if k not in _RESERVED_KEYS}
     return Event(
         seq=seq,
@@ -374,21 +407,26 @@ def parse_record(record: Mapping[str, Any]) -> Event | None:
         type=typ,
         agent=agent,
         firing_id=firing_id,
+        schema_version=schema_version,
+        source=source,
         payload=payload,
         stage=stage,
     )
 
 
 __all__ = [
+    "EVENT_SCHEMA_VERSION",
     "KNOWN_EVENT_TYPES",
     "REQUIRED_PAYLOAD_KEYS",
     "START_TYPES",
     "TERMINAL_TYPES",
     "Event",
     "EventPayloadError",
+    "EventSource",
     "EventType",
     "UnknownEventType",
     "coerce_type",
     "parse_record",
+    "source_for_event",
     "utc_now_iso",
 ]

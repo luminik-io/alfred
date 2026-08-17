@@ -116,6 +116,29 @@ export type FiringTimeline = {
   steps: TimelineStep[];
 };
 
+export type EvidenceFact = {
+  kind: string;
+  source: "alfred" | "engine" | "github" | "operator" | string;
+  event_type: string;
+  event_seq: number | null;
+  data: Record<string, unknown>;
+};
+
+export type EvidenceArtifact = {
+  kind: "events" | "transcript" | string;
+  status: "available" | "unavailable" | string;
+  path: string | null;
+};
+
+export type RunEvidenceRecord = {
+  schema_version: number;
+  run_id: string;
+  agent: string;
+  event_count: number;
+  facts: EvidenceFact[];
+  artifacts: EvidenceArtifact[];
+};
+
 export type FiringRecord = {
   firing_id: string;
   codename: string;
@@ -127,6 +150,7 @@ export type FiringRecord = {
   events_path: string;
   raw_events?: unknown[];
   timeline?: FiringTimeline | null;
+  evidence?: RunEvidenceRecord | null;
 };
 
 export type PlanDraft = {
