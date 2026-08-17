@@ -2,7 +2,7 @@ import { expect, type Page, type Request, type Route } from "playwright/test";
 
 export const CONTRACT_TOKEN = "contract-token";
 
-type ApiMode = "onboarding" | "ready";
+type ApiMode = "empty" | "onboarding" | "ready";
 
 type RecordedRequest = {
   body: unknown;
@@ -115,6 +115,20 @@ const sampleBoard = {
     awaiting_approval: [],
   },
   counts: { queued: 1, in_progress: 2, shipped: 2, awaiting_approval: 0 },
+};
+
+const emptyBoard = {
+  sample: false,
+  generated_at: "2026-07-23T20:15:00Z",
+  lookback_days: 14,
+  repos: ["example/workspace"],
+  columns: {
+    queued: [],
+    in_progress: [],
+    shipped: [],
+    awaiting_approval: [],
+  },
+  counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 0 },
 };
 
 const sampleBatteries = {
@@ -406,65 +420,71 @@ export class AlfredApiFixture {
     }
     if (matches("/api/memory/lessons", "?limit=30")) {
       await this.fulfill(route, {
-        rows: [
-          {
-            id: "lesson:fixture-boundary",
-            codename: "senior-dev",
-            repo: "example/workspace",
-            body: "Keep fixture data separate from operator data.",
-            tags: ["privacy", "testing"],
-            severity: "info",
-            created_at: "2026-07-23T19:45:00Z",
-            firing_id: "senior-dev-visual-contract",
-            ops: false,
-          },
-        ],
+        rows:
+          this.mode === "ready"
+            ? [
+                {
+                  id: "lesson:fixture-boundary",
+                  codename: "senior-dev",
+                  repo: "example/workspace",
+                  body: "Keep fixture data separate from operator data.",
+                  tags: ["privacy", "testing"],
+                  severity: "info",
+                  created_at: "2026-07-23T19:45:00Z",
+                  firing_id: "senior-dev-visual-contract",
+                  ops: false,
+                },
+              ]
+            : [],
       });
       return true;
     }
     if (matches("/api/firings", "?limit=14")) {
       await this.fulfill(route, {
-        rows: [
-          {
-            firing_id: "senior-dev-visual-contract",
-            codename: "senior-dev",
-            started_at: "2026-07-23T19:40:00Z",
-            ended_at: "2026-07-23T19:44:00Z",
-            status: "ok",
-            summary: "Completed the Desktop visual contract",
-            transcript_path: null,
-            events_path: "state/fixtures/visual-contract.jsonl",
-            timeline: {
-              headline: "Completed the Desktop visual contract",
-              severity: "ok",
-              error: null,
-              outcome: "All layout checks passed.",
-              steps: [
+        rows:
+          this.mode === "ready"
+            ? [
                 {
-                  kind: "selected",
-                  label: "Selected the Desktop visual contract",
-                  detail: "example/workspace",
-                  tone: "info",
-                  ts: "2026-07-23T19:40:00Z",
+                  firing_id: "senior-dev-visual-contract",
+                  codename: "senior-dev",
+                  started_at: "2026-07-23T19:40:00Z",
+                  ended_at: "2026-07-23T19:44:00Z",
+                  status: "ok",
+                  summary: "Completed the Desktop visual contract",
+                  transcript_path: null,
+                  events_path: "state/fixtures/visual-contract.jsonl",
+                  timeline: {
+                    headline: "Completed the Desktop visual contract",
+                    severity: "ok",
+                    error: null,
+                    outcome: "All layout checks passed.",
+                    steps: [
+                      {
+                        kind: "selected",
+                        label: "Selected the Desktop visual contract",
+                        detail: "example/workspace",
+                        tone: "info",
+                        ts: "2026-07-23T19:40:00Z",
+                      },
+                      {
+                        kind: "checks",
+                        label: "Ran layout and responsive checks",
+                        detail: "All checks passed",
+                        tone: "ok",
+                        ts: "2026-07-23T19:43:00Z",
+                      },
+                      {
+                        kind: "completed",
+                        label: "Prepared the review evidence",
+                        detail: "Ready for operator review",
+                        tone: "ok",
+                        ts: "2026-07-23T19:44:00Z",
+                      },
+                    ],
+                  },
                 },
-                {
-                  kind: "checks",
-                  label: "Ran layout and responsive checks",
-                  detail: "All checks passed",
-                  tone: "ok",
-                  ts: "2026-07-23T19:43:00Z",
-                },
-                {
-                  kind: "completed",
-                  label: "Prepared the review evidence",
-                  detail: "Ready for operator review",
-                  tone: "ok",
-                  ts: "2026-07-23T19:44:00Z",
-                },
-              ],
-            },
-          },
-        ],
+              ]
+            : [],
       });
       return true;
     }
@@ -477,15 +497,18 @@ export class AlfredApiFixture {
     if (matches("/api/slack/trusted-users")) {
       await this.fulfill(route, {
         operator_user_id: null,
-        users: [
-          {
-            user_id: "UTEAM12345",
-            sources: ["state"],
-            added_at: "2026-07-23T19:45:00Z",
-            added_by: "desktop",
-            can_remove: true,
-          },
-        ],
+        users:
+          this.mode === "ready"
+            ? [
+                {
+                  user_id: "UTEAM12345",
+                  sources: ["state"],
+                  added_at: "2026-07-23T19:45:00Z",
+                  added_by: "desktop",
+                  can_remove: true,
+                },
+              ]
+            : [],
         state_path: "state/slack-trusted-users.json",
       });
       return true;
@@ -512,7 +535,7 @@ export class AlfredApiFixture {
       return true;
     }
     if (matches("/api/shipped", "?days=14")) {
-      await this.fulfill(route, sampleBoard);
+      await this.fulfill(route, this.mode === "ready" ? sampleBoard : emptyBoard);
       return true;
     }
     if (matches("/api/usage")) {
@@ -609,24 +632,27 @@ export class AlfredApiFixture {
       await this.fulfill(route, {
         schema: "alfred.code-intelligence.v1",
         generated_at: "2026-07-23T20:15:00Z",
-        repos: [
-          {
-            name: "example/workspace",
-            head_sha: "0123456789abcdef",
-            summary: {
-              files: 128,
-              symbols: 840,
-              imports: 412,
-              languages: { TypeScript: 82, Python: 46 },
-              truncated: false,
-            },
-            endpoint_count: 14,
-            route_count: 10,
-            api_call_count: 18,
-            contract_drift_count: 0,
-          },
-        ],
-        repo_count: 1,
+        repos:
+          this.mode === "ready"
+            ? [
+                {
+                  name: "example/workspace",
+                  head_sha: "0123456789abcdef",
+                  summary: {
+                    files: 128,
+                    symbols: 840,
+                    imports: 412,
+                    languages: { TypeScript: 82, Python: 46 },
+                    truncated: false,
+                  },
+                  endpoint_count: 14,
+                  route_count: 10,
+                  api_call_count: 18,
+                  contract_drift_count: 0,
+                },
+              ]
+            : [],
+        repo_count: this.mode === "ready" ? 1 : 0,
         contract_drift_count: 0,
         selected_repo: null,
         query_path: null,
@@ -638,7 +664,7 @@ export class AlfredApiFixture {
   }
 
   private setupStatus(): Record<string, unknown> {
-    const ready = this.mode === "ready";
+    const ready = this.mode !== "onboarding";
     return {
       github: {
         ok: ready,

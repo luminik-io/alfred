@@ -40,7 +40,9 @@ vi.mock("./api/setup", async (importOriginal) => ({
 // app tree. AppShell just renders its children.
 vi.mock("./components/layout/AppShell", () => ({
   AppShell: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="app-shell">{children}</div>
+    <div data-testid="app-shell" data-alfred-scroll-region>
+      {children}
+    </div>
   ),
 }));
 vi.mock("./components/ReviewView", () => ({
@@ -54,6 +56,14 @@ vi.mock("./components/OnboardingView", () => ({
       <button type="button" onClick={() => onFinish("compose")}>Finish to Ask</button>
     </div>
   ),
+}));
+vi.mock("./lib/desktopScreenLoaders", () => ({
+  desktopScreenImporters: {
+    activity: async () => ({ LogsView: () => <div>Activity screen</div> }),
+    learnings: async () => ({ MemoryView: () => <div>Learnings screen</div> }),
+  },
+  preloadAgentTab: vi.fn(),
+  preloadDesktopTab: vi.fn(),
 }));
 // Keep the remaining lazy-ish surfaces cheap.
 vi.mock("./components/CommandPalette", () => ({ CommandPalette: () => null }));
@@ -335,6 +345,24 @@ describe("App initial route gating", () => {
     expect(await screen.findByTestId("inbox-screen")).toBeInTheDocument();
     expect(screen.getByTestId("app-shell")).toBeInTheDocument();
     expect(screen.queryByTestId("onboarding-screen")).not.toBeInTheDocument();
+  });
+
+  it("returns the active pane to the top when an Agents section changes", async () => {
+    window.history.replaceState(null, "", "/?tab=agents&subtab=activity");
+    useAlfredMock.mockReturnValue(
+      baseAlfredReturn({ snapshot: makeSnapshot(), error: null }),
+    );
+    loadSetupStatusMock.mockResolvedValue(makeSetupStatus());
+    await renderApp();
+
+    const shell = await screen.findByTestId("app-shell");
+    expect(await screen.findByText("Activity screen")).toBeInTheDocument();
+    shell.scrollTop = 180;
+
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Learnings" }));
+
+    expect(await screen.findByText("Learnings screen")).toBeInTheDocument();
+    expect(shell.scrollTop).toBe(0);
   });
 
   it("promotes a returning complete install after the runtime reconnects", async () => {

@@ -5,8 +5,7 @@
    column for a permanent inspector. The rail fills the whole deck width and the
    list inside it flows as a responsive card grid (see .agents-deck__list). */
 .agents-deck__rail,
-.agent-inspector,
-.agents-deck__empty {
+.agent-inspector {
   border: 1px solid color-mix(in oklch, var(--border), white 8%);
   border-radius: 0;
   background: color-mix(in oklch, var(--card), var(--background) 8%);
