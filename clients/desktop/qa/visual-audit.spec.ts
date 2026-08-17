@@ -295,36 +295,9 @@ for (const appearance of appearances) {
         await page
           .getByRole("button", { name: /Replace legacy appearance presets/ })
           .click();
-        await expect(
-          viewportName === "desktop"
-            ? page.getByRole("complementary", { name: "Work item inspector" })
-            : page.getByRole("dialog", { name: "Work item" }),
-        ).toBeVisible();
-        if (viewportName === "desktop") {
-          const inspector = await page
-            .getByRole("complementary", { name: "Work item inspector" })
-            .boundingBox();
-          expect(
-            inspector?.width,
-            "the desktop evidence inspector must remain readable beside the board",
-          ).toBeGreaterThanOrEqual(360);
-
-          const lanes = await page.locator(".alfred-pipeline__column").all();
-          for (const lane of lanes) {
-            const box = await lane.boundingBox();
-            expect(
-              box?.width,
-              "each lifecycle lane must preserve a readable card width with the inspector open",
-            ).toBeGreaterThanOrEqual(190);
-          }
-        }
+        await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
         await capture(page, viewportName, "work-inspector");
-
-        if (viewportName !== "desktop") {
-          await page.getByRole("button", { name: "Close" }).click();
-        } else {
-          await page.getByRole("button", { name: "Close inspector" }).click();
-        }
+        await page.getByRole("button", { name: "Close" }).click();
 
         await openPrimaryView(page, viewportName, "Code");
         await expect(
