@@ -2,7 +2,7 @@ import { expect, type Page, type Request, type Route } from "playwright/test";
 
 export const CONTRACT_TOKEN = "contract-token";
 
-type ApiMode = "empty" | "onboarding" | "ready";
+type ApiMode = "empty" | "onboarding" | "ready" | "workflow";
 
 type RecordedRequest = {
   body: unknown;
@@ -33,6 +33,73 @@ const agent = {
   paused_since: null,
   loaded: true,
 };
+
+const workflowAgents = [
+  {
+    ...agent,
+    codename: "triage",
+    display_name: "Triage",
+    role_title: "Triage",
+    purpose: "Sorts incoming work and records the next decision.",
+    status: "live",
+    last_summary: "Prepared the release issue for planning.",
+    firings_today: 5,
+  },
+  {
+    ...agent,
+    codename: "architect",
+    display_name: "Architect",
+    role_title: "Architect",
+    purpose: "Turns approved requests into an implementation plan.",
+    status: "idle",
+    last_summary: "Mapped the Desktop workflow surface.",
+    firings_today: 3,
+  },
+  {
+    ...agent,
+    codename: "senior-dev",
+    display_name: "Senior developer",
+    role_title: "Senior developer",
+    purpose: "Implements approved work in an isolated worktree.",
+    status: "live",
+    last_summary: "Running the Desktop browser contract.",
+    firings_today: 7,
+  },
+  {
+    ...agent,
+    codename: "reviewer",
+    display_name: "Reviewer",
+    role_title: "Reviewer",
+    purpose: "Checks the change, tests, and review evidence.",
+    status: "error",
+    last_summary: "One review check needs attention.",
+    firings_today: 4,
+    failures_today: 1,
+  },
+  {
+    ...agent,
+    codename: "automerge",
+    display_name: "Merge gate",
+    role_title: "Merge gate",
+    purpose: "Merges only after policy and review checks pass.",
+    status: "idle",
+    last_summary: "Waiting for approval.",
+    firings_today: 2,
+    paused: true,
+    paused_since: "2026-07-23T20:05:00Z",
+    loaded: false,
+  },
+  {
+    ...agent,
+    codename: "fleet-doctor",
+    display_name: "Fleet doctor",
+    role_title: "Fleet health",
+    purpose: "Checks schedules, worktrees, and runtime health.",
+    status: "idle",
+    last_summary: "All other runtime checks passed.",
+    firings_today: 1,
+  },
+];
 
 const plan = {
   plan_id: "42-plan",
@@ -259,6 +326,10 @@ export class AlfredApiFixture {
     private readonly mode: ApiMode,
   ) {}
 
+  private get isReady(): boolean {
+    return this.mode === "ready" || this.mode === "workflow";
+  }
+
   async install(): Promise<void> {
     await this.installStreamingFetch();
     await this.page.route("**/*", async (route) => {
@@ -386,20 +457,25 @@ export class AlfredApiFixture {
 
     if (matches("/api/status")) {
       await this.fulfill(route, {
-        agents: this.mode === "ready" ? [agent] : [],
-        total_today: this.mode === "ready" ? 2 : 0,
+        agents:
+          this.mode === "workflow"
+            ? workflowAgents
+            : this.mode === "ready"
+              ? [agent]
+              : [],
+        total_today: this.mode === "workflow" ? 22 : this.mode === "ready" ? 2 : 0,
         reliability: { status: "ok", actions: [], failure_patterns: [] },
         metrics: {
           spend_usd: null,
-          firings: this.mode === "ready" ? 2 : 0,
-          successes: this.mode === "ready" ? 2 : 0,
+          firings: this.mode === "workflow" ? 22 : this.mode === "ready" ? 2 : 0,
+          successes: this.mode === "workflow" ? 21 : this.mode === "ready" ? 2 : 0,
           failures: 0,
           agents_with_spend: 0,
         },
         intake_profile: "technical",
         setup_repos: {
-          selected: this.mode === "ready" ? ["example/workspace"] : [],
-          count: this.mode === "ready" ? 1 : 0,
+          selected: this.isReady ? ["example/workspace"] : [],
+          count: this.isReady ? 1 : 0,
         },
       });
       return true;
@@ -421,7 +497,7 @@ export class AlfredApiFixture {
     if (matches("/api/memory/lessons", "?limit=30")) {
       await this.fulfill(route, {
         rows:
-          this.mode === "ready"
+          this.isReady
             ? [
                 {
                   id: "lesson:fixture-boundary",
@@ -453,7 +529,7 @@ export class AlfredApiFixture {
     if (matches("/api/firings", "?limit=14")) {
       await this.fulfill(route, {
         rows:
-          this.mode === "ready"
+          this.isReady
             ? [
                 {
                   firing_id: "senior-dev-visual-contract",
@@ -501,7 +577,7 @@ export class AlfredApiFixture {
     }
     if (matches("/api/plans", "?limit=14")) {
       await this.fulfill(route, {
-        rows: this.mode === "ready" && !this.planApproved ? [plan] : [],
+        rows: this.isReady && !this.planApproved ? [plan] : [],
       });
       return true;
     }
@@ -509,7 +585,7 @@ export class AlfredApiFixture {
       await this.fulfill(route, {
         operator_user_id: null,
         users:
-          this.mode === "ready"
+          this.isReady
             ? [
                 {
                   user_id: "UTEAM12345",
@@ -527,7 +603,7 @@ export class AlfredApiFixture {
     if (matches("/api/schedule")) {
       await this.fulfill(route, {
         runs:
-          this.mode === "ready"
+          this.isReady
             ? [
                 {
                   codename: "architect",
@@ -546,7 +622,7 @@ export class AlfredApiFixture {
       return true;
     }
     if (matches("/api/shipped", "?days=14")) {
-      await this.fulfill(route, this.mode === "ready" ? sampleBoard : emptyBoard);
+      await this.fulfill(route, this.isReady ? sampleBoard : emptyBoard);
       return true;
     }
     if (matches("/api/usage")) {
@@ -648,12 +724,12 @@ export class AlfredApiFixture {
       const selectedRepo = url.searchParams.get("repo");
       const queryPath = url.searchParams.get("path");
       const analyzed =
-        this.mode === "ready" && Boolean(selectedRepo && queryPath);
+        this.isReady && Boolean(selectedRepo && queryPath);
       await this.fulfill(route, {
         schema: "alfred.code-intelligence.v1",
         generated_at: "2026-07-23T20:15:00Z",
         repos:
-          this.mode === "ready"
+          this.isReady
             ? [
                 {
                   name: "example/workspace",
@@ -672,7 +748,7 @@ export class AlfredApiFixture {
                 },
               ]
             : [],
-        repo_count: this.mode === "ready" ? 1 : 0,
+        repo_count: this.isReady ? 1 : 0,
         contract_drift_count: 0,
         selected_repo: analyzed ? selectedRepo : null,
         query_path: analyzed ? queryPath : null,

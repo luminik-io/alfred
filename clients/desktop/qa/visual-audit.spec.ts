@@ -409,6 +409,69 @@ for (const appearance of appearances) {
   }
 }
 
+const workflowViewports = {
+  desktop: viewports.desktop,
+  mobile: viewports.mobile,
+} as const;
+
+for (const appearance of appearances) {
+  for (const [viewportName, viewport] of Object.entries(workflowViewports) as Array<
+    [keyof typeof workflowViewports, (typeof workflowViewports)[keyof typeof workflowViewports]]
+  >) {
+    test.describe(`${appearance.theme}-${appearance.mode}-${viewportName}-workflow`, () => {
+      test.beforeEach(async ({ page }) => {
+        await mkdir(outputDir, { recursive: true });
+        await page.setViewportSize(viewport);
+        await page.addInitScript(({ theme, mode }) => {
+          localStorage.setItem("alfred-theme-name", theme);
+          localStorage.setItem("alfred-theme", mode);
+          localStorage.removeItem("alfred.roster.view.v1");
+        }, appearance);
+        await installAlfredApi(page, "workflow");
+        await page.goto("/");
+      });
+
+      test.afterEach(async ({ page }) => {
+        assertAlfredApiComplete(page);
+      });
+
+      test("workflow canvas and full-screen state", async ({ page }) => {
+        await openPrimaryView(page, viewportName, "Agents");
+        await expect(
+          page.getByRole("button", { name: "Workflow view" }),
+        ).toHaveAttribute("aria-pressed", "true");
+        await expect(
+          page.locator(".wf-node__name", { hasText: "Senior developer" }),
+        ).toBeVisible();
+        await assertWorkflowContract(page, viewportName);
+        await capture(page, viewportName, "agents-workflow");
+
+        const maximize = page.getByRole("button", { name: "Maximize workflow" });
+        const maximizeBox = await maximize.boundingBox();
+        expect(maximizeBox, "the workflow full-screen action must be visible").not.toBeNull();
+        if (viewportName === "mobile" && maximizeBox) {
+          expect(maximizeBox.width).toBeGreaterThanOrEqual(44);
+          expect(maximizeBox.height).toBeGreaterThanOrEqual(44);
+        }
+        await maximize.click();
+
+        const dialog = page.getByRole("dialog", { name: "Agent workflow graph" });
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toHaveAttribute("aria-modal", "true");
+        expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+        const dialogBox = await dialog.boundingBox();
+        expect(dialogBox?.width).toBe(viewport.width);
+        expect(dialogBox?.height).toBe(viewport.height);
+        await capture(page, viewportName, "agents-workflow-fullscreen");
+
+        await page.keyboard.press("Escape");
+        await expect(dialog).toBeHidden();
+        await expect(maximize).toBeFocused();
+      });
+    });
+  }
+}
+
 const stateViewports = {
   desktop: viewports.desktop,
   mobile: viewports.mobile,

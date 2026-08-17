@@ -13,6 +13,7 @@ import {
   useStore,
 } from "@xyflow/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Maximize2, Minimize2 } from "lucide-react";
 
 import {
@@ -99,13 +100,7 @@ const NODE_TYPES: ReactFlowProps["nodeTypes"] = {
   lane: LaneNode,
 };
 
-/**
- * A quiet glass legend pinned top-left of the canvas so a newcomer can decode
- * the pipeline without a tour: what the node status colors mean, what an edge is
- * (a handoff), and where the human approval gate sits. Purely explanatory, so it
- * is aria-hidden from the flow's interactive graph and never captures pointer
- * events over the canvas.
- */
+/** Explains pipeline stages and status colors above the workflow canvas. */
 function WorkflowLegend() {
   return (
     <aside className="wf-legend" aria-label="Workflow legend">
@@ -196,9 +191,9 @@ function miniMapNodeColor(node: { type?: string; data?: unknown }): string {
     return "rgba(148, 163, 184, 0.35)";
   }
   const tone = (node.data as AgentNodeData | undefined)?.tone;
-  if (tone === "error") return readToken("--destructive", "oklch(0.6 0.2 25)");
-  if (tone === "warn") return "oklch(0.78 0.16 80)";
-  if (tone === "ok") return readToken("--primary", "oklch(0.7 0.15 250)");
+  if (tone === "error") return readToken("--error", "oklch(0.6 0.2 25)");
+  if (tone === "warn") return readToken("--warn", "oklch(0.7 0.14 80)");
+  if (tone === "ok") return readToken("--ok", "oklch(0.62 0.13 158)");
   return "rgba(148, 163, 184, 0.6)";
 }
 
@@ -330,12 +325,20 @@ export function WorkflowGraph({
   // roster header, so a mouse or trackpad user gets room to actually pan and
   // zoom. Escape exits; the signature change re-fits the graph to the new size.
   const [maximized, setMaximized] = useState(false);
+  const graphRef = useRef<HTMLDivElement>(null);
+  const maximizeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const toggleMaximized = () => {
-    setMaximized((value) => {
-      const next = !value;
-      if (next) onMaximize?.();
-      return next;
-    });
+    if (!maximized) {
+      restoreFocusRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : maximizeButtonRef.current;
+      setMaximized(true);
+      onMaximize?.();
+      return;
+    }
+    setMaximized(false);
   };
   const selectNode = (codename: string) => {
     if (maximized) setMaximized(false);
@@ -343,34 +346,84 @@ export function WorkflowGraph({
   };
   useEffect(() => {
     if (!maximized) return;
+    const graph = graphRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    maximizeButtonRef.current?.focus();
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMaximized(false);
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMaximized(false);
+        return;
+      }
+      if (event.key !== "Tab" || !graph) return;
+
+      const focusable = Array.from(
+        graph.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+        ),
+      ).filter((element) => element.getAttribute("aria-hidden") !== "true");
+      if (!focusable.length) {
+        event.preventDefault();
+        graph.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      if (restoreFocusRef.current?.isConnected) {
+        restoreFocusRef.current.focus();
+      } else {
+        document
+          .querySelector<HTMLButtonElement>(
+            '.workflow-graph[data-maximized="false"] .wf-maximize',
+          )
+          ?.focus();
+      }
+    };
   }, [maximized]);
 
-  return (
+  const graph = (
     <div
+      ref={graphRef}
       className="workflow-graph"
       data-maximized={maximized ? "true" : "false"}
+      role={maximized ? "dialog" : "region"}
+      aria-modal={maximized ? "true" : undefined}
       aria-label="Agent workflow graph"
+      tabIndex={maximized ? -1 : undefined}
     >
-      <WorkflowLegend />
-      <button
-        type="button"
-        className="wf-maximize"
-        onClick={toggleMaximized}
-        aria-pressed={maximized}
-        aria-label={maximized ? "Exit full screen" : "Maximize workflow"}
-        title={maximized ? "Exit full screen (Esc)" : "Maximize"}
-      >
-        {maximized ? (
-          <Minimize2 aria-hidden="true" size={15} />
-        ) : (
-          <Maximize2 aria-hidden="true" size={15} />
-        )}
-      </button>
+      <div className="wf-toolbar">
+        <button
+          ref={maximizeButtonRef}
+          type="button"
+          className="wf-maximize"
+          onClick={toggleMaximized}
+          aria-pressed={maximized}
+          aria-label={maximized ? "Exit full screen" : "Maximize workflow"}
+          title={maximized ? "Exit full screen (Esc)" : "Maximize"}
+        >
+          {maximized ? (
+            <Minimize2 aria-hidden="true" size={15} />
+          ) : (
+            <Maximize2 aria-hidden="true" size={15} />
+          )}
+        </button>
+        <WorkflowLegend />
+      </div>
       <div className="workflow-graph__canvas">
         <ReactFlow
           nodes={nodes}
@@ -427,4 +480,7 @@ export function WorkflowGraph({
       </div>
     </div>
   );
+  return maximized && typeof document !== "undefined"
+    ? createPortal(graph, document.body)
+    : graph;
 }

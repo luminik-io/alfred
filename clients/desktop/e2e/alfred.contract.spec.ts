@@ -197,3 +197,36 @@ test("primary navigation loads code, models, settings, and returns to Inbox", as
   ).toBeDefined();
   expect(api.find("GET", "/api/agent-models")).toBeDefined();
 });
+
+test("full-screen workflow contains focus and restores the page on exit", async ({ page }) => {
+  await installAlfredApi(page, "workflow");
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Agents" }).click();
+  await expect(page.getByRole("button", { name: "Workflow view" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  const maximize = page.getByRole("button", { name: "Maximize workflow" });
+  await maximize.focus();
+  await maximize.click();
+
+  const dialog = page.getByRole("dialog", { name: "Agent workflow graph" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(page.getByRole("button", { name: "Exit full screen" })).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+
+  await page.keyboard.press("Shift+Tab");
+  expect(
+    await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
+  ).toBe("React Flow attribution");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Exit full screen" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(maximize).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
+});

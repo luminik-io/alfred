@@ -25,12 +25,11 @@
    Height tracks the viewport so it stays in frame across screen sizes; the
    graph re-fits on resize (see FitToContainer). */
 .workflow-graph {
-  /* Positioned so the absolutely-positioned .wf-legend anchors to this canvas
-     (not the viewport), keeping the legend inside the graph and inside element
-     screenshots of .workflow-graph. */
   position: relative;
-  min-height: 420px;
-  height: min(78svh, 760px);
+  display: flex;
+  min-height: 380px;
+  height: clamp(380px, calc(100svh - 330px), 620px);
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
@@ -45,39 +44,18 @@
 
 @media (max-width: 880px) {
   .workflow-graph {
-    display: flex;
-    flex-direction: column;
     min-height: 360px;
     height: min(62svh, 520px);
-  }
-
-  .workflow-graph:not([data-maximized="true"]) .wf-legend {
-    position: relative;
-    inset: auto;
-    z-index: 1;
-    width: 100%;
-    max-width: none;
-    flex: 0 0 auto;
-    border-width: 0 0 1px;
-    border-radius: 0;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  .workflow-graph:not([data-maximized="true"]) > .workflow-graph__canvas {
-    height: auto;
-    min-height: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
   }
 }
 
 .workflow-graph__canvas {
   position: relative;
   width: 100%;
-  height: 100%;
+  height: auto;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* Maximize: lift the canvas to a full-viewport overlay so the wide pipeline has
@@ -90,21 +68,22 @@
   min-height: 0;
   border: 0;
   border-radius: 0;
-  /* Opaque ground so the dimmed page never bleeds through the canvas gaps. */
-  background:
-    linear-gradient(
-      155deg,
-      color-mix(in oklch, var(--primary), transparent 95%),
-      transparent 46%
-    ),
-    var(--background);
+  background: var(--background);
+}
+
+.wf-toolbar {
+  position: relative;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex: 0 0 auto;
+  padding: 0.7rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
 }
 
 .wf-maximize {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 21;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -112,11 +91,11 @@
   height: 36px;
   padding: 0;
   color: var(--foreground);
-  background: color-mix(in oklch, var(--card), transparent 12%);
+  flex: 0 0 auto;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
-  backdrop-filter: blur(8px);
   transition:
     background 120ms ease,
     border-color 120ms ease;
@@ -150,7 +129,7 @@
    in the pipeline: draw it as a brighter accent dashed line so the operator's
    go-ahead gate reads at a glance and never looks like an automatic handoff. */
 .workflow-graph .wf-edge--gate .react-flow__edge-path {
-  stroke: var(--accent);
+  stroke: var(--warn);
   stroke-width: 2;
   stroke-dasharray: 5 4;
 }
@@ -172,7 +151,7 @@
 }
 
 .workflow-graph .wf-edge--gate .react-flow__edge-text {
-  fill: color-mix(in oklch, var(--accent), var(--foreground) 30%);
+  fill: color-mix(in oklch, var(--warn), var(--foreground) 30%);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -181,63 +160,24 @@
   }
 }
 
-/* Legend: a quiet glass card pinned top-left, explaining the pipeline flow,
-   the node status colors, and the two edge kinds (handoff vs. your approval).
-   Purely explanatory chrome, so it never intercepts canvas pointer events. */
+/* The legend is part of the graph toolbar, never an overlay on live nodes. */
 .wf-legend {
-  position: absolute;
-  overflow: hidden;
-  /* Above the React Flow panes (nodes/edges sit around z 2-4) so the legend is
-     never occluded by the graph it explains. */
-  z-index: 20;
-  top: 0.85rem;
-  right: 0.85rem;
-  max-width: 15rem;
-  padding: 0.7rem 0.8rem;
+  display: grid;
+  grid-template-areas:
+    "title items"
+    "flow items";
+  grid-template-columns: minmax(12rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.15rem 1rem;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
   pointer-events: none;
-  border: 1px solid
-    color-mix(
-      in oklch,
-      var(--accent) 26%,
-      color-mix(in oklch, var(--border), white 12%)
-    );
-  border-radius: var(--radius-lg);
-  /* Slightly stronger than hero glass because the legend overlays the canvas. */
-  background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
-    linear-gradient(
-      225deg,
-      color-mix(in oklch, var(--accent), transparent 92%),
-      transparent 48%
-    ),
-    var(--popover);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 2px 8px rgba(0, 0, 0, 0.32),
-    0 20px 48px var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturate));
-}
-
-/* Luminous top edge matching the hero-glass language (ember -> amber). */
-.wf-legend::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklch, var(--accent), transparent 40%),
-    color-mix(in oklch, var(--brand-teal), transparent 52%),
-    transparent
-  );
-  opacity: 0.9;
 }
 
 .wf-legend__title {
+  grid-area: title;
   margin: 0;
   color: var(--muted-foreground);
   font-size: 0.6rem;
@@ -247,7 +187,8 @@
 }
 
 .wf-legend__flow {
-  margin: 0.28rem 0 0.55rem;
+  grid-area: flow;
+  margin: 0;
   color: var(--foreground);
   font-family: var(--font-heading);
   font-size: 0.86rem;
@@ -261,8 +202,10 @@
 }
 
 .wf-legend__items {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-area: items;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.3rem 0.6rem;
   margin: 0;
   padding: 0;
@@ -292,13 +235,13 @@
 }
 
 .wf-legend__swatch[data-tone="ok"] {
-  background: var(--primary);
+  background: var(--ok);
 }
 .wf-legend__swatch[data-tone="warn"] {
-  background: oklch(0.78 0.16 80);
+  background: var(--warn);
 }
 .wf-legend__swatch[data-tone="error"] {
-  background: var(--destructive);
+  background: var(--error);
 }
 .wf-legend__swatch[data-tone="idle"] {
   background: color-mix(in oklch, var(--muted-foreground), var(--border) 30%);
@@ -313,7 +256,49 @@
 
 .wf-legend__edge--gate {
   border-top-style: dashed;
-  border-top-color: var(--accent);
+  border-top-color: var(--warn);
+}
+
+@media (max-width: 880px) {
+  .wf-toolbar {
+    align-items: flex-start;
+  }
+
+  .wf-legend {
+    grid-template-areas:
+      "title"
+      "flow"
+      "items";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wf-legend__items {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .wf-toolbar {
+    gap: 0.65rem;
+    padding: 0.65rem;
+  }
+
+  .wf-legend__items {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 0.35rem 0.55rem;
+  }
+
+  .wf-legend__item {
+    min-width: 0;
+    font-size: 0.62rem;
+    white-space: normal;
+  }
+
+  .workflow-graph .wf-minimap {
+    display: none;
+  }
 }
 
 .workflow-graph .react-flow__controls {
@@ -351,6 +336,12 @@
 }
 
 @media (max-width: 480px), (pointer: coarse) {
+  .wf-maximize,
+  .workflow-graph .react-flow__controls-button {
+    width: 44px;
+    height: 44px;
+  }
+
   .workflow-graph .react-flow__attribution a::after {
     position: absolute;
     inset: -13px -4px;
@@ -404,38 +395,23 @@
   padding: 0.7rem 0.8rem 0.7rem 0.95rem;
   border: 1px solid color-mix(in oklch, var(--wf-tone), var(--border) 62%);
   border-radius: var(--radius-lg);
-  /* Glass node: a translucent tone-tinted pane over the canvas with a real
-     backdrop blur and a luminous top hairline, so the workflow graph reads as
-     floating glass chrome (not flat cards). Corners stay sharp. */
-  background:
-    linear-gradient(180deg, var(--glass-highlight), transparent 34%),
-    color-mix(
-      in oklch,
-      var(--wf-tone) 10%,
-      color-mix(in oklch, var(--card), transparent 14%)
-    );
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 10px 26px var(--glass-shadow);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-  -webkit-backdrop-filter: blur(var(--glass-blur))
-    saturate(var(--glass-saturate));
+  background: var(--card);
+  box-shadow: none;
   cursor: pointer;
   transition:
     border-color 140ms ease,
-    box-shadow 140ms ease,
-    transform 140ms ease;
+    background 140ms ease;
 }
 
 /* Status -> rail/accent tone mapping. idle stays neutral (never green). */
 .wf-node[data-tone="ok"] {
-  --wf-tone: var(--primary);
+  --wf-tone: var(--ok);
 }
 .wf-node[data-tone="warn"] {
-  --wf-tone: oklch(0.78 0.16 80);
+  --wf-tone: var(--warn);
 }
 .wf-node[data-tone="error"] {
-  --wf-tone: var(--destructive);
+  --wf-tone: var(--error);
 }
 .wf-node[data-tone="idle"] {
   --wf-tone: color-mix(in oklch, var(--muted-foreground), var(--border) 30%);
@@ -452,17 +428,13 @@
 
 .wf-node:hover {
   border-color: color-mix(in oklch, var(--wf-tone), var(--border) 28%);
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 26px rgba(0, 0, 0, 0.16);
+  background: color-mix(in oklch, var(--card), var(--wf-tone) 4%);
 }
 
 .wf-node[data-selected="true"] {
   border-color: var(--wf-tone);
   box-shadow:
-    0 0 0 1px var(--wf-tone),
-    0 10px 28px color-mix(in oklch, var(--wf-tone), transparent 80%);
+    0 0 0 1px var(--wf-tone);
 }
 
 .wf-node__mark {
@@ -554,7 +526,7 @@
 }
 
 .wf-node__metaitem--warn .wf-node__metavalue {
-  color: var(--destructive);
+  color: var(--error);
 }
 
 .wf-node__handle {

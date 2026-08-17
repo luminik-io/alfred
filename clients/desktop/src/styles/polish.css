@@ -174,11 +174,10 @@
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.7));
 }
 
-:root[data-theme="signal-edge"] .wf-legend {
+:root[data-theme="signal-edge"] .wf-toolbar {
   border-color: var(--hairline);
   background: var(--glass-strong);
-  box-shadow: 0 10px 32px
-    color-mix(in oklch, var(--glass-shadow), transparent 58%);
+  box-shadow: none;
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
@@ -559,4 +558,11 @@
   background: transparent;
   box-shadow: none;
   padding: 0;
+}
+
+/* A full-screen workflow is a viewport surface, not translucent app chrome. */
+:root[data-theme] .workflow-graph[data-maximized="true"] {
+  background: var(--background);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
