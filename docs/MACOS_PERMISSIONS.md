@@ -22,14 +22,14 @@ What it reaches, and why:
 
 - **Configured repositories and worktrees** under `ALFRED_HOME` (`~/.alfred` by
   default). Repository configuration controls Alfred's scheduling and indexing.
-  It does not stop a harness or project command from reading other files that
+  It does not stop a coding CLI or project command from reading other files that
   the local user can read.
 - **Your local CLI auth.** Alfred shells out to `claude` and optional `codex`
   using the auth those tools already stored. It never reads your provider
   password and never asks for an API key.
 - **Outbound network** to the selected model provider, GitHub, optional Slack,
   Alfred telemetry when enabled, and package or battery download endpoints.
-  Harnesses, skills, MCP servers, and project commands can add other
+  Coding CLIs, skills, MCP servers, and project commands can add other
   destinations. Alfred does not enforce an outbound allowlist. See the
   [threat model](THREAT_MODEL.md).
 

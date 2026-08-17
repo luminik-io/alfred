@@ -6,13 +6,13 @@ description: Public primitives in the lib/agent_runner package. Function signatu
 The shared runtime. Every codename agent imports from this package. Source: [`lib/agent_runner/`](https://github.com/luminik-io/alfred/tree/main/lib/agent_runner).
 
 The package is internally split into focused submodules: `paths`,
-`config`, `process`, `result`, `transcripts`, `metadata`, `notify`,
+`config`, `process`, `opencode`, `result`, `transcripts`, `metadata`, `notify`,
 `state`, `github`, `orchestrator`. Every public name listed below
 is re-exported from `agent_runner` itself, so the historical flat
 imports keep working:
 
 ```python
-from agent_runner import preflight, make_worktree, slack_post, claude_invoke
+from agent_runner import preflight, make_worktree, slack_post, invoke_agent_engine
 ```
 
 Categorised by what the local-control primitive does. For deep semantics, read the source's docstrings. They're the authoritative reference.
@@ -34,6 +34,7 @@ BIN_DIR: Path                # ALFRED_HOME / "bin"
 CLAUDE_BIN: str              # path to the claude CLI; default "claude"
 CODEX_BIN: str               # path to the codex CLI; default "codex"
 CODEX_TRANSCRIPTS_ROOT: Path # ALFRED_HOME / "state" / "codex"
+OPENCODE_TRANSCRIPTS_ROOT: Path # ALFRED_HOME / "state" / "opencode"
 
 GH_REPO_TO_LOCAL: dict[str, str]   # consumer-extended slug → local-dir map
 STANDARD_LABELS: list[tuple]       # consumer-extended label set for ensure_labels
@@ -223,6 +224,14 @@ def codex_invoke(prompt: str, *,
                  approval_policy: str | None = None,
                  add_dirs: list[Path] | None = None) -> ClaudeResult
 
+def opencode_invoke(prompt: str, *,
+                    workdir: Path,
+                    agent: str = "opencode",
+                    firing_id: str | None = None,
+                    timeout: int = 1200,
+                    model: str | None = None,
+                    allow_writes: bool = False) -> ClaudeResult
+
 def invoke_agent_engine(prompt: str, *,
                         engine: str,
                         agent: str,
@@ -236,7 +245,11 @@ def invoke_agent_engine(prompt: str, *,
                         ...) -> tuple[ClaudeResult, str]
 ```
 
-The OSS streaming variant currently delegates to `claude_invoke()` while preserving the future call shape. `codex_invoke()` shells out to `codex exec`, rejects unsupported Claude-only controls (`allowed_tools`, `max_turns`, `resume_session`), defaults to `read-only` + `approval_policy=never`, and writes final-message/stdout/stderr artifacts to `$ALFRED_HOME/state/codex/<agent>/<YYYY-MM>/`.
+The streaming variant delegates to `claude_invoke()` while preserving the call
+shape. `codex_invoke()` shells out to `codex exec`. `opencode_invoke()` uses a
+new OpenCode session with an isolated config, exact worktree, explicit
+permissions, and JSON events. OpenCode artifacts stay under
+`$ALFRED_HOME/state/opencode/<agent>/<YYYY-MM>/`.
 When `memory_repo` is provided, `invoke_agent_engine()` prepends local
 fleet-brain recall context. If the engine returns a machine-readable memory
 reflection block, Alfred strips it from the user-facing result and queues those

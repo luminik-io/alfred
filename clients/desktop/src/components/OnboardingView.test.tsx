@@ -367,11 +367,11 @@ describe("OnboardingView eight-step takeover", () => {
     expect(
       screen.getByText(/checks this Mac, connects to GitHub, and ends on a real result/i),
     ).toBeInTheDocument();
-    // The trust differentiator is on the first screen, not buried.
+    // The trust boundary is on the first screen, not buried.
     expect(
-      screen.getByText(/runs on the claude max and codex pro subscriptions you already pay for/i),
+      screen.getByText(/bring the coding cli and provider account you already use/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/no api keys/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not proxy or store provider keys/i)).toBeInTheDocument();
     // The persistent stepper shows all eight steps.
     expect(screen.getByRole("button", { name: /^welcome$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^tools$/i })).toBeInTheDocument();
@@ -604,7 +604,9 @@ describe("OnboardingView eight-step takeover", () => {
     renderOnboarding();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /get started/i }));
-    expect(screen.getByText(/no api keys needed/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/alfred uses the provider login stored by the selected cli/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /check my tools/i })).toBeInTheDocument();
   });
 
@@ -1050,7 +1052,7 @@ describe("OnboardingView eight-step takeover", () => {
     const user = userEvent.setup();
     await gotoStep(user, /^tools$/i);
     expect(await screen.findByText(/no coding engine is installed/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /install claude code/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open engine setup guide/i })).toBeInTheDocument();
   });
 
   it("fails an incomplete engine result visibly instead of crashing onboarding", async () => {

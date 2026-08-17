@@ -14,7 +14,7 @@ const engineStateLabel: Record<string, string> = {
   missing: "not installed",
 };
 
-/** Show the supported golden path first and keep raw harness probes one disclosure away. */
+/** Show supported engines first and keep raw CLI probes one disclosure away. */
 export function EngineStep({
   status,
   engineReady,
@@ -101,15 +101,15 @@ export function EngineStep({
               </strong>
               {detectedEngine
                 ? "Sign in or update the detected CLI, then check again."
-                : "Install and sign in to Claude Code or Codex, then check again."}
+                : "Install and sign in to Claude Code, Codex, or OpenCode, then check again."}
             </span>
             <a
               className="inline-flex w-fit min-h-9 items-center gap-1 rounded-md border border-border/70 bg-background/55 px-2.5 py-1.5 text-sm font-medium text-foreground underline-offset-2 hover:bg-muted/45 hover:underline"
-              href="https://docs.anthropic.com/en/docs/claude-code/overview"
+              href="https://alfred.luminik.io/concepts/engine-routing/"
               target="_blank"
               rel="noreferrer"
             >
-              Install Claude Code
+              Open engine setup guide
             </a>
           </CardContent>
         </Card>
@@ -134,7 +134,9 @@ export function EngineStep({
         </Button>
       </div>
 
-      <p className="text-sm text-muted-foreground">No API keys needed.</p>
+      <p className="text-sm text-muted-foreground">
+        Alfred uses the provider login stored by the selected CLI.
+      </p>
 
       {capabilityPlane ? (
         <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">

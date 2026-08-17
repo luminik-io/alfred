@@ -347,7 +347,7 @@ export function CardInspector({
           <dl className="evidence-summary">
             {harness ? (
               <div>
-                <dt>Harness</dt>
+                <dt>Engine</dt>
                 <dd>{harness}</dd>
               </div>
             ) : null}

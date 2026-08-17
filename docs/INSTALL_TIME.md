@@ -10,7 +10,7 @@ Setup is short when the host already has:
 - macOS with Homebrew, or a supported Debian or Ubuntu environment;
 - Python 3.11 or newer;
 - an authenticated `gh` CLI with access to the target repositories;
-- an authenticated Claude Code or Codex CLI;
+- an authenticated Claude Code, Codex, or OpenCode CLI;
 - at least one target repository cloned locally.
 
 Install Alfred, select the repositories, then run:
@@ -24,7 +24,7 @@ alfred dry-run senior-dev
 ## Steps that add time
 
 - Creating or approving a GitHub account, organization membership, or token.
-- Installing and authenticating a coding harness.
+- Installing and authenticating a coding CLI.
 - Obtaining Slack app approval when Slack is required.
 - Installing desktop build dependencies for source development.
 - Fixing repository permissions, scheduler permissions, or missing build tools.

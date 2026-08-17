@@ -1,6 +1,6 @@
 # Threat model
 
-Alfred runs coding harnesses with your local user permissions. It does not add
+Alfred runs coding CLIs with your local user permissions. It does not add
 an operating-system sandbox. This document describes the controls Alfred adds
 and the controls the operator must provide.
 
@@ -14,8 +14,8 @@ invokes the configured local tools, and records events. Roles that change or
 review code select a configured repository and use a separate git worktree.
 Operational roles can run without a worktree.
 
-Alfred assumes that the host, local user account, configured harnesses, and
-installed project tools are trusted. A harness or build command has the same
+Alfred assumes that the host, local user account, configured coding CLIs, and
+installed project tools are trusted. A coding CLI or build command has the same
 filesystem and network access as that user account.
 
 For a stronger boundary, run Alfred under a dedicated operating-system user,
@@ -38,7 +38,7 @@ credentials mounted.
 | Pinned code-memory binary | Prevents an ambient `PATH` executable from entering the default toolchain |
 
 These controls are scheduling and workflow boundaries. They do not prevent a
-harness or project command from reading another file that the operating-system
+coding CLI or project command from reading another file that the operating-system
 user can read.
 
 ## Repository scope
@@ -55,13 +55,13 @@ agent must not read.
 
 Alfred itself can contact:
 
-- the selected model provider through Claude Code or Codex;
+- the selected model provider through Claude Code, Codex, or OpenCode;
 - GitHub;
 - Slack, when configured;
 - Alfred's aggregate telemetry endpoint, when enabled;
 - package and download endpoints used by installation or optional batteries.
 
-Harnesses, skills, MCP servers, and project commands can add other network
+Coding CLIs, skills, MCP servers, and project commands can add other network
 destinations. Alfred does not enforce an outbound network allowlist. Use host,
 container, or network policy controls when egress must be restricted.
 
@@ -103,7 +103,7 @@ explicit configured policy says it is.
 
 ## Out of scope
 
-- Vulnerabilities in Claude Code, Codex, or another harness CLI.
+- Vulnerabilities in Claude Code, Codex, OpenCode, or another coding CLI.
 - Third-party skills, MCP servers, and binaries installed by the operator.
 - Secrets exposed through host or project configuration.
 - Filesystem or network isolation beyond the local user's permissions.

@@ -77,7 +77,7 @@ checked at exactly these boundaries in [`lib/agent_runner/`](../lib/agent_runner
 
 | Boundary | Real behaviour | Dry-run behaviour |
 |---|---|---|
-| `claude_invoke`, `codex_invoke`, `invoke_agent_engine` | Shell out to the `claude` / `codex` CLI | Return a clearly-marked synthetic `ClaudeResult` (`success`, `cost_usd=0.0`, `result_text` labelled `[dry-run] synthetic ...`). No LLM is ever invoked. |
+| `claude_invoke`, `codex_invoke`, `opencode_invoke`, `invoke_agent_engine` | Shell out to a coding-engine CLI | Return a clearly-marked synthetic `ClaudeResult` (`success`, `cost_usd=0.0`, `result_text` labelled `[dry-run] synthetic ...`). No model is invoked. |
 | `SpendState.increment` / `.set` / `.save` | Write the per-day `spend-<date>.json` ledger | Write a separate `spend-dryrun-<date>.json` ledger instead. The real counters are never touched, so a dry-run can't trip a daily cap. |
 | `set_global_block` | Write the fleet-wide Claude-provider-limit block | Log the block it would set and return the `until` string; the file is never written, so real scheduled agents are not blocked. |
 | `slack_post` | POST to the Slack webhook | Log `[dry-run] ... would post to Slack (severity=...): <message>` to stdout and return `True`. |

@@ -30,7 +30,7 @@ flowchart TD
     race{"contested claim?<br/>earlier unreleased<br/>claim comment"}
     yield["yield: restore agent:implement<br/>post race-yielded release"]
     wt["make_worktree()<br/>git worktree add -b<br/>from origin/main"]
-    engine["invoke_agent_engine()<br/>claude -p / codex exec"]
+    engine["invoke_agent_engine()<br/>Claude / Codex / OpenCode"]
     pr["gh pr create<br/>label agent:authored"]
     release["release_issue()<br/>transition_to=agent:pr-open<br/>+ release comment + pr_url"]
     automerge{"automerge gates"}
@@ -51,7 +51,8 @@ The claim is `release_issue`-symmetric: every claim comment is paired with a rel
 
 ## Model dispatch and tiers
 
-Two orthogonal choices decide which CLI runs a prompt: the **tier** (which model) and the **engine mode** (Claude, Codex, or hybrid fallback).
+Two orthogonal choices decide which CLI runs a prompt: the **tier** (which model)
+and the **engine mode** (Claude, Codex, OpenCode, or hybrid fallback).
 
 The tier comes from an `llm-tier:<x>` label, read by `get_tier_from_labels` and dispatched by `route_llm` (`lib/agent_runner/orchestrator.py`). Unknown tiers fall back to `sonnet` so a label typo never takes an agent down. The `local` tier posts to a localhost Ollama daemon, starting it first if needed; the `codex` tier shells out to `codex exec`.
 
@@ -75,6 +76,7 @@ flowchart TD
     engineMode{"engine mode<br/>normalize_engine()"}
     claudeOnly["claude"]
     codexOnly["codex"]
+    opencodeOnly["opencode"]
     hybrid["hybrid:<br/>Claude first"]
     class{"classify_result()"}
     retry["retry same engine<br/>+ circuit breaker"]
@@ -83,9 +85,11 @@ flowchart TD
     used1["engine_used = claude"]
     used2["engine_used = codex"]
     used3["engine_used = codex-fallback"]
+    used4["engine_used = opencode"]
 
     engineMode -->|claude| claudeOnly --> used1
     engineMode -->|codex| codexOnly --> used2
+    engineMode -->|opencode| opencodeOnly --> used4
     engineMode -->|hybrid| hybrid --> class
     class -->|TRANSIENT| retry --> used1
     class -->|FATAL| fatal --> used1
@@ -94,9 +98,12 @@ flowchart TD
     cap -->|yes| used3
 ```
 
-The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE`, then `ALFRED_ENGINE`, then `$ALFRED_HOME/state/engines/<agent>`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is one of `claude`, `codex`, or `codex-fallback`.
+The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE`, then `ALFRED_ENGINE`, then `$ALFRED_HOME/state/engines/<agent>`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is `claude`, `codex`, `opencode`, or `codex-fallback`.
 
-Hybrid means Claude first, same-engine retry for transient failures, immediate surfacing for fatal failures, and Codex only on a capability gap (`FailureClass.CAPABILITY`). Codex does not expose Claude's allow-list, max-turn, or resume-session semantics, so `codex_invoke` rejects those kwargs rather than implying they were enforced; its default posture is a read-only sandbox with no approval prompts.
+Hybrid means Claude first, same-engine retry for transient failures, immediate
+surfacing for fatal failures, and Codex only on a capability gap
+(`FailureClass.CAPABILITY`). OpenCode is explicit and never joins that fallback.
+It runs with an isolated config, an exact worktree, and structured events.
 
 ## Distributed locking
 

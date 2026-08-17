@@ -31,7 +31,7 @@ The client is for trust and operations:
 2. Open Alfred Desktop. First-run onboarding detects an existing Alfred core
    install when one is present, or installs or repairs bundled Alfred core on
    this machine.
-3. Connect GitHub and Claude or Codex, choose repos, configure the full fleet,
+3. Connect GitHub and a supported coding engine, choose repos, configure the full fleet,
    check the local capability plane (code graph memory, Alfred's context
    governor, and engineering skills), pick a roster theme or custom display names, and
    run doctor.

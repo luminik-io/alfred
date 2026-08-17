@@ -119,11 +119,14 @@ _SUBTYPE_CLASS: dict[str, FailureClass] = {
     # The selected engine is installed but cannot satisfy its invocation
     # contract. A different engine may still be able to handle the work.
     "error_engine_unavailable": FailureClass.CAPABILITY,
+    "error_tool": FailureClass.CAPABILITY,
     # Auth is fatal here: the one-shot stale-credential repair already
     # ran upstream in result.py before we ever classify, so a surviving
     # error_authentication means real bad credentials. Surface, do not
     # burn the fallback.
     "error_authentication": FailureClass.FATAL,
+    "error_cancelled": FailureClass.FATAL,
+    "error_permission": FailureClass.FATAL,
     # Budget is a hard wall for THIS provider, not a capability gap.
     # Treat as transient-for-fallback-purposes? No: a daily budget cap
     # will not clear on a short backoff and is not the fallback's job to

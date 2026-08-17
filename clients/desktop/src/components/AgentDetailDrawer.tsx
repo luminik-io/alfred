@@ -432,7 +432,7 @@ function AgentModelControls({
         <h3 id={`models-${agent}`}>Models</h3>
         {loading ? <LoaderCircle className="size-3.5 spin" aria-label="Loading models" /> : null}
       </div>
-      {(["claude", "codex"] as const).map((provider) => (
+      {(["claude", "codex", "opencode"] as const).map((provider) => (
         <AgentModelRow
           key={`${agent}:${provider}`}
           agent={agent}
@@ -479,7 +479,11 @@ function AgentModelRow({
   const trimmed = draft.trim();
   const valid = !trimmed || MODEL_NAME.test(trimmed);
   const changed = trimmed !== (selection?.persisted || "");
-  const label = provider === "claude" ? "Claude" : "Codex";
+  const label = {
+    claude: "Claude Code",
+    codex: "Codex",
+    opencode: "OpenCode",
+  }[provider];
   const sourceLabel = modelSourceLabel(selection);
 
   return (

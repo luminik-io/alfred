@@ -49,7 +49,7 @@ const jobs: { title: string; body: string; log: string[]; state: JobState }[] = 
   },
   {
     title: "Lucius: senior-dev opens PRs",
-    body: "Picks up a scoped task, makes its own copy of the repo, runs Claude Code or Codex with the full project in context, and opens a pull request with tests.",
+    body: "Picks up a scoped task, makes its own copy of the repo, runs the selected coding CLI with the full project in context, and opens a pull request with tests.",
     log: [
       "[12:04] senior-dev claimed your-backend#247",
       "[12:04] senior-dev worktree ~/.alfred/wt/12042118/",
@@ -106,7 +106,7 @@ const why = [
   },
   {
     title: "Runs on a Mac or Linux box you choose",
-    body: "Alfred runs on a Mac or Linux host you control and uses the Claude Code and Codex subscriptions you already have.",
+    body: "Alfred runs on a Mac or Linux host you control and uses your authenticated Claude Code, Codex, or OpenCode CLI.",
   },
   {
     title: "Slack is optional",
@@ -130,13 +130,13 @@ const why = [
 
 <MarketingLayout
   title="Alfred | Autonomous coding agents for lean engineering teams"
-  description="Alfred turns Claude Code and Codex into a spec-driven engineering team that plans, builds, tests, reviews, and opens pull requests while you are away."
+  description="Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team that plans, builds, tests, reviews, and opens pull requests while you are away."
   path="/"
 >
   <Hero
     eyebrow="LOCAL ENGINEERING TEAM"
     headline="An autonomous engineering team that ships while you're away."
-    sub="Alfred turns Claude Code and Codex into a spec-driven engineering team. Named agents plan the work, write code, test it, review each other, and open pull requests. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges."
+    sub="Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team. Named agents plan the work, write code, test it, review each other, and open pull requests. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges."
     headlineSize="lg"
     headlineWrap="default"
     compactCtas
@@ -194,9 +194,9 @@ const why = [
   <section class="m-section">
     <div class="m-container">
       <SectionHeader
-        eyebrow="THE COORDINATION LAYER"
-        title="Keep work moving between harness sessions."
-        lede="Alfred claims selected work, creates an isolated worktree, invokes the configured harness, routes the result through review, and reports decisions through the configured control surface."
+        eyebrow="WHAT ALFRED ADDS"
+        title="Keep work moving between coding sessions."
+        lede="Alfred claims selected work, creates an isolated worktree, invokes the selected coding CLI, routes the result through review, and reports each decision."
       />
       <div class="why-grid">
         {why.map((w, i) => (

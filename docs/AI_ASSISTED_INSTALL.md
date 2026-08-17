@@ -68,7 +68,7 @@ Rules:
 - Do not enable every discovered repo. Configure only the repos listed in REPOS.
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
-- Keep `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` unset. Use the Claude Code and Codex CLI login flows.
+- Do not paste provider keys into Alfred setup. Authenticate the selected coding CLI with its own login flow.
 - Use the full engineering fleet: `planner` (Drake), `architect` (Batman),
   `senior-dev` (Lucius), `reviewer` (Ra's al Ghul), `test-engineer` (Bane),
   `fixer` (Nightwing), `triage` (Robin), `e2e-runner` (Huntress),
@@ -140,17 +140,19 @@ Steps:
    ~/.local/bin/alfred doctor
 ```
 
-## Claude Code vs Codex as the Installer
+## Installer vs Engine
 
-Using Claude Code or Codex to install Alfred is different from using Claude
-Code or Codex as Alfred's agent engine.
+Using a coding assistant to install Alfred is different from selecting the
+engine that Alfred runs for scheduled work.
 
 | Surface | What it means |
 |---|---|
 | Claude Code as installer | Claude Code drives your terminal to clone, install, configure, and verify Alfred. |
 | Codex as installer | Codex drives your terminal to run the same install commands. |
+| OpenCode as installer | OpenCode drives your terminal to run the same install commands. |
 | Claude Code as Alfred engine | Scheduled Alfred agents call `claude -p` for work. This is the default. |
 | Codex as Alfred engine | Scheduled Alfred agents call `codex exec` for a codename set to `codex` or `hybrid`. Optional. |
+| OpenCode as Alfred engine | Scheduled Alfred agents call `opencode run` for a codename set explicitly to `opencode`. Optional. |
 
 After install, check engine readiness with:
 
@@ -158,10 +160,11 @@ After install, check engine readiness with:
 alfred auth status
 alfred codex status
 alfred codex probe
+alfred engine doctor
 ```
 
-If Codex is not installed or authenticated, Alfred can still run Claude-backed
-agents. Codex is optional.
+Each optional engine can be absent. Configure only engines that are installed
+and signed in.
 
 ## OAuth Token Setup Needs a Real Terminal
 

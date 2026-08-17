@@ -229,7 +229,9 @@ def preflight(spec: PreflightSpec) -> None:
     # 2. Required CLI binaries on PATH (or absolute paths that are executable).
     for binname in spec.bins:
         if binname == INVALID_ENGINE_PREFLIGHT_MARKER:
-            misses.append("engine configuration is invalid (choose claude, codex, or hybrid)")
+            misses.append(
+                "engine configuration is invalid (choose claude, codex, opencode, or hybrid)"
+            )
         elif "/" in binname:
             if not Path(binname).is_file() or not os.access(binname, os.X_OK):
                 misses.append(f"binary `{binname}` is not an executable file")

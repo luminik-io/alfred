@@ -4452,6 +4452,11 @@ def test_agent_models_api_reads_saves_overrides_and_clears(
         "persisted": None,
         "source": "provider-default",
     }
+    assert senior_dev["opencode"] == {
+        "resolved": None,
+        "persisted": None,
+        "source": "provider-default",
+    }
 
     denied = client.post(
         "/api/agent-models",
@@ -4490,6 +4495,22 @@ def test_agent_models_api_reads_saves_overrides_and_clears(
         "resolved": "fleet-opus",
         "persisted": None,
         "source": "fleet-environment",
+    }
+
+    opencode = client.post(
+        "/api/agent-models",
+        headers=_auth_headers(state),
+        json={
+            "agent": "senior-dev",
+            "provider": "opencode",
+            "model": "anthropic/claude-sonnet-4-5",
+        },
+    )
+    assert opencode.status_code == 200
+    assert opencode.json()["selection"] == {
+        "resolved": "anthropic/claude-sonnet-4-5",
+        "persisted": "anthropic/claude-sonnet-4-5",
+        "source": "state",
     }
 
 

@@ -8,7 +8,8 @@ Everything else is an integration. Useful integrations are welcome, but they
 should not become required for a clean open-source install.
 
 The default model path is also intentionally plain: Alfred uses local Claude
-Code / Codex CLI authentication and does not manage provider API keys.
+Code, Codex, or OpenCode CLI authentication. It does not store provider API
+keys itself.
 
 ## Runtime Boundary
 
@@ -57,7 +58,7 @@ on a new machine.
 
 | Profile | Use it when | Required pieces |
 | --- | --- | --- |
-| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code or Codex, embedded SQLite memory, optional Slack webhook. |
+| Standalone Alfred | You want scheduled engineering agents on a local Mac or Linux host. | Alfred, Python, `gh`, `git`, Claude Code, Codex, or OpenCode, embedded SQLite memory, optional Slack webhook. |
 | Alfred + personal memory | You want Alfred to consult your own notes or company knowledge base as a fallback. | Standalone Alfred plus a read-only provider such as `gbrain`. |
 | Alfred + control gateway | You want chat control, MCP registration, skills, or dashboards around Alfred. | Standalone Alfred plus a separately installed gateway/control layer. |
 

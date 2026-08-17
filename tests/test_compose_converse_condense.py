@@ -104,6 +104,24 @@ def test_converse_engine_hydrates_both_explicit_hybrid_paths(monkeypatch) -> Non
     assert cc.os.environ["CODEX_BIN"] == "/opt/homebrew/bin/codex"
 
 
+def test_converse_engine_hydrates_explicit_opencode_path(monkeypatch) -> None:
+    monkeypatch.setenv(cc.ENGINE_ENV, "opencode")
+    monkeypatch.setenv("OPENCODE_BIN", "")
+    monkeypatch.setattr(
+        cc,
+        "_available_engine_clis",
+        lambda: (_ for _ in ()).throw(AssertionError("explicit routing must not probe engines")),
+    )
+    monkeypatch.setattr(
+        cc,
+        "_engine_cli_path",
+        lambda name: "/Users/test/.opencode/bin/opencode" if name == "opencode" else None,
+    )
+
+    assert cc.converse_engine_from_env() == "opencode"
+    assert cc.os.environ["OPENCODE_BIN"] == "/Users/test/.opencode/bin/opencode"
+
+
 @pytest.mark.parametrize("surface", ["compose", "theme", "onboarding", "slack"])
 def test_explicit_conversation_surface_uses_augmented_setup_search_path(
     monkeypatch, tmp_path: Path, surface: str

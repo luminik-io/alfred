@@ -27,8 +27,9 @@ is native to Alfred's runtime and imports no third-party agent framework.
    issue carries none, a generic engineering rubric is used: tests pass, scope
    matches the issue, no unrelated changes, docs updated if user-facing. The
    rubric is bounded to six criteria.
-2. Grade the committed diff. A separate cheap read-only grader engine (Codex by
-   default, `ALFRED_RUBRIC_GRADER_ENGINE` to override) reads the diff plus the
+2. Grade the committed diff. A separate read-only grader engine reads the diff
+   and the rubric. Codex is the default. Set `ALFRED_RUBRIC_GRADER_ENGINE` to
+   `claude`, `codex`, or `opencode` to select another engine.
    rubric and returns a per-criterion verdict as JSON. Only the diff and the
    rubric reach the grader, not the whole run transcript. The grader output is
    untrusted: any malformed, empty, or non-conforming response degrades to a
@@ -52,7 +53,7 @@ ready change.
 | --- | --- | --- |
 | `ALFRED_RUBRIC_GATE` | `0` | Enable the gate. Off until you have benchmarked it. |
 | `ALFRED_RUBRIC_MAX_ITERATIONS` | `1` | Max revision passes before the PR opens (1 to 10). |
-| `ALFRED_RUBRIC_GRADER_ENGINE` | Codex | Engine used for the read-only grade. |
+| `ALFRED_RUBRIC_GRADER_ENGINE` | Codex | Read-only grader: `claude`, `codex`, or `opencode`. |
 
 The gate never runs in dry-run, and it skips grading when the diff is empty.
 

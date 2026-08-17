@@ -13,7 +13,7 @@
 
 **An autonomous engineering team that ships while you're away.**
 
-Alfred turns Claude Code and Codex into a spec-driven engineering team. Named
+Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team. Named
 agents plan the work, write code, test it, review each other, and open pull
 requests. Alfred keeps working without you at the keyboard. You approve risky
 actions and decide what merges.
@@ -25,12 +25,12 @@ dependency bumps, and multi-repo rollouts. Alfred carries each one to a pull
 request you can read, diff, and merge. It remembers what it learned for next
 time.
 
-| A coding-harness session | Alfred |
+| A coding CLI session | Alfred |
 |---|---|
 | Handles the prompt in front of you | Claims queued work on a schedule |
 | Works in the current checkout | Creates an isolated worktree for code changes and review |
 | Keeps session-local context | Recalls reviewed lessons across runs |
-| Uses one active harness | Routes roles between Claude Code and Codex |
+| Uses one coding CLI | Routes each role to Claude Code, Codex, or OpenCode |
 | Returns an answer or diff | Produces a PR, review findings, tests, and evidence |
 
 Alfred is local-first and open source. It is for solo builders and small teams
@@ -177,7 +177,6 @@ Optional batteries add dense local embeddings, Redis memory, Postgres with
 pgvector, Headroom compression, or an alternative graph tool. They remain
 inspectable and reversible. See [batteries](docs/BATTERIES.md),
 [memory providers](docs/MEMORY_PROVIDERS.md), and
-[code memory](docs/CODE_MEMORY.md).
 
 ### Local control surfaces
 
@@ -252,6 +251,7 @@ flowchart LR
     controls --> engine{"engine adapter"}
     engine --> claude["Claude Code CLI"]
     engine --> codex["Codex CLI"]
+    engine --> opencode["OpenCode CLI"]
     controls --> github["GitHub"]
     controls --> state["local state and memory"]
     controls --> slack["optional Slack"]
@@ -273,8 +273,8 @@ run a model gateway or a long-running coordinator. See
 - [Identity and themes](docs/IDENTITY_AND_THEMES.md)
 - [Memory](docs/MEMORY_PROVIDERS.md), [MCP](docs/MCP.md), and
   [batteries](docs/BATTERIES.md)
-- [Claude Code and Codex](docs/CLAUDE_CODE.md) and
-  [Codex provider](docs/CODEX_PROVIDER.md)
+- [Coding engines](docs/ENGINE_ROUTING.md), [Claude Code and Codex](docs/CLAUDE_CODE.md),
+  [Codex provider](docs/CODEX_PROVIDER.md), and [OpenCode](docs/OPENCODE.md)
 - [Verification](docs/VERIFICATION.md), [security](SECURITY.md), and
   [contributing](CONTRIBUTING.md)
 - [Roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)
@@ -284,9 +284,9 @@ Rendered documentation: [alfred.luminik.io](https://alfred.luminik.io/).
 ## Project status
 
 Alfred supports macOS and Linux. Release tags and package downloads are on
-[GitHub Releases](https://github.com/luminik-io/alfred/releases). Claude Code
-and Codex are the validated execution engines. The [roadmap](ROADMAP.md) lists
-active work and future evaluation. The [changelog](CHANGELOG.md) records
+[GitHub Releases](https://github.com/luminik-io/alfred/releases). Claude Code,
+Codex, and OpenCode are validated execution engines. The [roadmap](ROADMAP.md)
+lists active work and future evaluation. The [changelog](CHANGELOG.md) records
 shipped changes.
 
 ## License

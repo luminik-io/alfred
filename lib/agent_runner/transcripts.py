@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .paths import CODEX_TRANSCRIPTS_ROOT, TRANSCRIPTS_ROOT
+from .paths import CODEX_TRANSCRIPTS_ROOT, OPENCODE_TRANSCRIPTS_ROOT, TRANSCRIPTS_ROOT
 
 
 def transcript_path(agent: str, firing_id: str) -> Path:
@@ -50,6 +50,18 @@ def codex_artifact_paths(agent: str, firing_id: str) -> dict[str, Path]:
     return {
         "last_message": directory / f"{firing_id}.last.md",
         "stdout": directory / f"{firing_id}.stdout.txt",
+        "stderr": directory / f"{firing_id}.stderr.txt",
+    }
+
+
+def opencode_artifact_paths(agent: str, firing_id: str) -> dict[str, Path]:
+    """Canonical raw event and stderr paths for one OpenCode run."""
+
+    month = datetime.now(UTC).strftime("%Y-%m")
+    directory = OPENCODE_TRANSCRIPTS_ROOT / agent / month
+    directory.mkdir(parents=True, exist_ok=True)
+    return {
+        "stdout": directory / f"{firing_id}.events.jsonl",
         "stderr": directory / f"{firing_id}.stderr.txt",
     }
 

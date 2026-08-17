@@ -133,7 +133,7 @@ CLI, and [Memory providers](./MEMORY_PROVIDERS.md) for the provider chain.
 
 ## Context governor
 
-Before a firing reaches Claude or Codex, Alfred runs a local context governor
+Before a firing reaches its coding engine, Alfred runs a local context governor
 over the final prompt after memory recall has been attached. The governor is
 default-on and no-ops for ordinary prompt sizes. When a prompt exceeds the
 configured character or UTF-8 byte budget, Alfred keeps the beginning and tail,
@@ -168,9 +168,9 @@ the memory provider chain, with embedded SQLite first by default.
 ## Privacy model
 
 Alfred stores run state, transcripts, lessons, and local ledgers under
-`$ALFRED_HOME`. The selected harness sends prompt context to its model provider.
+`$ALFRED_HOME`. The selected coding CLI sends prompt context to its model provider.
 Alfred can also contact GitHub, optional Slack, telemetry when enabled, and
-package or battery download endpoints. Harnesses, skills, MCP servers, and
+package or battery download endpoints. Coding CLIs, skills, MCP servers, and
 project commands can add other destinations.
 
 Deleting `$ALFRED_HOME/` removes Alfred's local state. It does not remove data

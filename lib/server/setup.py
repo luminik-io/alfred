@@ -760,7 +760,7 @@ def engine_clis(
     deadline: float | None = None,
     environment: Literal["scheduler", "process"] = "scheduler",
 ) -> list[dict[str, Any]]:
-    """Check supported engines and detect candidate harness executables."""
+    """Check supported engines and detect known unsupported executables."""
 
     runtime_env = _runtime_config_env()
     search = _join_search_path(_engine_search_path(runtime_env), runtime_env.get("PATH", ""))
@@ -830,7 +830,7 @@ def engine_cli_path(engine: str) -> str | None:
 
 
 _DEFAULT_ENGINE_FALLBACK_STATES = frozenset({"missing", "incompatible"})
-_SETUP_ENGINE_MODES = frozenset({"claude", "codex", "hybrid"})
+_SETUP_ENGINE_MODES = frozenset({"claude", "codex", "opencode", "hybrid"})
 
 
 def _configured_engine_mode(env: Mapping[str, str]) -> str:
@@ -856,7 +856,11 @@ def _engine_route_status(
     codex = by_name.get("codex")
     if mode != "hybrid":
         selected = by_name.get(mode)
-        display_name = "Claude Code" if mode == "claude" else "Codex"
+        display_name = {
+            "claude": "Claude Code",
+            "codex": "Codex",
+            "opencode": "OpenCode",
+        }.get(mode, mode)
         if selected and selected.get("ready"):
             return True, f"Ready via configured {display_name} route."
         state = str(selected.get("state") if selected else "missing")
@@ -2018,11 +2022,13 @@ def _engine_readiness_check(
 ) -> dict[str, Any]:
     ready, detail = _engine_route_status(engines, mode=mode)
     if mode == "disabled":
-        action = "Set ALFRED_ENGINE to claude, codex, or hybrid, then recheck setup."
+        action = "Set ALFRED_ENGINE to claude, codex, opencode, or hybrid, then recheck setup."
     elif mode == "claude":
         action = "Install and sign in to Claude Code, then recheck setup."
     elif mode == "codex":
         action = "Install and sign in to Codex, then recheck setup."
+    elif mode == "opencode":
+        action = "Install OpenCode and run `opencode auth login`, then recheck setup."
     elif "blocks the default hybrid route" in detail:
         action = "Sign in to Claude Code or select Codex, then recheck setup."
     else:

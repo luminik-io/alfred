@@ -229,7 +229,7 @@ export type ScheduleResponse = {
   error?: string;
 };
 
-export type CustomAgentEngine = "claude" | "codex" | "hybrid";
+export type CustomAgentEngine = "claude" | "codex" | "opencode" | "hybrid";
 
 export type CustomAgentRecord = {
   codename: string;
@@ -283,7 +283,7 @@ export type DeleteCustomAgentResponse = {
   error?: string;
 };
 
-export type AgentModelProvider = "claude" | "codex";
+export type AgentModelProvider = "claude" | "codex" | "opencode";
 
 export type AgentModelSource =
   "agent-environment" | "fleet-environment" | "state" | "provider-default";
@@ -298,6 +298,7 @@ export type AgentModelRecord = {
   agent: string;
   claude: AgentModelSelection;
   codex: AgentModelSelection;
+  opencode: AgentModelSelection;
 };
 
 export type AgentModelsResponse = {

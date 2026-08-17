@@ -171,6 +171,15 @@ def test_engine_preflight_bins_modes(fresh_agent_runner, monkeypatch):
     ]
 
 
+def test_engine_preflight_bins_uses_supplied_environment_for_opencode(fresh_agent_runner):
+    from agent_runner import config
+
+    assert config.engine_preflight_bins(
+        "opencode",
+        environ={"OPENCODE_BIN": "/opt/opencode/bin/opencode", "PATH": ""},
+    ) == ["/opt/opencode/bin/opencode"]
+
+
 def test_doctor_mode_truthy_env(fresh_agent_runner, monkeypatch):
     """doctor_mode honours common truthy strings."""
     ar = fresh_agent_runner

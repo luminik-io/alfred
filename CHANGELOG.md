@@ -6,6 +6,21 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Added OpenCode as an explicit engine for scheduled roles, custom agents,
+  Desktop conversations, and Slack conversations.
+- Added bounded OpenCode version, protocol, and authentication checks. Alfred
+  requires OpenCode 1.18.18 or newer and a stored provider login.
+- Added per-role OpenCode model selection in the CLI, local API, and Desktop.
+
+### Security
+
+- OpenCode runs with an isolated temporary config, disabled external plugins,
+  disabled automatic sharing, an exact worktree, and automatic rejection of
+  unexpected permission prompts. Read-only roles deny edits and shell commands.
+  Write roles deny direct push, merge, and main-branch checkout commands.
+
 ### Changed
 
 - Renamed the three Desktop appearances to Prism, Graphite, and Ledger. The

@@ -7,7 +7,7 @@ import { Button } from "../ui";
 /**
  * Step 0: Welcome. The hero screen of the setup takeover. It says the value
  * once, shows any detected local install, then leads with the trust
- * differentiator (no API keys, runs on the subscriptions you already pay for),
+ * differentiator (Alfred reuses the coding CLI account already on the host),
  * and offers one primary door for the guided path plus a quiet shortcut for a
  * developer who already has a server running.
  *
@@ -69,8 +69,8 @@ export function WelcomeStep({
       <div className="alfred-onboarding-welcome__trust">
         <KeyRound size={15} aria-hidden="true" />
         <span>
-          No API keys. Alfred runs on the Claude Max and Codex Pro subscriptions
-          you already pay for.
+          Bring the coding CLI and provider account you already use. Alfred does
+          not proxy or store provider keys.
         </span>
       </div>
 

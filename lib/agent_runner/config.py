@@ -358,7 +358,7 @@ def agent_model(
     *,
     environ: dict[str, str] | None = None,
 ) -> str | None:
-    """Resolve one agent's model override for Claude Code or Codex.
+    """Resolve one agent's model override for a model-selectable engine.
 
     Precedence:
 
@@ -424,14 +424,14 @@ def engine_preflight_bins(
         # result into PreflightSpec.bins. An empty list incorrectly means that
         # no engine is required and lets doctor mode report a healthy firing.
         return [INVALID_ENGINE_PREFLIGHT_MARKER]
+    env = environ if environ is not None else os.environ
     mode = normalize_engine(engine)
     if mode != "hybrid":
         descriptor = DEFAULT_ENGINE_REGISTRY.descriptor(mode)
-        configured = os.environ.get(descriptor.binary_env, "").strip()
+        configured = env.get(descriptor.binary_env, "").strip()
         return [configured or descriptor.default_binary]
     if mode == "hybrid" and hybrid_requires_codex:
         return [CLAUDE_BIN, CODEX_BIN]
-    env = environ if environ is not None else os.environ
     if _preflight_binary_available(CLAUDE_BIN, environ=env, which=which):
         return [CLAUDE_BIN]
     if _preflight_binary_available(CODEX_BIN, environ=env, which=which):

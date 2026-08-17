@@ -34,7 +34,7 @@ def _runner(outputs: dict[tuple[str, ...], tuple[int, str, str]]):
 def test_default_registry_separates_dispatchable_and_candidate_engines(fresh_agent_runner):
     ar = fresh_agent_runner
 
-    assert ar.DEFAULT_ENGINE_REGISTRY.dispatchable_ids == {"claude", "codex"}
+    assert ar.DEFAULT_ENGINE_REGISTRY.dispatchable_ids == {"claude", "codex", "opencode"}
     assert [row.id for row in ar.ENGINE_DESCRIPTORS] == [
         "claude",
         "codex",
@@ -532,13 +532,17 @@ def test_auth_probe_transport_failure_is_not_reported_as_signed_out(
     assert result.failures == ("auth_probe_failed",)
 
 
-def test_candidate_probe_never_claims_dispatch_readiness(fresh_agent_runner, tmp_path: Path):
+def test_opencode_probe_requires_current_protocol_and_stored_auth(
+    fresh_agent_runner, tmp_path: Path
+):
     ar = fresh_agent_runner
     binary = _executable(tmp_path / "opencode")
     runner, _calls = _runner(
         {
-            ("--version",): (0, "opencode 2.0.0\n", ""),
+            ("--version",): (0, "opencode 1.18.18\n", ""),
+            ("--help",): (0, "--pure\n", ""),
             ("run", "--help"): (0, "--format --model --dir --agent\n", ""),
+            ("auth", "list"): (0, "Credentials\n1 credential\n", ""),
         }
     )
 
@@ -551,19 +555,66 @@ def test_candidate_probe_never_claims_dispatch_readiness(fresh_agent_runner, tmp
 
     assert result.installed is True
     assert result.protocol_compatible is True
+    assert result.ready is True
+    assert result.state == "ready"
+    assert result.failures == ()
+
+
+def test_opencode_probe_rejects_empty_credential_store(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "opencode")
+    runner, calls = _runner(
+        {
+            ("--version",): (0, "opencode 1.18.18\n", ""),
+            ("--help",): (0, "--pure\n", ""),
+            ("run", "--help"): (0, "--format --model --dir --agent\n", ""),
+            ("auth", "list"): (0, "Credentials\n0 credentials\n", ""),
+        }
+    )
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("opencode"),
+        environ={"OPENCODE_BIN": str(binary), "PATH": "", "HOME": str(tmp_path)},
+        runner=runner,
+        use_cache=False,
+    )
+
     assert result.ready is False
-    assert result.state == "needs_validation"
-    assert result.failures == ("deep_probe_required",)
+    assert result.state == "auth_required"
+    assert result.failures == ("auth_required",)
+    assert calls == [("--version",), ("--help",), ("run", "--help"), ("auth", "list")]
 
 
-def test_inventory_detects_candidates_without_running_their_protocol_commands(
+def test_opencode_probe_rejects_pre_contract_version(fresh_agent_runner, tmp_path: Path):
+    ar = fresh_agent_runner
+    binary = _executable(tmp_path / "opencode")
+    runner, calls = _runner({("--version",): (0, "opencode 1.18.17\n", "")})
+
+    result = ar.probe_engine(
+        ar.DEFAULT_ENGINE_REGISTRY.descriptor("opencode"),
+        environ={"OPENCODE_BIN": str(binary), "PATH": ""},
+        runner=runner,
+        use_cache=False,
+    )
+
+    assert result.ready is False
+    assert result.state == "incompatible"
+    assert result.failures == ("unsupported_version",)
+    assert calls == [("--version",)]
+
+
+def test_inventory_probes_dispatchable_opencode_protocol_and_auth(
     fresh_agent_runner, tmp_path: Path
 ):
     ar = fresh_agent_runner
-    marker = tmp_path / "candidate-called"
     candidate = tmp_path / "opencode"
     candidate.write_text(
-        f"#!/bin/sh\nprintf called >> {marker}\n",
+        "#!/bin/sh\n"
+        'if [ "$1" = "--version" ]; then echo \'opencode 1.18.18\'; exit 0; fi\n'
+        'if [ "$1" = "--help" ]; then echo \'--pure\'; exit 0; fi\n'
+        'if [ "$1 $2" = "run --help" ]; then echo \'--format --model --dir --agent\'; exit 0; fi\n'
+        'if [ "$1 $2" = "auth list" ]; then echo \'1 credential\'; exit 0; fi\n'
+        "exit 1\n",
         encoding="utf-8",
     )
     candidate.chmod(0o755)
@@ -575,12 +626,11 @@ def test_inventory_detects_candidates_without_running_their_protocol_commands(
     )
 
     opencode = next(row for row in rows if row["name"] == "opencode")
-    assert marker.exists() is False
     assert opencode["installed"] is True
-    assert opencode["protocol_compatible"] is False
-    assert opencode["ready"] is False
-    assert opencode["state"] == "needs_validation"
-    assert opencode["version"] is None
+    assert opencode["protocol_compatible"] is True
+    assert opencode["ready"] is True
+    assert opencode["state"] == "ready"
+    assert opencode["version"] == "opencode 1.18.18"
 
 
 def test_probe_returns_a_canonical_absolute_executable(
@@ -595,8 +645,10 @@ def test_probe_returns_a_canonical_absolute_executable(
     monkeypatch.chdir(tmp_path)
     runner, _calls = _runner(
         {
-            ("--version",): (0, "opencode 2.0.0\n", ""),
+            ("--version",): (0, "opencode 1.18.18\n", ""),
+            ("--help",): (0, "--pure\n", ""),
             ("run", "--help"): (0, "--format --model --dir --agent\n", ""),
+            ("auth", "list"): (0, "1 credential\n", ""),
         }
     )
 

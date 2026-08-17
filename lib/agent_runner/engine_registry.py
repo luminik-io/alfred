@@ -85,6 +85,7 @@ class ProbeCommand:
 
     args: tuple[str, ...]
     markers: tuple[str, ...] = ()
+    reject_markers: tuple[str, ...] = ()
     reason: str = "protocol_mismatch"
     env_vars: frozenset[str] = frozenset()
 
@@ -257,6 +258,7 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
             {
                 EngineCapability.TEXT,
                 EngineCapability.REPOSITORY_READ,
+                EngineCapability.WORKTREE_WRITE,
                 EngineCapability.MODEL_SELECTION,
                 EngineCapability.STRUCTURED_OUTPUT,
                 EngineCapability.NON_INTERACTIVE,
@@ -264,11 +266,20 @@ ENGINE_DESCRIPTORS: tuple[EngineDescriptor, ...] = (
         ),
         protocol_commands=(
             ProbeCommand(("--version",), reason="version_failed"),
+            ProbeCommand(("--help",), markers=("--pure",)),
             ProbeCommand(
                 ("run", "--help"),
                 markers=("--format", "--model", "--dir", "--agent"),
             ),
         ),
+        minimum_version=(1, 18, 18),
+        auth_command=ProbeCommand(
+            ("auth", "list"),
+            reject_markers=("0 credentials", "0 credential"),
+            reason="auth_required",
+            env_vars=frozenset({"XDG_DATA_HOME"}),
+        ),
+        dispatchable=True,
     ),
     EngineDescriptor(
         id="cline",
@@ -862,7 +873,20 @@ def probe_engine(
                 version=version,
                 failures=("auth_probe_failed",),
             )
-        elif auth is not None and completed is not None and completed.returncode != 0:
+        elif (
+            auth is not None
+            and completed is not None
+            and (
+                completed.returncode != 0
+                or any(
+                    _has_protocol_marker(
+                        f"{completed.stdout or ''}\n{completed.stderr or ''}",
+                        marker,
+                    )
+                    for marker in auth.reject_markers
+                )
+            )
+        ):
             result = EngineProbeResult(
                 descriptor=descriptor,
                 installed=True,

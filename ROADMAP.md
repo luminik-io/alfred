@@ -45,21 +45,19 @@ The order can change when testing finds a reliability or safety problem.
   guide, threat model, and benchmark method. Submit only to directories whose
   published scope matches the shipped product.
 
-### Harness capability contract
+### Engine capability contract
 
-- [Validate OpenCode](https://github.com/luminik-io/alfred/issues/653) before
-  enabling dispatch. The adapter must prove isolated
-  config, repository scope, permission behavior, structured events, and a
-  fail-closed response to interactive prompts.
 - Separate detection from support. A detected CLI must not become dispatchable
   until its full contract passes.
+- Keep the OpenCode adapter pinned to a tested minimum version and recheck its
+  CLI, permission, and event contracts when that minimum changes.
 
 ### Session and evidence continuity
 
 - [Define one local event envelope](https://github.com/luminik-io/alfred/issues/656)
   for sessions, turns, tools, evidence,
   repositories, branches, pull requests, roles, and firing IDs.
-- Link interactive harness sessions to scheduled Alfred work when the operator
+- Link interactive coding sessions to scheduled Alfred work when the operator
   chooses to import them.
 - Keep collection local by default. Require explicit repository scope and apply
   redaction before any export.
@@ -82,7 +80,7 @@ The order can change when testing finds a reliability or safety problem.
 - Pin external tools and record checksums, versions, licenses, and provenance.
 - Package small, opt-in skill and MCP sets by use case. Do not bundle an
   unreviewed marketplace.
-- Make setup and removal idempotent. Preserve user-owned harness configuration.
+- Make setup and removal idempotent. Preserve user-owned CLI configuration.
 
 ## Next
 

@@ -111,7 +111,7 @@ export function FirstRequestStep({
       // the user actually lands on.
       setNotice({
         tone: "ok",
-        message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan. It runs on the Claude and Codex subscriptions you already pay for, with no per-request bill, and you can watch usage in the sidebar.`,
+        message: `Drafted your first request: "${result.title}". Refine it in Ask, then save the plan. The selected engine uses its existing provider login. Claude and Codex subscription headroom appears in the sidebar when their local state is available.`,
       });
       setRequestDrafted(true);
       onComplete("request");
@@ -172,9 +172,9 @@ export function FirstRequestStep({
         <div className="alfred-onboarding-cost-chip" role="status">
           <GaugeCircle size={16} aria-hidden="true" />
           <span>
-            Here's what this costs: it runs on the Claude and Codex subscriptions
-            you already pay for, so there's no per-request bill. Watch live usage
-            and limits any time in the sidebar.
+            The selected engine uses its existing provider login. Claude and Codex
+            subscription headroom appears in the sidebar when their local state is
+            available. Check the selected provider for billing details.
           </span>
         </div>
       ) : null}

@@ -28,14 +28,14 @@ def test_custom_agent_store_validates_and_round_trips(tmp_path: Path) -> None:
             "role_title": "Security reviewer",
             "purpose": "Review risky changes before PR handoff.",
             "prompt": "Review the configured repositories for risky code changes and summarize actions.",
-            "engine": "codex",
+            "engine": "opencode",
             "schedule": "weekly@mon:09:05",
             "repos": ["acme/api", "acme/web", "acme/api"],
         }
     )
 
     assert agent.codename == "security-scout"
-    assert agent.engine == "codex"
+    assert agent.engine == "opencode"
     assert agent.schedule == "cron:1:9:05"
     assert agent.repos == ("acme/api", "acme/web")
     assert store.get("security-scout") == agent
@@ -395,7 +395,7 @@ def test_alfred_agent_cli_add_list_remove(tmp_path: Path) -> None:
             "--prompt",
             "Review release readiness for the configured repositories and list blockers.",
             "--engine",
-            "hybrid",
+            "opencode",
             "--schedule",
             "30m",
             "--repo",
@@ -419,6 +419,7 @@ def test_alfred_agent_cli_add_list_remove(tmp_path: Path) -> None:
     )
     assert listed.returncode == 0, listed.stderr
     assert json.loads(listed.stdout)["agents"][0]["codename"] == "release-captain"
+    assert json.loads(listed.stdout)["agents"][0]["engine"] == "opencode"
 
     removed = subprocess.run(
         [sys.executable, str(ALFRED), "agent", "remove", "release-captain", "--json"],

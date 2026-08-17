@@ -41,8 +41,9 @@ adjust it from `alfred usage` data on your host.
 Claude account routing and engine routing are different:
 
 - `alfred claude primary|secondary|swap` chooses which local Claude Code auth directory future Claude firings use.
-- `alfred engine set <codename> <claude|codex|hybrid>` chooses whether that
-  codename uses Claude, Codex, or Claude-first capability fallback.
+- `alfred engine set <codename> <claude|codex|opencode|hybrid>` chooses Claude,
+  Codex, OpenCode, or Claude-first capability fallback. See the separate
+  [OpenCode guide](/guides/opencode/) for its provider and permission contract.
 
 ```sh
 alfred engine status

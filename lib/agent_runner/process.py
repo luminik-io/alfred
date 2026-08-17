@@ -12,8 +12,10 @@ This module owns the boundary between Python and the shell:
   invoke the Claude Code CLI and parse its sentinel response.
 * :func:`codex_invoke`: invoke the Codex CLI non-interactively and
   marshal its artefacts.
+* :func:`opencode_invoke`: invoke OpenCode with isolated config and parse its
+  JSON event stream.
 * :func:`invoke_agent_engine`: engine-aware dispatch for
-  Claude / Codex / Claude-first hybrid with fallback.
+  Claude / Codex / OpenCode / Claude-first hybrid with fallback.
 
 What this module does NOT own:
 
@@ -70,6 +72,7 @@ from .memory_runtime import (
     strip_memory_reflections,
     with_memory_prompt,
 )
+from .opencode import build_opencode_command, opencode_environment, parse_opencode_events
 from .paths import (
     CODEX_APPROVAL_POLICY,
     CODEX_DEFAULT_SANDBOX,
@@ -83,6 +86,7 @@ from .reliability import (
     retry_with_backoff,
 )
 from .result import (
+    _AUTH_RESULT_RE,
     _BUDGET_RESULT_RE,
     _RATE_LIMIT_RESULT_RE,
     ClaudeResult,
@@ -100,6 +104,7 @@ from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
     codex_artifact_paths,
+    opencode_artifact_paths,
     transcript_path,
 )
 
@@ -179,7 +184,7 @@ def _disabled_engine_result() -> ClaudeResult:
         cost_usd=0.0,
         session_id=None,
         result_text=(
-            "The configured engine is invalid. Choose claude, codex, or hybrid, "
+            "The configured engine is invalid. Choose claude, codex, opencode, or hybrid, "
             "then run `alfred doctor`."
         ),
         raw={"engine": DISABLED_ENGINE, "engine_readiness": "invalid_configuration"},
@@ -1490,6 +1495,172 @@ def codex_invoke(
 
 
 # --------------------------------------------------------------------------
+# OpenCode CLI invocation
+# --------------------------------------------------------------------------
+
+
+def opencode_invoke(
+    prompt: str,
+    *,
+    workdir: Path,
+    agent: str,
+    firing_id: str | None = None,
+    timeout: int = 1200,
+    model: str | None = None,
+    allow_writes: bool = False,
+) -> ClaudeResult:
+    """Run one OpenCode prompt through its bounded NDJSON CLI contract."""
+
+    if model is None:
+        model = agent_model(agent, "opencode")
+    if is_dry_run():
+        dry_run_log(
+            "llm",
+            f"would invoke opencode with prompt of {len(prompt)} chars, "
+            f"model={model or '(cli-default)'}, writes={'yes' if allow_writes else 'no'}",
+        )
+        return dry_run_claude_result(prompt, model=model, engine="opencode")
+
+    readiness = _probe_dispatch_engine("opencode")
+    readiness_failure = _engine_readiness_failure("opencode", readiness)
+    if readiness_failure is not None:
+        return readiness_failure
+    if readiness.binary is None:
+        return _engine_not_ready_result("opencode", readiness)
+
+    if firing_id is None:
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        firing_id = f"{stamp}-{secrets.token_hex(2)}"
+    paths = opencode_artifact_paths(agent, firing_id)
+    command = build_opencode_command(readiness.binary, workdir=workdir, model=model)
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="alfred-opencode-") as directory:
+            child_env = opencode_environment(
+                os.environ,
+                config_dir=Path(directory),
+                allow_writes=allow_writes,
+            )
+            proc = _popen_run_text(
+                command,
+                cwd=str(workdir),
+                timeout=timeout,
+                capture=True,
+                env=child_env,
+                input_text=prompt,
+            )
+    except (FileNotFoundError, PermissionError, OSError) as exc:
+        return ClaudeResult(
+            success=False,
+            subtype="error_engine_unavailable",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={"engine": "opencode"},
+            stop_reason="error",
+            error_message=f"OpenCode could not start: {type(exc).__name__}",
+        )
+
+    stdout = proc.stdout or ""
+    stderr = proc.stderr or ""
+    with contextlib.suppress(OSError):
+        paths["stdout"].write_text(stdout, encoding="utf-8")
+        paths["stderr"].write_text(stderr, encoding="utf-8")
+    events = parse_opencode_events(stdout)
+    raw: dict[str, Any] = {
+        "engine": "opencode",
+        "returncode": proc.returncode,
+        "stdout_path": str(paths["stdout"]),
+        "stderr_path": str(paths["stderr"]),
+        "tokens_used": events.tokens_used,
+        "model": model,
+        "worktree_write": allow_writes,
+    }
+
+    if proc.returncode == 124:
+        raw["timeout"] = timeout
+        return ClaudeResult(
+            success=False,
+            subtype="error_timeout",
+            num_turns=1,
+            cost_usd=events.cost_usd,
+            session_id=events.session_id,
+            result_text=events.text,
+            raw=raw,
+            stop_reason="aborted",
+            error_message=f"opencode_invoke exceeded {timeout}s",
+        )
+
+    failure_text = "\n".join(value for value in (events.error, events.tool_error, stderr) if value)
+    if looks_quota_exhausted(failure_text):
+        resume_at = parse_quota_resume_at(failure_text)
+        raw["quota_resume_at"] = resume_at
+        with contextlib.suppress(Exception):
+            from .state import record_engine_quota_exhausted
+
+            raw["quota_resume_at"] = record_engine_quota_exhausted(
+                "opencode",
+                resume_at=resume_at,
+                reason=failure_text[-200:] or "OpenCode usage limit reached",
+            )
+        subtype = "error_quota_exhausted"
+    elif _AUTH_RESULT_RE.search(failure_text):
+        subtype = "error_authentication"
+    elif proc.returncode < 0 or any(
+        marker in failure_text.casefold()
+        for marker in ("aborterror", "cancelled", "canceled", "interrupted")
+    ):
+        subtype = "error_cancelled"
+    elif events.tool_error and "permission" in events.tool_error.lower():
+        subtype = "error_permission"
+    elif _RATE_LIMIT_RESULT_RE.search(failure_text) or _BUDGET_RESULT_RE.search(failure_text):
+        subtype = "error_rate_limit"
+    elif events.parse_error:
+        subtype = "parse-failed"
+    elif events.tool_error:
+        subtype = "error_tool"
+    elif events.error or proc.returncode != 0:
+        subtype = "error"
+    elif not events.text:
+        subtype = "parse-failed"
+    else:
+        subtype = "success"
+
+    if subtype != "success":
+        detail = (
+            events.parse_error
+            or events.tool_error
+            or events.error
+            or stderr.strip()[-1000:]
+            or "OpenCode produced no final message."
+        )
+        return ClaudeResult(
+            success=False,
+            subtype=subtype,
+            num_turns=1,
+            cost_usd=events.cost_usd,
+            session_id=events.session_id,
+            result_text=events.text or detail,
+            raw=raw,
+            stop_reason="aborted" if subtype == "error_cancelled" else "error",
+            error_message=detail,
+        )
+
+    return ClaudeResult(
+        success=True,
+        subtype="success",
+        num_turns=1,
+        cost_usd=events.cost_usd,
+        session_id=events.session_id,
+        result_text=events.text,
+        raw=raw,
+        stop_reason="end_turn",
+        error_message=None,
+    )
+
+
+# --------------------------------------------------------------------------
 # Engine-aware dispatch
 # --------------------------------------------------------------------------
 
@@ -1596,11 +1767,11 @@ def _rubric_max_iterations() -> int:
     return env_int("ALFRED_RUBRIC_MAX_ITERATIONS", 1, minimum=1, maximum=10)
 
 
-#: Grader engines the gate knows how to run. Only these two are cheap+local
-#: engines here; the hybrid pseudo-engine is not a real grader target, so we
+#: Grader engines the gate knows how to run. The hybrid pseudo-engine is not a
+#: real grader target, so we
 #: resolve it down to the cheap default rather than run a fallback chain for a
 #: read-only judging pass.
-_GRADER_ENGINES: frozenset[str] = frozenset({"codex", "claude"})
+_GRADER_ENGINES: frozenset[str] = frozenset({"claude", "codex", "opencode"})
 
 #: Default grader engine: the cheapest read-only judge available here.
 _DEFAULT_GRADER_ENGINE = "codex"
@@ -1676,7 +1847,7 @@ def build_rubric_grader(
 ) -> Callable[[str], str]:
     """Build a grader_fn that runs a cheap, read-only grader engine.
 
-    The grader is a SEPARATE cheap invocation (Codex/Haiku-class): it reads the
+    The grader is a separate read-only invocation. It reads the
     prompt and returns raw text for ``rubric.grade`` to parse. It runs
     read-only (no repo mutation) and short-timeout, because grading is a
     judging pass, not more implementation work. Injectable so tests never reach
@@ -1712,6 +1883,16 @@ def build_rubric_grader(
                 allowed_tools="",
                 timeout=180,
                 model=None,
+            )
+        if engine == "opencode":
+            return opencode_invoke(
+                prompt_holder["prompt"],
+                workdir=workdir,
+                agent=f"{agent}-grader",
+                firing_id=f"{firing_id}-rubric-grade",
+                timeout=180,
+                model=None,
+                allow_writes=False,
             )
         return codex_invoke(
             prompt_holder["prompt"],
@@ -1793,8 +1974,12 @@ def invoke_agent_engine(
     codex_add_dirs: list[Path] | None = None,
     codex_approval_policy: str | None = None,
     codex_bypass_approvals_and_sandbox: bool = False,
+    opencode_timeout: int | None = None,
+    opencode_model: str | None = None,
+    opencode_allow_writes: bool | None = None,
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
+    opencode_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
     hybrid_fallback_on_provider_failure: bool = False,
     memory_repo: str | None = None,
@@ -1806,10 +1991,10 @@ def invoke_agent_engine(
     rubric_grader_fn: Callable[[str], str] | None = None,
     engine_probe_fn: Callable[[str], EngineProbeResult] | None = None,
 ) -> tuple[ClaudeResult, str]:
-    """Invoke a prompt through Claude, Codex, or Claude-first hybrid.
+    """Invoke a prompt through Claude, Codex, OpenCode, or Claude-first hybrid.
 
     Returns ``(result, engine_used)`` where ``engine_used`` is one of
-    ``"claude"``, ``"codex"``, or ``"codex-fallback"``. The
+    ``"claude"``, ``"codex"``, ``"opencode"``, or ``"codex-fallback"``. The
     ``on_fallback`` fires when hybrid mode falls back. Capability failures
     always qualify. Interactive callers that auto-select from installed CLIs
     can set ``hybrid_fallback_on_provider_failure`` so a provider-local auth,
@@ -1859,13 +2044,23 @@ def invoke_agent_engine(
         claude_model = agent_model(agent, "claude")
     if codex_model is None:
         codex_model = agent_model(agent, "codex")
+    if opencode_model is None:
+        opencode_model = agent_model(agent, "opencode")
+    if opencode_allow_writes is None:
+        # Existing runners already state their mutation boundary through the
+        # Codex bypass flag. Reuse that explicit per-call decision so selecting
+        # OpenCode does not silently turn a builder into a reviewer or vice
+        # versa. New callers can override this directly.
+        opencode_allow_writes = codex_bypass_approvals_and_sandbox
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
+    opencode_call = opencode_fn or opencode_invoke
     # Real adapters enforce readiness at their own subprocess boundary, which
     # also protects direct graders, judges, and utility callers. An injected
     # probe remains available for tests and injected adapters.
     claude_probe = engine_probe_fn
     codex_probe = engine_probe_fn
+    opencode_probe = engine_probe_fn
     memory_provider = load_runtime_memory() if memory_repo else None
     # Arm the cleanup BEFORE the firing's delta state can exist. with_memory_prompt
     # records injected lessons for this firing, and govern_prompt_context runs
@@ -1938,6 +2133,21 @@ def invoke_agent_engine(
                 approval_policy=codex_approval_policy,
                 bypass_approvals_and_sandbox=codex_bypass_approvals_and_sandbox,
                 add_dirs=codex_add_dirs,
+            )
+
+        def _invoke_opencode() -> ClaudeResult:
+            if opencode_probe is not None:
+                readiness = opencode_probe("opencode")
+                if not readiness.ready:
+                    return _engine_not_ready_result("opencode", readiness)
+            return opencode_call(
+                prompt_for_engine,
+                workdir=workdir,
+                agent=agent,
+                firing_id=firing_id,
+                timeout=opencode_timeout or timeout,
+                model=opencode_model,
+                allow_writes=opencode_allow_writes,
             )
 
         def _resilient_invoke(engine_name: str, invoke: Callable[[], ClaudeResult]) -> ClaudeResult:
@@ -2018,6 +2228,9 @@ def invoke_agent_engine(
         if mode == "codex":
             result = _resilient_invoke("codex", _invoke_codex)
             engine_used = "codex"
+        elif mode == "opencode":
+            result = _resilient_invoke("opencode", _invoke_opencode)
+            engine_used = "opencode"
         else:
             result = _resilient_invoke("claude", _invoke_claude)
             engine_used = "claude"

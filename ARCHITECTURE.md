@@ -9,7 +9,7 @@ sequenceDiagram
     participant scheduler as host scheduler
     participant runner as agent runner
     participant lib as agent runner lib
-    participant claude as Claude Code CLI
+    participant engine as selected coding CLI
     participant gh as GitHub CLI
     participant slack as Slack webhook
 
@@ -22,8 +22,8 @@ sequenceDiagram
     lib->>gh: add agent:in-flight label
     lib->>gh: post claim comment
     runner->>lib: make_worktree(repo, agent, issue)
-    runner->>claude: invoke prompt with max turns
-    claude-->>runner: ClaudeResult (turns, cost, session_id, result_text)
+    runner->>engine: invoke bounded prompt
+    engine-->>runner: AgentResult (turns, cost, session_id, result_text)
     runner->>gh: gh pr create
     runner->>lib: release_issue(transition_to=agent:pr-open, pr_url=...)
     runner->>slack: slack_post('✅ shipped', severity=info)
@@ -68,7 +68,9 @@ stay outside the core scheduled engineering fleet. See
 
 ## Why this shape
 
-Alfred is built for one operator. One always-on Mac or Debian/Ubuntu host, one Claude Code or Codex CLI account, one founder merging the PRs. Every design decision falls out of those three constraints.
+Alfred is built for one operator. One always-on Mac or Debian/Ubuntu host, one
+authenticated coding-engine CLI, one person or repository policy merging the
+PRs. Every design decision follows from those constraints.
 
 - **No GitHub Actions for the agent loop.** Earlier versions ran each agent as a workflow file (`agent-feature.yml`, `agent-tests.yml`, etc.) that called `anthropic-ai/claude-code-action`. That setup needed a paid Anthropic API key, doubled the spend, and made the Mac's existing Pro subscription dead weight. It was retired on 2026-04-24.
 - **No cloud queue, no shared service.** The fleet writes operational state to plain JSON files in `~/.alfred/state/`, and durable lessons to the local fleet-brain SQLite file. There is no required Redis, SQS, or Postgres. State that lives outside the operator's filesystem becomes state the operator has to operate.

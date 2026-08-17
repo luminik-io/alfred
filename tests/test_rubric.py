@@ -685,6 +685,7 @@ def test_resolve_grader_engine_precedence():
     # Explicit, known engines win.
     assert proc.resolve_grader_engine("claude") == "claude"
     assert proc.resolve_grader_engine("codex") == "codex"
+    assert proc.resolve_grader_engine("opencode") == "opencode"
     assert proc.resolve_grader_engine("CLAUDE") == "claude"
     # Unset / blank / unknown / hybrid -> cheap read-only default, never a
     # two-engine fallback chain for a grade.
@@ -755,6 +756,39 @@ def test_default_grader_defaults_to_codex(monkeypatch):
     )
     grader("prompt")
     assert used == ["codex"]
+
+
+def test_opencode_grader_is_read_only_and_uses_its_own_default_model(monkeypatch):
+    import agent_runner.process as proc
+
+    seen: dict[str, object] = {}
+
+    def fake_opencode_invoke(prompt, **kwargs):
+        seen["agent"] = kwargs.get("agent")
+        seen["allow_writes"] = kwargs.get("allow_writes")
+        seen["model"] = kwargs.get("model")
+        return _ok_result(
+            proc, json.dumps({"result": "satisfied", "explanation": "ok", "criteria": []})
+        )
+
+    monkeypatch.setattr(proc, "opencode_invoke", fake_opencode_invoke)
+
+    grader = proc.build_rubric_grader(
+        grader_engine="opencode",
+        agent="batman",
+        firing_id="f1",
+        workdir=Path("/tmp"),
+        codex_model="gpt-5-codex",
+    )
+
+    output = grader("prompt")
+
+    assert '"result"' in output
+    assert seen == {
+        "agent": "batman-grader",
+        "allow_writes": False,
+        "model": None,
+    }
 
 
 def test_claude_grader_does_not_receive_primary_codex_model(monkeypatch):

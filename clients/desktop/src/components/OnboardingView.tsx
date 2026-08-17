@@ -106,7 +106,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
     key: "engine",
     title: "Let's find your coding tools.",
     stepperTitle: "Tools",
-    blurb: "Alfred checks for Claude Code and Codex on this Mac. No keys, no config.",
+    blurb: "Alfred checks Claude Code, Codex, and OpenCode without reading provider secrets.",
     icon: TerminalSquare,
     optional: false,
   },

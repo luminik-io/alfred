@@ -7,8 +7,8 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **390**
-- Operator-facing (in `.env.example`): **73**
+- Declared variables: **393**
+- Operator-facing (in `.env.example`): **76**
 - Internal / experimental: **317**
 
 Operator-facing vars also appear, with their defaults, in
@@ -51,6 +51,8 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `WORKSPACE_ROOT` | path | `~/code` | operator | Parent directory of per-repo product checkouts. |
 | `WORKSPACE_SUBDIR` | str | `product` | operator | Subdirectory under WORKSPACE_ROOT holding checkouts. |
 | `CLAUDE_BIN` | path |  | operator | Absolute path to the claude CLI (defaults to PATH). |
+| `CODEX_BIN` | path |  | operator | Absolute path to the codex CLI (defaults to PATH). |
+| `OPENCODE_BIN` | path |  | operator | Absolute path to the OpenCode CLI (defaults to PATH). |
 | `CLAUDE_CODE_OAUTH_TOKEN` | secret |  | operator | Long-lived OAuth token so launchd/systemd can authenticate claude. |
 
 ## Memory providers and code intelligence
@@ -140,9 +142,10 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 
 | Variable | Type | Default | Scope | Description |
 | --- | --- | --- | --- | --- |
-| `ALFRED_ENGINE` | enum (claude/codex/hybrid) | `hybrid` | operator | Fleet-wide engine override for testing (claude/codex/hybrid). |
+| `ALFRED_ENGINE` | enum (claude/codex/opencode/hybrid) | `hybrid` | operator | Fleet-wide engine override for testing (claude/codex/opencode/hybrid). |
 | `ALFRED_CLAUDE_MODEL` | str |  | operator | Fleet-wide Claude model environment override. |
 | `ALFRED_CODEX_MODEL` | str |  | operator | Fleet-wide Codex model environment override. |
+| `ALFRED_OPENCODE_MODEL` | str |  | operator | Fleet-wide OpenCode model environment override. |
 | `ALFRED_MAX_STEPS` | int | `200` | internal | Hard ceiling on lifecycle steps per firing (clamped 1..100000). |
 | `ALFRED_LOOP_DETECT` | bool | `1` | internal | Enable repeated-action loop detection; set 0 to disable. |
 | `ALFRED_LOOP_WINDOW` | int | `3` | internal | Window size for loop detection (clamped 2..50). |
@@ -236,7 +239,7 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_SLACK_BOT_TOKEN_CACHE` | path |  | internal | Path to the on-disk Slack bot-token cache. |
 | `ALFRED_SLACK_NATIVE_SENDS` | bool | `0` | internal | Prefer native Slack API sends over webhooks. |
 | `ALFRED_SLACK_CONVERSE_ENABLED` | bool | `0` | operator | Enable the Slack converse (chat) surface. |
-| `ALFRED_SLACK_CONVERSE_ENGINE` | enum (claude/codex/hybrid) |  | operator | Engine backing Slack converse (claude/codex/hybrid). |
+| `ALFRED_SLACK_CONVERSE_ENGINE` | enum (claude/codex/opencode/hybrid) |  | operator | Engine backing Slack converse (claude/codex/opencode/hybrid). |
 | `ALFRED_SLACK_CONVERSE_CHANNELS` | list |  | operator | Comma-separated channels where converse is active. |
 | `ALFRED_SLACK_CONVERSE_TIMEOUT` | int |  | internal | Timeout in seconds for a converse turn. |
 | `ALFRED_SLACK_CONVERSE_THREAD_CONTEXT` | int |  | internal | How much thread context converse includes. |

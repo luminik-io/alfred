@@ -1,7 +1,7 @@
 """Prompt context budgeting before engine invocation.
 
 Alfred already gives agents durable memory and read-only code graph tools. This
-module keeps the final prompt sent to Claude or Codex inside a local character
+module keeps the final prompt sent to a coding engine inside a local character
 and UTF-8 byte budget so huge issue bodies, logs, or generated context cannot
 waste a firing on an avoidable provider-side context failure.
 """

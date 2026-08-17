@@ -622,6 +622,11 @@ export class AlfredApiFixture {
             agent: "architect",
             claude: { resolved: "opus", persisted: null, source: "provider-default" },
             codex: { resolved: "gpt-5", persisted: null, source: "provider-default" },
+            opencode: {
+              resolved: "anthropic/claude-sonnet-4-5",
+              persisted: null,
+              source: "provider-default",
+            },
           },
         ],
         count: 1,

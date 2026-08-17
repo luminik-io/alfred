@@ -35,7 +35,7 @@ from agent_capabilities import CUSTOM_AGENT_SCRIPT
 MANIFEST_VERSION = 1
 CUSTOM_AGENT_STATE_DIR = "custom-agents"
 CUSTOM_AGENT_STATE_FILE = "custom-agents.json"
-ENGINE_CHOICES = frozenset({"claude", "codex", "hybrid"})
+ENGINE_CHOICES = frozenset({"claude", "codex", "opencode", "hybrid"})
 MAX_LABEL_LEN = 80
 MAX_PROMPT_LEN = 20_000
 MAX_REPOS = 50
@@ -481,7 +481,7 @@ def _coerce_agent(
         raise CustomAgentError(f"prompt must be {MAX_PROMPT_LEN} characters or less")
     engine = str(payload.get("engine") or "hybrid").strip().lower()
     if engine not in ENGINE_CHOICES:
-        raise CustomAgentError("engine must be claude, codex, or hybrid")
+        raise CustomAgentError("engine must be claude, codex, opencode, or hybrid")
     schedule = canonical_schedule(payload.get("schedule") or "1h")
     repos = _repos(payload.get("repos"))
     enabled = payload.get("enabled", True)

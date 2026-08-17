@@ -89,8 +89,12 @@ def test_claude_credential_green_when_no_claude_agents():
 
 def test_engine_quota_green_when_none_parked():
     fd = _load_doctor()
-    finding = fd.check_engine_quota_backoff(backoff_reader=lambda _e: None)
+    checked: list[str] = []
+    finding = fd.check_engine_quota_backoff(
+        backoff_reader=lambda engine: checked.append(engine) or None
+    )
     assert finding.severity == "green"
+    assert checked == ["claude", "codex", "opencode"]
 
 
 def test_engine_quota_yellow_when_engine_parked():

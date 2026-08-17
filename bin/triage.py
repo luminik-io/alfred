@@ -462,7 +462,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         events.emit("firing_complete", outcome=f"llm-{result.subtype}", engine=engine_used)
         return 0
 
-    # Parse the LLM JSON response. Claude/Codex sometimes wrap valid JSON in
+    # Parse the model JSON response. Coding engines sometimes wrap valid JSON in
     # a code fence or one short reasoning sentence; keep the contract strict
     # after extraction.
     text = (result.result_text or "").strip()

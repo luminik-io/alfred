@@ -84,7 +84,7 @@ For the full CLI reference, see [`docs/SKILLS.md#the-alfred-skills-command`](htt
 
 ## Security note
 
-Skills run with the same permissions as the harness. They can read files the
+Skills run with the same permissions as the coding CLI. They can read files the
 local user can read, write files the user can write, run shell commands, invoke
 tools, and use the network. Treat a new skill like any other executable
 dependency:

@@ -47,7 +47,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`THEME_SYSTEM.md`](THEME_SYSTEM.md): the desktop two-axis theme model. The `data-theme` palette and `.dark`/`.light` mode axes, the `:root` token contract, and glass versus flat surface tokens.
 - [`GOALS.md`](GOALS.md): durable goal contract for Slack, CLI, client, planning readiness, evaluator, and memory integration.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
-- [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, or hybrid routing; precedence chain; default matrix; multi-engine roadmap.
+- [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, OpenCode, or hybrid routing; precedence chain; default matrix; engine contract.
 - [`OPERATING_THE_FLEET.md`](OPERATING_THE_FLEET.md): week-two runbook. Daily Slack rhythm, CLI recipes, sentinels, logs, "fleet went quiet" troubleshooting.
 - [`CLI.md`](CLI.md): the read-only `alfred metrics` and `alfred logs` inspectors over the state tree, plus `alfred slack-listener`, the optional Socket Mode planning-intake listener.
 - [`CONNECTORS.md`](CONNECTORS.md): input connectors that feed the `agent:implement` issue queue from non-GitHub sources such as Linear tickets and Sentry alerts without changing the agents.
@@ -57,6 +57,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and observed turns per PR.
 - [`TELEMETRY.md`](TELEMETRY.md): the opt-out anonymous usage reporter that sends aggregate totals to the public Impact counter, its controls, and how to point it at a self-hosted collector.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.
+- [`OPENCODE.md`](OPENCODE.md): OpenCode install, authentication, permission boundary, model selection, diagnostics, and runtime contract.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook, optional bot-token setup, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.
 - [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md): reaction approval gate, trusted feedback users, and Socket Mode listener boundary.
 - [`AWS_SETUP.md`](AWS_SETUP.md): per-agent IAM and Secrets Manager setup.
