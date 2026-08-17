@@ -185,7 +185,7 @@ async def api_setup_batteries(request: Request) -> JSONResponse:
     except Exception:  # never break the client on a probe failure
         logger.exception("api_setup_batteries: manifest probe failed")
         return JSONResponse(
-            {"version": 1, "summary": {}, "batteries": [], "error": views._GENERIC_ERROR}
+            {"version": 2, "summary": {}, "batteries": [], "error": views._GENERIC_ERROR}
         )
     return JSONResponse(views._jsonable(payload))
 

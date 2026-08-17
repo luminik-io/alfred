@@ -130,7 +130,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
     key: "batteries",
     title: "Your tools are included.",
     stepperTitle: "Tools included",
-    blurb: "Local memory, compact context, code navigation, and a live code graph are ready. Review or add advanced integrations.",
+    blurb: "Review the included tools. Add a local tool or external service only when you need it.",
     icon: BatteryCharging,
     optional: true,
   },

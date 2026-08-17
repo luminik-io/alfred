@@ -12,6 +12,9 @@ import type { OnboardingNotice } from "./types";
 // A short, friendly badge for how a battery is obtained. Truthful, no hype: it
 // tells the person exactly what turning it on will still require.
 function requirementLabel(battery: SetupBattery): string {
+  if (battery.setup_group === "external-service") {
+    return battery.service ? `run ${battery.service}` : "run an external service";
+  }
   if (battery.requires_daemon) return `needs ${battery.service}`;
   if (battery.install_kind === "pip-extra" && battery.pip_extra) {
     return `pip extra: ${battery.pip_extra}`;
@@ -78,6 +81,17 @@ function ConfigurableBatteryRow({
             <span className="text-muted-foreground/80">· {battery.install_hint}</span>
           ) : null}
         </span>
+        <span className="mt-1 block text-[11px] text-muted-foreground">
+          {battery.version} · {battery.license} ·{" "}
+          <a
+            href={battery.source_url}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            source
+          </a>
+        </span>
       </div>
       <Switch
         checked={battery.configured}
@@ -90,10 +104,10 @@ function ConfigurableBatteryRow({
 }
 
 /**
- * Included-tools step. Reads the shared manifest, shows built-ins and default-on
- * local tools first, then offers advanced integrations. Native onboarding runs
- * the real battery CLI before enabling a dependency. External daemons stay
- * explicit and are never installed by Alfred.
+ * Included-tools step. Reads the shared manifest, then separates included
+ * tools, optional local tools, and external services. Native onboarding runs
+ * the real battery CLI before enabling a dependency. Alfred never installs an
+ * external service.
  */
 export function BatteryPickerStep({
   baseUrl,
@@ -175,17 +189,25 @@ export function BatteryPickerStep({
     }
   };
 
-  const builtins = (manifest?.batteries ?? []).filter((b) => b.builtin);
-  const includedTools = (manifest?.batteries ?? []).filter((b) => !b.builtin && b.default_on);
-  const advanced = (manifest?.batteries ?? []).filter((b) => !b.builtin && !b.default_on);
+  const batteries = manifest?.batteries ?? [];
+  const includedBuiltins = batteries.filter(
+    (battery) => battery.setup_group === "included" && battery.builtin,
+  );
+  const includedConfigurable = batteries.filter(
+    (battery) => battery.setup_group === "included" && !battery.builtin,
+  );
+  const optionalLocal = batteries.filter((battery) => battery.setup_group === "optional-local");
+  const externalServices = batteries.filter(
+    (battery) => battery.setup_group === "external-service",
+  );
 
   return (
     <div className="grid gap-3">
       <Card size="sm" className="rounded-lg border-border/70 bg-muted/25 shadow-none">
         <CardContent className="px-3 py-2 text-sm text-muted-foreground">
-          Alfred includes local memory, compact context, code navigation, and codebase memory.
-          Advanced integrations are available when you need a different engine or external store.
-          Change these later with <code>alfred batteries</code>.
+          Alfred includes memory, compact context, and code navigation. Optional local tools run
+          on this computer. External services need a separate process that you operate. Change
+          these later with <code>alfred batteries</code>.
         </CardContent>
       </Card>
 
@@ -202,12 +224,12 @@ export function BatteryPickerStep({
         </Button>
       ) : null}
 
-      {builtins.length ? (
-        <section aria-label="Included, always on" className="grid gap-2">
+      {includedBuiltins.length || includedConfigurable.length ? (
+        <section aria-label="Included" className="grid gap-2">
           <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Included, no setup
+            Included
           </h3>
-          {builtins.map((battery) => (
+          {includedBuiltins.map((battery) => (
             <div
               key={battery.id}
               className="grid grid-cols-[auto_1fr] gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm"
@@ -227,15 +249,7 @@ export function BatteryPickerStep({
               </div>
             </div>
           ))}
-        </section>
-      ) : null}
-
-      {includedTools.length ? (
-        <section aria-label="Included by default" className="grid gap-2">
-          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Included by default
-          </h3>
-          {includedTools.map((battery) => (
+          {includedConfigurable.map((battery) => (
             <ConfigurableBatteryRow
               key={battery.id}
               battery={battery}
@@ -249,12 +263,31 @@ export function BatteryPickerStep({
         </section>
       ) : null}
 
-      {advanced.length ? (
-        <section aria-label="Advanced integrations" className="grid gap-2">
+      {optionalLocal.length ? (
+        <section aria-label="Optional local tools" className="grid gap-2">
           <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Advanced integrations
+            Optional local tools
           </h3>
-          {advanced.map((battery) => (
+          {optionalLocal.map((battery) => (
+            <ConfigurableBatteryRow
+              key={battery.id}
+              battery={battery}
+              busy={pending === battery.id}
+              canMutate={canMutate}
+              canRun={canRun}
+              connected={connected}
+              onToggle={(row, next) => void toggle(row, next)}
+            />
+          ))}
+        </section>
+      ) : null}
+
+      {externalServices.length ? (
+        <section aria-label="External services" className="grid gap-2">
+          <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            External services
+          </h3>
+          {externalServices.map((battery) => (
             <ConfigurableBatteryRow
               key={battery.id}
               battery={battery}

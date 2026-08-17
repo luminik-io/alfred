@@ -25,6 +25,12 @@ VALID_CATEGORIES = {
     batteries.CATEGORY_CODE_GRAPH,
 }
 
+VALID_SETUP_GROUPS = {
+    batteries.SETUP_GROUP_INCLUDED,
+    batteries.SETUP_GROUP_OPTIONAL_LOCAL,
+    batteries.SETUP_GROUP_EXTERNAL_SERVICE,
+}
+
 
 # --------------------------------------------------------------------------- #
 # Manifest shape
@@ -76,6 +82,60 @@ def test_configurable_batteries_declare_enable_disable() -> None:
         assert battery.enable_env, battery.id
         assert battery.disable_env, battery.id
         assert battery.install_kind != batteries.INSTALL_INCLUDED, battery.id
+
+
+def test_every_battery_declares_its_setup_and_supply_chain_contract() -> None:
+    for battery in batteries.BATTERIES:
+        assert battery.setup_group in VALID_SETUP_GROUPS, battery.id
+        assert battery.version.strip(), battery.id
+        assert battery.license.strip(), battery.id
+        assert battery.source_url.startswith("https://"), battery.id
+        assert battery.integrity.strip(), battery.id
+        assert battery.check_command.strip(), battery.id
+        assert battery.disable_command.strip(), battery.id
+        assert battery.remove_command.strip(), battery.id
+
+        if battery.builtin:
+            assert battery.setup_group == batteries.SETUP_GROUP_INCLUDED, battery.id
+            assert battery.install_command == "included with Alfred", battery.id
+        else:
+            assert battery.install_command.strip(), battery.id
+
+
+def test_setup_groups_separate_local_tools_from_services() -> None:
+    grouped = {
+        group: {battery.id for battery in batteries.batteries_in_setup_group(group)}
+        for group in VALID_SETUP_GROUPS
+    }
+    assert grouped[batteries.SETUP_GROUP_INCLUDED] == {
+        "sqlite-memory",
+        "tool-compactor",
+        "skeleton-reads",
+        "blast-radius",
+        "code-memory-mcp",
+    }
+    assert grouped[batteries.SETUP_GROUP_OPTIONAL_LOCAL] == {
+        "headroom-compression",
+        "graphify",
+    }
+    assert grouped[batteries.SETUP_GROUP_EXTERNAL_SERVICE] == {
+        "dense-embeddings",
+        "redis-ams",
+        "pgvector",
+    }
+
+
+def test_serialized_battery_exposes_operating_contract() -> None:
+    row = batteries.to_dict(batteries.BATTERIES[0], {})
+    assert row["setup_group"] == batteries.SETUP_GROUP_INCLUDED
+    assert row["version"]
+    assert row["license"]
+    assert row["source_url"]
+    assert row["integrity"]
+    assert row["install_command"] == "included with Alfred"
+    assert row["check_command"]
+    assert row["disable_command"]
+    assert row["remove_command"]
 
 
 def test_code_memory_is_the_only_default_on_configurable_battery() -> None:
@@ -251,7 +311,7 @@ def test_manifest_with_zero_batteries(monkeypatch: pytest.MonkeyPatch, tmp_path:
     monkeypatch.setattr(batteries, "_find_spec", lambda name: False)
     env = {"ALFRED_HOME": str(tmp_path)}
     payload = batteries.manifest(env)
-    assert payload["version"] == 1
+    assert payload["version"] == 2
     assert payload["summary"]["included"] == 4
     assert payload["summary"]["enabled"] == 0
     # Every opt-in is either available or not-installed, never enabled.

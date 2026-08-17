@@ -2038,6 +2038,12 @@ def apply_batteries_arg(state: WizardState, batteries_arg: str | None) -> None:
 
 
 def _battery_requirement_line(battery: batteries.Battery) -> str:
+    if (
+        battery.setup_group == batteries.SETUP_GROUP_EXTERNAL_SERVICE
+        and battery.install_kind == batteries.INSTALL_PIP_EXTRA
+        and battery.pip_extra
+    ):
+        return f'needs `pip install "alfred-os[{battery.pip_extra}]"` and {battery.service} running'
     if battery.requires_daemon:
         return f"needs {battery.service} running (you start it yourself)"
     if battery.install_kind == batteries.INSTALL_PIP_EXTRA and battery.pip_extra:
@@ -2050,10 +2056,10 @@ def _battery_requirement_line(battery: batteries.Battery) -> str:
 
 
 def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
-    """Show included tools and offer advanced integrations.
+    """Show included tools, optional local tools, and external services.
 
     Fresh installs keep the default-on local tools without writing redundant env
-    flags. Interactive setup only asks about advanced integrations. This records
+    flags. Interactive setup asks about each optional operating group. This records
     choices; ``step_9_generate`` writes their flags, and `alfred batteries
     enable` owns dependency installation. The wizard never starts a daemon.
     """
@@ -2077,37 +2083,52 @@ def step_8c_batteries(state: WizardState, *, non_interactive: bool) -> None:
             ok("Built-ins only selected. Included configurable tools are disabled.")
         elif state.batteries:
             chosen = ", ".join(state.batteries)
-            ok(f"Advanced integrations selected: {chosen}. Included tools stay on.")
+            ok(f"Optional tools selected: {chosen}. Included tools stay on.")
         else:
-            ok("Included tools ready. Add advanced integrations later with `alfred batteries`.")
+            ok("Included tools ready. Add optional tools later with `alfred batteries`.")
         return
 
-    note("Advanced integrations are off by default. Turn on any you need:")
     selected = list(state.batteries)
-    for battery in advanced:
-        print(f"  {STYLE.BLUE}{battery.name}{STYLE.OFF} ({battery.category})")
-        print(f"    {battery.how_it_helps}")
-        print(f"    {_battery_requirement_line(battery)}")
-        default_on = battery.id in selected
-        if ask_yes_no(f"Enable {battery.name}?", default=default_on):
-            prospective = [*selected, battery.id] if battery.id not in selected else selected
-            conflict = batteries.selection_conflict(prospective)
-            if conflict:
-                warn(f"Skipping {battery.id}: {conflict}")
-                continue
-            if battery.id not in selected:
-                selected.append(battery.id)
-            if battery.requires_daemon:
-                note(f"    Remember: start {battery.service} yourself. {battery.install_hint}")
-            elif battery.install_kind in (batteries.INSTALL_PIP_EXTRA, batteries.INSTALL_AUTOFETCH):
-                note(f"    Finish install later with `alfred batteries enable {battery.id}`.")
-        elif battery.id in selected:
-            selected.remove(battery.id)
+    groups = (
+        ("Optional local tools", batteries.SETUP_GROUP_OPTIONAL_LOCAL),
+        ("External services", batteries.SETUP_GROUP_EXTERNAL_SERVICE),
+    )
+    for label, group in groups:
+        group_batteries = tuple(battery for battery in advanced if battery.setup_group == group)
+        if not group_batteries:
+            continue
+        note(f"{label} are off by default. Turn on only what you need:")
+        for battery in group_batteries:
+            print(f"  {STYLE.BLUE}{battery.name}{STYLE.OFF} ({battery.category})")
+            print(f"    {battery.how_it_helps}")
+            print(f"    {_battery_requirement_line(battery)}")
+            print(f"    {battery.version}; {battery.license}; {battery.source_url}")
+            default_on = battery.id in selected
+            if ask_yes_no(f"Enable {battery.name}?", default=default_on):
+                prospective = [*selected, battery.id] if battery.id not in selected else selected
+                conflict = batteries.selection_conflict(prospective)
+                if conflict:
+                    warn(f"Skipping {battery.id}: {conflict}")
+                    continue
+                if battery.id not in selected:
+                    selected.append(battery.id)
+                if (
+                    battery.requires_daemon
+                    or battery.setup_group == batteries.SETUP_GROUP_EXTERNAL_SERVICE
+                ):
+                    note(f"    You operate the required service. {battery.install_hint}")
+                elif battery.install_kind in (
+                    batteries.INSTALL_PIP_EXTRA,
+                    batteries.INSTALL_AUTOFETCH,
+                ):
+                    note(f"    Finish install later with `alfred batteries enable {battery.id}`.")
+            elif battery.id in selected:
+                selected.remove(battery.id)
     state.batteries = selected
     if selected:
-        ok(f"Advanced integrations selected: {', '.join(selected)}.")
+        ok(f"Optional tools selected: {', '.join(selected)}.")
     else:
-        ok("Included tools ready. Add advanced integrations later with `alfred batteries`.")
+        ok("Included tools ready. Add optional tools later with `alfred batteries`.")
 
 
 def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:

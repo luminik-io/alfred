@@ -42,6 +42,10 @@ CATEGORY_MEMORY = "memory"
 CATEGORY_COMPRESSION = "compression"
 CATEGORY_CODE_GRAPH = "code-graph"
 
+SETUP_GROUP_INCLUDED = "included"
+SETUP_GROUP_OPTIONAL_LOCAL = "optional-local"
+SETUP_GROUP_EXTERNAL_SERVICE = "external-service"
+
 # How a battery is obtained. Built-ins need no install; other tools declare the
 # exact dependency path even when they are enabled by default.
 INSTALL_INCLUDED = "included"  # built-in, nothing to install
@@ -94,6 +98,8 @@ class Battery:
     # but remain user-disableable.
     builtin: bool
     default_on: bool
+    # Setup groups describe the operating burden, not product importance.
+    setup_group: str
     # Env flags written to $ALFRED_HOME/.env to enable / disable the battery.
     enable_env: Mapping[str, str] = field(default_factory=dict)
     disable_env: Mapping[str, str] = field(default_factory=dict)
@@ -114,6 +120,15 @@ class Battery:
     # How to detect availability (see ``is_installed``); dispatched by id.
     detect: str = ""
     docs: str = ""
+    # Public operating and supply-chain contract.
+    version: str = ""
+    license: str = ""
+    source_url: str = ""
+    integrity: str = ""
+    install_command: str = ""
+    check_command: str = ""
+    disable_command: str = ""
+    remove_command: str = ""
 
 
 # --------------------------------------------------------------------------- #
@@ -134,8 +149,17 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=True,
         default_on=True,
+        setup_group=SETUP_GROUP_INCLUDED,
         install_kind=INSTALL_INCLUDED,
         docs="docs/MEMORY_PROVIDERS.md",
+        version="bundled with Alfred",
+        license="MIT",
+        source_url="https://github.com/luminik-io/alfred",
+        integrity="installed with the signed Alfred package",
+        install_command="included with Alfred",
+        check_command="alfred batteries list --json",
+        disable_command="not disableable",
+        remove_command="removed with Alfred",
     ),
     Battery(
         id="tool-compactor",
@@ -148,8 +172,17 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=True,
         default_on=True,
+        setup_group=SETUP_GROUP_INCLUDED,
         install_kind=INSTALL_INCLUDED,
         docs="docs/COMPRESSION.md",
+        version="bundled with Alfred",
+        license="MIT",
+        source_url="https://github.com/luminik-io/alfred",
+        integrity="installed with the signed Alfred package",
+        install_command="included with Alfred",
+        check_command="alfred batteries list --json",
+        disable_command="not disableable",
+        remove_command="removed with Alfred",
     ),
     Battery(
         id="skeleton-reads",
@@ -162,8 +195,17 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=True,
         default_on=True,
+        setup_group=SETUP_GROUP_INCLUDED,
         install_kind=INSTALL_INCLUDED,
         docs="docs/CODE_MEMORY.md",
+        version="bundled with Alfred",
+        license="MIT",
+        source_url="https://github.com/luminik-io/alfred",
+        integrity="installed with the signed Alfred package",
+        install_command="included with Alfred",
+        check_command="alfred capabilities --json",
+        disable_command="not disableable",
+        remove_command="removed with Alfred",
     ),
     Battery(
         id="blast-radius",
@@ -176,8 +218,17 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=True,
         default_on=True,
+        setup_group=SETUP_GROUP_INCLUDED,
         install_kind=INSTALL_INCLUDED,
         docs="docs/CODE_MEMORY.md",
+        version="bundled with Alfred",
+        license="MIT",
+        source_url="https://github.com/luminik-io/alfred",
+        integrity="installed with the signed Alfred package",
+        install_command="included with Alfred",
+        check_command="alfred capabilities --json",
+        disable_command="not disableable",
+        remove_command="removed with Alfred",
     ),
     # ----- Configurable batteries ---------------------------------------- #
     Battery(
@@ -193,6 +244,7 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=False,
+        setup_group=SETUP_GROUP_EXTERNAL_SERVICE,
         enable_env={"ALFRED_MEMORY_SQLITE_DENSE": "1"},
         disable_env={"ALFRED_MEMORY_SQLITE_DENSE": "0"},
         enable_flag=("ALFRED_MEMORY_SQLITE_DENSE", _ANY_TRUTHY),
@@ -206,6 +258,14 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         detect="dense_embeddings",
         docs="docs/MEMORY_PROVIDERS.md",
+        version="sqlite-vec>=0.1; Ollama operator-managed",
+        license="sqlite-vec MIT OR Apache-2.0; Ollama CLI MIT; model licence varies",
+        source_url="https://github.com/asg017/sqlite-vec",
+        integrity="Python package index artifact hashes; Ollama is operator-managed",
+        install_command="alfred batteries install dense-embeddings --yes",
+        check_command="alfred batteries list --json",
+        disable_command="alfred batteries disable dense-embeddings --yes",
+        remove_command="alfred batteries remove dense-embeddings --yes",
     ),
     Battery(
         id="headroom-compression",
@@ -221,6 +281,7 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=False,
+        setup_group=SETUP_GROUP_OPTIONAL_LOCAL,
         enable_env={"ALFRED_COMPRESSION_ENGINE": "headroom", "ALFRED_HEADROOM_AUTOFETCH": "1"},
         disable_env={"ALFRED_COMPRESSION_ENGINE": "builtin"},
         enable_flag=("ALFRED_COMPRESSION_ENGINE", "headroom"),
@@ -233,6 +294,14 @@ BATTERIES: tuple[Battery, ...] = (
         autofetch_cmd=(sys.executable, "-m", "pip", "install", HEADROOM_PACKAGE_SPEC),
         detect="headroom",
         docs="docs/COMPRESSION.md",
+        version=HEADROOM_PACKAGE_SPEC,
+        license="Apache-2.0",
+        source_url="https://pypi.org/project/headroom-ai/0.29.0/",
+        integrity="Python package index artifact hashes",
+        install_command="alfred batteries install headroom-compression --yes",
+        check_command="alfred batteries list --json",
+        disable_command="alfred batteries disable headroom-compression --yes",
+        remove_command="alfred batteries remove headroom-compression --yes",
     ),
     Battery(
         id="code-memory-mcp",
@@ -248,6 +317,7 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=True,
+        setup_group=SETUP_GROUP_INCLUDED,
         enable_env={"ALFRED_CODE_MEMORY_MCP": "1", "ALFRED_CODE_MEMORY_AUTOFETCH": "1"},
         # Disabling must close the REAL runtime gate (ALFRED_CODE_MEMORY_MCP),
         # not just stop autofetch: the MCP defaults on and would still attach a
@@ -263,6 +333,14 @@ BATTERIES: tuple[Battery, ...] = (
         autofetch_cmd=("code-memory-mcp", "doctor"),
         detect="code_memory",
         docs="docs/CODE_MEMORY.md",
+        version="v0.8.1",
+        license="MIT",
+        source_url="https://github.com/DeusData/codebase-memory-mcp",
+        integrity="release checksums.txt verified with SHA-256",
+        install_command="alfred batteries install code-memory-mcp --yes",
+        check_command="alfred code-memory doctor",
+        disable_command="alfred batteries disable code-memory-mcp --yes",
+        remove_command="alfred batteries remove code-memory-mcp --yes",
     ),
     Battery(
         id="graphify",
@@ -280,6 +358,7 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=False,
+        setup_group=SETUP_GROUP_OPTIONAL_LOCAL,
         enable_env={
             "ALFRED_GRAPHIFY_MCP": "1",
             "ALFRED_GRAPHIFY_FALLBACK": "code-memory",
@@ -308,6 +387,14 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         detect="graphify",
         docs="docs/CODE_MEMORY.md",
+        version="graphifyy[mcp]==0.9.8",
+        license="MIT",
+        source_url="https://pypi.org/project/graphifyy/0.9.8/",
+        integrity="Python package index artifact hashes",
+        install_command="alfred batteries install graphify --yes",
+        check_command="alfred batteries list --json",
+        disable_command="alfred batteries disable graphify --yes",
+        remove_command="alfred batteries remove graphify --yes",
     ),
     Battery(
         id="redis-ams",
@@ -324,6 +411,7 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=False,
+        setup_group=SETUP_GROUP_EXTERNAL_SERVICE,
         enable_env={"ALFRED_MEMORY_PROVIDERS": "redis,fleet"},
         disable_env={"ALFRED_MEMORY_PROVIDERS": "sqlite,fleet"},
         provider="redis",
@@ -336,6 +424,14 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         detect="redis_ams",
         docs="docs/MEMORY_PROVIDERS.md",
+        version="operator-managed compatible service",
+        license="Redis Agent Memory Server Apache-2.0",
+        source_url="https://github.com/redis/agent-memory-server",
+        integrity="operator-managed service image or source checkout",
+        install_command="follow docs/MEMORY_PROVIDERS.md; Alfred does not install services",
+        check_command="alfred brain redis-status",
+        disable_command="alfred batteries disable redis-ams --yes",
+        remove_command="stop and remove the operator-managed service after disabling it",
     ),
     Battery(
         id="pgvector",
@@ -349,6 +445,7 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         builtin=False,
         default_on=False,
+        setup_group=SETUP_GROUP_EXTERNAL_SERVICE,
         enable_env={"ALFRED_MEMORY_PROVIDERS": "pgvector,fleet"},
         disable_env={"ALFRED_MEMORY_PROVIDERS": "sqlite,fleet"},
         provider="pgvector",
@@ -362,6 +459,14 @@ BATTERIES: tuple[Battery, ...] = (
         ),
         detect="pgvector",
         docs="docs/MEMORY_PROVIDERS.md",
+        version="psycopg>=3.1; pgvector>=0.2; Postgres operator-managed",
+        license="psycopg LGPL-3.0; pgvector-python MIT; pgvector PostgreSQL",
+        source_url="https://github.com/pgvector/pgvector",
+        integrity="Python package index artifact hashes; database is operator-managed",
+        install_command="follow docs/MEMORY_PROVIDERS.md; Alfred does not install databases",
+        check_command="alfred batteries list --json",
+        disable_command="alfred batteries disable pgvector --yes",
+        remove_command="remove the operator-managed database after disabling it",
     ),
 )
 
@@ -393,6 +498,12 @@ def default_batteries() -> tuple[Battery, ...]:
 def advanced_batteries() -> tuple[Battery, ...]:
     """Configurable integrations that remain off until explicitly enabled."""
     return tuple(b for b in BATTERIES if not b.builtin and not b.default_on)
+
+
+def batteries_in_setup_group(group: str) -> tuple[Battery, ...]:
+    """Return batteries in one plain setup group, preserving manifest order."""
+
+    return tuple(battery for battery in BATTERIES if battery.setup_group == group)
 
 
 def managed_env_keys() -> frozenset[str]:
@@ -709,6 +820,7 @@ def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
         "how_it_helps": battery.how_it_helps,
         "builtin": battery.builtin,
         "default_on": battery.default_on,
+        "setup_group": battery.setup_group,
         "status": status,
         "configured": configured,
         "enabled": status in {STATUS_INCLUDED, STATUS_ENABLED},
@@ -720,6 +832,14 @@ def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
         "pip_extra": battery.pip_extra,
         "env_keys": sorted(set(battery.enable_env) | set(battery.disable_env)),
         "docs": battery.docs,
+        "version": battery.version,
+        "license": battery.license,
+        "source_url": battery.source_url,
+        "integrity": battery.integrity,
+        "install_command": battery.install_command,
+        "check_command": battery.check_command,
+        "disable_command": battery.disable_command,
+        "remove_command": battery.remove_command,
     }
 
 
@@ -734,7 +854,7 @@ def manifest(env: Mapping[str, str] | None = None) -> dict[str, object]:
         "not_installed": sum(1 for r in rows if r["status"] == STATUS_NOT_INSTALLED),
         "total": len(rows),
     }
-    return {"version": 1, "summary": summary, "batteries": rows}
+    return {"version": 2, "summary": summary, "batteries": rows}
 
 
 # --------------------------------------------------------------------------- #

@@ -2834,19 +2834,33 @@ def _print_battery_list(payload: dict[str, Any]) -> None:
         f"available {summary.get('available', 0)}  not-installed {summary.get('not_installed', 0)}"
     )
     print("Local memory, compaction, code navigation, and codebase memory are included by default.")
-    for battery in payload.get("batteries", []):
-        marker = _BATTERY_STATUS_LABEL.get(battery["status"], battery["status"].upper())
-        daemon = f" (needs {battery['service']})" if battery.get("requires_daemon") else ""
-        print(f"{marker:<10} {battery['id']:<20} [{battery['category']}]{daemon}")
-        print(f"           {battery['how_it_helps']}")
-        if battery["status"] in {"available", "not_installed"} and battery.get("install_hint"):
-            print(f"           enable: alfred batteries enable {battery['id']}")
-            if battery["status"] == "not_installed":
-                print(f"           needs:  {battery['install_hint']}")
+    rows = payload.get("batteries", [])
+    groups = (
+        ("included", "Included"),
+        ("optional-local", "Optional local tools"),
+        ("external-service", "External services"),
+    )
+    for group, label in groups:
+        group_rows = [battery for battery in rows if battery.get("setup_group") == group]
+        if not group_rows:
+            continue
+        print(f"\n{label}")
+        for battery in group_rows:
+            marker = _BATTERY_STATUS_LABEL.get(battery["status"], battery["status"].upper())
+            external = battery.get("setup_group") == "external-service"
+            daemon = f" (run {battery['service']})" if external and battery.get("service") else ""
+            print(f"{marker:<10} {battery['id']:<20} [{battery['category']}]{daemon}")
+            print(f"           {battery['how_it_helps']}")
+            print(f"           supply: {battery['version']}; {battery['license']}")
+            print(f"           source: {battery['source_url']}")
+            if battery["status"] in {"available", "not_installed"} and battery.get("install_hint"):
+                print(f"           enable: alfred batteries enable {battery['id']}")
+                if battery["status"] == "not_installed":
+                    print(f"           needs:  {battery['install_hint']}")
 
 
 def cmd_batteries(args: argparse.Namespace) -> int:
-    """List, install, enable, or disable one configurable battery.
+    """List, install, enable, disable, or remove one configurable battery.
 
     Enabling writes the battery's env flag(s) to ``$ALFRED_HOME/.env``. For a
     battery with a pip extra or an autofetch binary, we ask before running the
@@ -2858,6 +2872,7 @@ def cmd_batteries(args: argparse.Namespace) -> int:
         battery_by_id,
         disable_values,
         enable_values,
+        is_enabled,
         is_installed,
         load_env,
         manifest,
@@ -2888,6 +2903,13 @@ def cmd_batteries(args: argparse.Namespace) -> int:
     enabling = action == "enable"
     installing = action == "install"
     current_env = load_env()
+    removing = action == "remove"
+
+    if removing:
+        if is_enabled(battery, current_env):
+            print(f"alfred: disable {battery.id} first. Removal never changes configuration.")
+            return 1
+        return _battery_run_remove(args, battery, current_env=current_env)
     # Enabling a second primary memory store (Redis vs pgvector) would compose
     # two primaries into the chain; refuse it with a clear message instead.
     if enabling and battery.provider:
@@ -2926,9 +2948,10 @@ def cmd_batteries(args: argparse.Namespace) -> int:
     # API perform the one durable configuration write. This keeps an API failure
     # from leaving the battery enabled while the UI reports failure.
     if installing:
-        if battery.requires_daemon:
+        if battery.setup_group == "external-service":
             print(
-                f"alfred: {battery.id} needs {battery.service} running; Alfred does not start it."
+                f"alfred: {battery.id} needs {battery.service or 'an external service'} running; "
+                "Alfred does not start it."
             )
             print(f"        {battery.install_hint}")
         else:
@@ -2950,9 +2973,10 @@ def cmd_batteries(args: argparse.Namespace) -> int:
     verb = "enabled" if enabling else "disabled"
     print(f"alfred: {verb} {battery.id}. Wrote {', '.join(values)} to {env_path}")
 
-    if enabling and battery.requires_daemon:
+    if enabling and battery.setup_group == "external-service":
         print(
-            f"alfred: {battery.id} needs {battery.service} running, which you must start yourself."
+            f"alfred: {battery.id} needs {battery.service or 'an external service'} running, "
+            "which you must start yourself."
         )
         print(f"        {battery.install_hint}")
         return 0
@@ -3007,6 +3031,81 @@ def _battery_run_install(
             return 0
     print(f"alfred: running {printable}")
     return _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S, env=install_env)
+
+
+def _battery_run_remove(
+    args: argparse.Namespace,
+    battery: Any,
+    *,
+    current_env: dict[str, str],
+) -> int:
+    """Remove one local dependency without writing Alfred configuration."""
+
+    command: list[str] = []
+    if battery.id == "dense-embeddings":
+        command = [sys.executable, "-m", "pip", "uninstall", "-y", "sqlite-vec"]
+    elif battery.id == "headroom-compression":
+        command = [sys.executable, "-m", "pip", "uninstall", "-y", "headroom-ai"]
+    elif battery.id == "graphify":
+        command = ["uv", "tool", "uninstall", "graphifyy"]
+    elif battery.id == "code-memory-mcp":
+        override = str(current_env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
+        if override:
+            print(
+                "alfred: code-memory-mcp uses an operator-supplied executable. "
+                "Alfred will not remove it."
+            )
+            return 0
+        cached = Path(
+            str(current_env.get("ALFRED_HOME", "")).strip() or str(Path.home() / ".alfred")
+        )
+        cached = cached.expanduser() / "bin" / "codebase-memory-mcp"
+        printable = f"rm -- {shlex.quote(str(cached))}"
+        if getattr(args, "print_command", False):
+            print(f"alfred: run this to remove {battery.id}:")
+            print(f"        {printable}")
+            return 0
+        if not getattr(args, "yes", False):
+            if not sys.stdin.isatty():
+                print(f"alfred: {battery.id} is still installed. Run:")
+                print(f"        {printable}")
+                return 0
+            answer = input(f"alfred: remove `{cached}` now? [y/N]: ").strip().lower()
+            if not answer.startswith("y"):
+                print("alfred: skipped.")
+                return 0
+        try:
+            cached.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            print(f"alfred: could not remove {cached}: {exc}")
+            return 1
+        print(f"alfred: removed {battery.id}. Configuration was not changed.")
+        return 0
+    else:
+        print(f"alfred: {battery.id} uses an operator-managed service.")
+        print(f"        {battery.remove_command}")
+        return 0
+
+    printable = " ".join(shlex.quote(part) for part in command)
+    if getattr(args, "print_command", False):
+        print(f"alfred: run this to remove {battery.id}:")
+        print(f"        {printable}")
+        return 0
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            print(f"alfred: {battery.id} is still installed. Run:")
+            print(f"        {printable}")
+            return 0
+        answer = input(f"alfred: run `{printable}` now? [y/N]: ").strip().lower()
+        if not answer.startswith("y"):
+            print("alfred: skipped.")
+            return 0
+    result = _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S)
+    if result == 0:
+        print(f"alfred: removed {battery.id}. Configuration was not changed.")
+    return result
 
 
 def _pr_min_approvals() -> int:
@@ -4501,7 +4600,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_batteries_list = batteries_sub.add_parser("list", help="list all batteries with status")
     p_batteries_list.add_argument("--json", action="store_true")
     p_batteries_list.set_defaults(func=cmd_batteries, battery_action="list")
-    for verb in ("install", "enable", "disable"):
+    for verb in ("install", "enable", "disable", "remove"):
         p_verb = batteries_sub.add_parser(verb, help=f"{verb} one opt-in battery by id")
         p_verb.add_argument("battery_id", help="battery id, e.g. dense-embeddings")
         p_verb.add_argument("--yes", action="store_true", help="run any install without prompting")

@@ -19,6 +19,7 @@ function battery(overrides: Partial<SetupBattery>): SetupBattery {
     how_it_helps: "Finds relevant lessons even when you word things differently.",
     builtin: false,
     default_on: false,
+    setup_group: "external-service",
     status: "available",
     configured: false,
     enabled: false,
@@ -30,13 +31,21 @@ function battery(overrides: Partial<SetupBattery>): SetupBattery {
     pip_extra: "vector",
     env_keys: ["ALFRED_MEMORY_SQLITE_DENSE"],
     docs: "docs/MEMORY_PROVIDERS.md",
+    version: "sqlite-vec>=0.1",
+    license: "MIT OR Apache-2.0",
+    source_url: "https://github.com/asg017/sqlite-vec",
+    integrity: "Python package index artifact hashes",
+    install_command: 'alfred batteries install dense-embeddings --yes',
+    check_command: "alfred batteries list --json",
+    disable_command: "alfred batteries disable dense-embeddings --yes",
+    remove_command: "python -m pip uninstall sqlite-vec",
     ...overrides,
   };
 }
 
 function manifest(rows: SetupBattery[]): SetupBatteryManifest {
   return {
-    version: 1,
+    version: 2,
     summary: { total: rows.length },
     batteries: rows,
   };
@@ -46,6 +55,7 @@ const BUILTIN = battery({
   id: "sqlite-memory",
   name: "Built-in memory",
   builtin: true,
+  setup_group: "included",
   status: "included",
   enabled: true,
   install_kind: "included",
@@ -57,6 +67,7 @@ const INCLUDED_DEFAULT = battery({
   name: "Codebase memory (MCP)",
   category: "code-graph",
   default_on: true,
+  setup_group: "included",
   status: "enabled",
   configured: true,
   enabled: true,
@@ -66,9 +77,20 @@ const INCLUDED_DEFAULT = battery({
 });
 
 describe("BatteryPickerStep", () => {
-  it("separates built-ins, included defaults, and advanced integrations", async () => {
+  it("separates included tools, optional local tools, and external services", async () => {
     vi.spyOn(api, "loadSetupBatteries").mockResolvedValue(
-      manifest([BUILTIN, INCLUDED_DEFAULT, battery({})]),
+      manifest([
+        BUILTIN,
+        INCLUDED_DEFAULT,
+        battery({
+          id: "headroom-compression",
+          name: "Headroom compression",
+          setup_group: "optional-local",
+          requires_daemon: false,
+          service: "",
+        }),
+        battery({}),
+      ]),
     );
 
     render(
@@ -77,15 +99,20 @@ describe("BatteryPickerStep", () => {
 
     await waitFor(() => expect(screen.getByText("Built-in memory")).toBeInTheDocument());
     // Built-in reads as included and has no toggle.
-    expect(screen.getByText(/included, no setup/i)).toBeInTheDocument();
-    expect(screen.getByText(/included by default/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^included$/i })).toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: /disable codebase memory/i }),
     ).toBeChecked();
     expect(
-      screen.getByRole("heading", { name: /advanced integrations/i }),
+      screen.getByRole("heading", { name: /optional local tools/i }),
     ).toBeInTheDocument();
-    // Advanced integration has an enable switch.
+    expect(
+      screen.getByRole("heading", { name: /external services/i }),
+    ).toBeInTheDocument();
+    // Each configurable group keeps an explicit switch.
+    expect(
+      screen.getByRole("switch", { name: /enable headroom compression/i }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: /enable dense embeddings/i }),
     ).toBeInTheDocument();
@@ -279,7 +306,7 @@ describe("BatteryPickerStep", () => {
       <BatteryPickerStep baseUrl="http://127.0.0.1:7010" canMutate setNotice={vi.fn()} />,
     );
 
-    await waitFor(() => expect(screen.getByText(/needs Redis/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/run Redis/i)).toBeInTheDocument());
     expect(screen.getByText(/needs install/i)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: /disable redis agent memory server/i })).toBeChecked();
   });
