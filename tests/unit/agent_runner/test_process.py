@@ -635,7 +635,10 @@ def test_dispatch_refuses_unready_engine_before_adapter_call(fresh_agent_runner)
     assert engine_used == "codex"
     assert result.success is False
     assert result.subtype == "error_authentication"
-    assert result.raw == {"engine": "codex", "engine_readiness": "auth_required"}
+    assert result.raw["engine"] == "codex"
+    assert result.raw["engine_readiness"] == "auth_required"
+    assert result.raw["run_configuration"]["configured_engine"] == "codex"
+    assert result.raw["run_configuration"]["engine"] == "codex"
     assert "private" not in str(result.raw)
 
 

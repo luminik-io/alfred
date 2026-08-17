@@ -443,6 +443,7 @@ Output - print EXACTLY this JSON to stdout, nothing else:
         turns=result.num_turns,
         subtype=result.subtype,
         success=result.success,
+        configuration=(getattr(result, "raw", None) or {}).get("run_configuration"),
     )
 
     if not result.success:

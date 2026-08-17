@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from pathlib import Path
@@ -89,6 +90,13 @@ def test_run_evidence_links_local_run_facts_without_external_reads(tmp_path: Pat
                 turns=7,
                 subtype="success",
                 success=True,
+                configuration={
+                    "configured_engine": "opencode",
+                    "engine": "opencode",
+                    "model": "openai/gpt-5",
+                    "model_source": "agent-environment",
+                    "write_access": True,
+                },
             ),
             _event(
                 "plan_approved",
@@ -143,6 +151,7 @@ def test_run_evidence_links_local_run_facts_without_external_reads(tmp_path: Pat
         "issue",
         "worktree",
         "engine_session",
+        "run_configuration",
         "approval",
         "check",
         "branch",
@@ -161,7 +170,41 @@ def test_run_evidence_links_local_run_facts_without_external_reads(tmp_path: Pat
     }
     commit = next(fact for fact in record.facts if fact.kind == "commit")
     assert commit.data["commit_sha"] == "a" * 40
+    configuration = next(fact for fact in record.facts if fact.kind == "run_configuration")
+    assert configuration.data["configuration"]["engine"] == "opencode"
+    assert configuration.data["configuration"]["write_access"] is True
     assert [artifact.status for artifact in record.artifacts] == ["available", "available"]
+
+
+def test_engine_runners_emit_the_recorded_run_configuration() -> None:
+    runners = (
+        "reviewer.py",
+        "triage.py",
+        "planner.py",
+        "senior-dev.py",
+        "fixer.py",
+        "test-engineer.py",
+        "custom-agent.py",
+    )
+
+    for runner in runners:
+        tree = ast.parse((REPO_ROOT / "bin" / runner).read_text(encoding="utf-8"))
+        completion_calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "emit"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "llm_invoke_done"
+        ]
+
+        assert completion_calls, f"{runner} does not emit llm_invoke_done"
+        assert all(
+            any(keyword.arg == "configuration" for keyword in call.keywords)
+            for call in completion_calls
+        ), f"{runner} omits the recorded run configuration"
 
 
 def test_run_evidence_marks_missing_transcript_as_unavailable(tmp_path: Path) -> None:

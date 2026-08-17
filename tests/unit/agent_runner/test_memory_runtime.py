@@ -112,6 +112,8 @@ def test_invoke_agent_engine_prepends_memory_and_records_reflection(monkeypatch)
     assert provider.brain.candidates[0]["repo"] == "org/api"
     assert provider.brain.candidates[0]["source"] == "engine-reflection"
     assert provider.brain.firings[0]["firing_id"] == "fid-1"
+    assert result.raw["run_configuration"]["memory_requested"] is True
+    assert result.raw["run_configuration"]["memory_attached"] is True
 
 
 def test_issue_memory_query_derives_bounded_query() -> None:

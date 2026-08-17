@@ -682,6 +682,80 @@ def test_invoke_agent_engine_codex_skips_claude():
     assert calls == ["codex"]
 
 
+def test_invoke_agent_engine_records_non_secret_run_configuration(monkeypatch):
+    import agent_runner as ar
+    import agent_runner.process as process
+
+    monkeypatch.setenv("ALFRED_ARCHITECT_CODEX_MODEL", "gpt-5-codex")
+    monkeypatch.setenv("CODEX_BIN", "/opt/alfred/bin/codex")
+    monkeypatch.setenv("CODEX_ACCESS_TOKEN", "must-not-be-recorded")
+    monkeypatch.setattr(process, "load_runtime_memory", lambda: None)
+
+    def fake_codex(*args, **kwargs):
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="codex ok",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="codex",
+        agent="architect",
+        firing_id="config-1",
+        workdir=Path("/tmp/worktree"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        codex_timeout=45,
+        codex_sandbox="workspace-write",
+        codex_approval_policy="never",
+        codex_bypass_approvals_and_sandbox=True,
+        codex_add_dirs=[Path("/tmp/source.git")],
+        memory_repo="example/app",
+        memory_limit=2,
+        codex_fn=fake_codex,
+    )
+
+    assert engine_used == "codex"
+    assert out.raw["run_configuration"] == {
+        "configured_engine": "codex",
+        "engine": "codex",
+        "fallback_from": None,
+        "binary": "/opt/alfred/bin/codex",
+        "model": "gpt-5-codex",
+        "model_source": "agent-environment",
+        "capabilities": [
+            "extra-directories",
+            "model-selection",
+            "non-interactive",
+            "repository-read",
+            "sandbox",
+            "structured-output",
+            "text",
+            "worktree-write",
+        ],
+        "timeout_seconds": 45,
+        "sandbox": "danger-full-access",
+        "approval_policy": None,
+        "bypass_approvals_and_sandbox": True,
+        "allowed_tools": None,
+        "max_turns": None,
+        "write_access": True,
+        "extra_directories": ["/tmp/source.git"],
+        "memory_requested": True,
+        "memory_attached": False,
+        "memory_repo": "example/app",
+        "memory_limit": 2,
+    }
+    assert "must-not-be-recorded" not in json.dumps(out.raw, sort_keys=True)
+
+
 def test_invoke_agent_engine_resolves_per_agent_models(monkeypatch):
     import agent_runner as ar
 
@@ -732,6 +806,10 @@ def test_invoke_agent_engine_resolves_per_agent_models(monkeypatch):
     assert out.success is True
     assert engine_used == "codex-fallback"
     assert models == [("claude", "opus"), ("codex", "gpt-5-codex")]
+    assert out.raw["run_configuration"]["configured_engine"] == "hybrid"
+    assert out.raw["run_configuration"]["engine"] == "codex"
+    assert out.raw["run_configuration"]["fallback_from"] == "claude"
+    assert out.raw["run_configuration"]["model_source"] == "agent-environment"
 
 
 def test_invoke_agent_engine_explicit_model_wins_over_configuration(monkeypatch):
@@ -769,6 +847,7 @@ def test_invoke_agent_engine_explicit_model_wins_over_configuration(monkeypatch)
     assert out.success is True
     assert engine_used == "codex"
     assert models == ["explicit-model"]
+    assert out.raw["run_configuration"]["model_source"] == "caller"
 
 
 def test_invoke_agent_engine_hybrid_transient_retries_claude_no_fallback(monkeypatch):

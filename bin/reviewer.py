@@ -776,6 +776,7 @@ Ship-ready: yes / no - <one sentence>
         turns=result.num_turns,
         subtype=result.subtype,
         success=result.success,
+        configuration=(getattr(result, "raw", None) or {}).get("run_configuration"),
     )
 
     if not result.success:
