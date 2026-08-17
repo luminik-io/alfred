@@ -32,7 +32,6 @@
     "@dagrejs/dagre": "^3.0.0",
     "@fontsource-variable/instrument-sans": "^5.2.8",
     "@fontsource-variable/quicksand": "^5.2.10",
-    "@fontsource-variable/roboto-condensed": "^5.2.8",
     "@fontsource-variable/source-serif-4": "^5.2.8",
     "@fontsource/fragment-mono": "^5.2.8",
     "@radix-ui/react-dialog": "^1.1.15",

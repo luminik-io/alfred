@@ -112,7 +112,7 @@ Prism is the default appearance. Graphite maps the same semantic contract to den
 ### Direction contract
 
 - **THESIS:** Alfred shows autonomous work as a compact lifecycle. It rejects the generic assistant dashboard.
-- **OWN-WORLD:** Prism uses quiet glass and spectral state edges. Graphite uses compressed operations type and hard graphite panels. Ledger uses paper grain, connected creases, and gold decisions.
+- **OWN-WORLD:** Prism uses quiet glass and spectral state edges. Graphite uses firm type, square graphite panels, and familiar state colors. Ledger uses paper grain, folded work surfaces, and gold decision controls.
 - **STORY:** The operator sees what needs a decision, what runs now, and what shipped, then opens evidence or acts.
 - **FIRST VIEWPORT:** A compact rail, four ordered Work lanes, and a separate evidence inspector fill the desktop viewport. Narrow screens keep the same order and move evidence into a sheet.
 - **FORM:** Established-world extension, 1 of 1. Seed key `established-world:signal-edge-v1`. The approved Prism, Graphite, and Ledger comps are the authority; a new-world concept roll does not apply.

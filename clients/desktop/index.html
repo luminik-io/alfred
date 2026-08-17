@@ -5,17 +5,48 @@
     <link rel="icon" type="image/png" href="/brand/alfred-logo-transparent.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alfred</title>
+    <script id="alfred-theme-bootstrap" src="/theme-bootstrap.js"></script>
     <style>
       :root {
+        --boot-background: #f7f6f2;
+        --boot-card: rgba(255, 255, 255, 0.68);
+        --boot-border: rgba(52, 61, 68, 0.12);
+        --boot-shadow: rgba(39, 48, 56, 0.12);
+        --boot-text: #273038;
+        --boot-muted: #68727a;
+        --boot-accent: #4f827c;
         color-scheme: light;
-        background: #f7f6f2;
+        background: var(--boot-background);
+      }
+
+      :root.dark {
+        color-scheme: dark;
+        --boot-background: #20242a;
+        --boot-card: rgba(43, 49, 57, 0.88);
+        --boot-border: rgba(231, 238, 242, 0.13);
+        --boot-shadow: rgba(0, 0, 0, 0.32);
+        --boot-text: #edf1f3;
+        --boot-muted: #b7c0c6;
+        --boot-accent: #84bbb4;
+      }
+
+      :root[data-theme="category-standard"].dark {
+        --boot-background: #24272c;
+        --boot-card: rgba(50, 54, 61, 0.94);
+        --boot-accent: #8da9e6;
+      }
+
+      :root[data-theme="linked-fold"].dark {
+        --boot-background: #282522;
+        --boot-card: rgba(57, 52, 47, 0.94);
+        --boot-accent: #d7ad58;
       }
 
       body {
         margin: 0;
         min-width: 320px;
         min-height: 100vh;
-        background: #f7f6f2;
+        background: var(--boot-background);
       }
 
       .boot {
@@ -23,7 +54,7 @@
         min-height: 100vh;
         place-items: center;
         font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-        color: #273038;
+        color: var(--boot-text);
       }
 
       .boot__card {
@@ -31,10 +62,10 @@
         justify-items: center;
         gap: 14px;
         padding: 26px 30px;
-        background: rgba(255, 255, 255, 0.68);
-        border: 1px solid rgba(52, 61, 68, 0.12);
+        background: var(--boot-card);
+        border: 1px solid var(--boot-border);
         border-radius: 12px;
-        box-shadow: 0 24px 70px rgba(39, 48, 56, 0.12);
+        box-shadow: 0 24px 70px var(--boot-shadow);
         -webkit-backdrop-filter: blur(24px) saturate(1.25);
         backdrop-filter: blur(24px) saturate(1.25);
       }
@@ -53,7 +84,7 @@
 
       .boot__caption {
         margin: 0;
-        color: #68727a;
+        color: var(--boot-muted);
         font-size: 0.84rem;
       }
 
@@ -66,7 +97,7 @@
         width: 6px;
         height: 6px;
         border-radius: 999px;
-        background: #4f827c;
+        background: var(--boot-accent);
         animation: boot-dot 1.2s ease-in-out infinite;
       }
 
