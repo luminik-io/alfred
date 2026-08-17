@@ -48,11 +48,15 @@ describe("RecentThreads", () => {
       />,
     );
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     expect(onRetireFocus).toHaveBeenCalledOnce();
     expect(fallback).toHaveFocus();
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole("button", { name: /recent/i }),
+      ).not.toBeInTheDocument(),
     );
   });
 
@@ -64,11 +68,19 @@ describe("RecentThreads", () => {
     const user = userEvent.setup();
     const onResume = vi.fn();
     const view = render(
-      <RecentThreads threads={THREADS} onResume={onResume} onDelete={vi.fn()} />,
+      <RecentThreads
+        threads={THREADS}
+        onResume={onResume}
+        onDelete={vi.fn()}
+      />,
     );
 
     view.rerender(
-      <RecentThreads threads={[THREADS[1]]} onResume={onResume} onDelete={vi.fn()} />,
+      <RecentThreads
+        threads={[THREADS[1]]}
+        onResume={onResume}
+        onDelete={vi.fn()}
+      />,
     );
 
     const trigger = screen.getByRole("button", { name: /recent/i });
@@ -80,7 +92,61 @@ describe("RecentThreads", () => {
 
   it("renders nothing when only the active chat exists", () => {
     render(<RecentThreads threads={[THREADS[0]]} onResume={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /recent/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("confirms before deleting a saved chat", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    render(
+      <RecentThreads
+        threads={THREADS}
+        onResume={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    await user.click(
+      screen.getByRole("button", { name: "Delete chat: Older chat" }),
+    );
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(
+      screen.getByText(/“Older chat” will be removed from this Mac\./),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete chat" })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Delete chat" }));
+    expect(onDelete).toHaveBeenCalledWith("older");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("cancels chat deletion with Escape", async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+    render(
+      <RecentThreads
+        threads={THREADS}
+        onResume={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /recent/i }));
+    await user.click(
+      screen.getByRole("button", { name: "Delete chat: Older chat" }),
+    );
+    await user.keyboard("{Escape}");
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Recent chats" }),
+    ).toBeInTheDocument();
   });
 
   it("routes focus to the retire target when a resume unmounts the trigger", async () => {
@@ -118,7 +184,9 @@ describe("RecentThreads", () => {
     expect(fallback).toHaveFocus();
     expect(document.activeElement).not.toBe(document.body);
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /recent/i })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole("button", { name: /recent/i }),
+      ).not.toBeInTheDocument(),
     );
     fallback.remove();
   });

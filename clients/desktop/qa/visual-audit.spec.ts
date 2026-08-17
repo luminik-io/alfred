@@ -24,6 +24,54 @@ const appearances = [
 
 type ViewportName = keyof typeof viewports;
 
+async function seedAskHistory(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const now = Date.now();
+    localStorage.setItem(
+      "alfred.ask.history.v2",
+      JSON.stringify({
+        version: 2,
+        conversations: [
+          {
+            id: "visual-current",
+            title: "Review the release checklist",
+            updatedAt: now,
+            turns: [
+              {
+                kind: "message",
+                role: "user",
+                content: "Review the release checklist.",
+              },
+              {
+                kind: "message",
+                role: "assistant",
+                content: "I found two checks that still need evidence.",
+              },
+            ],
+          },
+          {
+            id: "visual-saved",
+            title: "Check the Desktop layout",
+            updatedAt: now - 60_000,
+            turns: [
+              {
+                kind: "message",
+                role: "user",
+                content: "Check the Desktop layout.",
+              },
+              {
+                kind: "message",
+                role: "assistant",
+                content: "The compact layout is ready for review.",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+  });
+}
+
 async function openPrimaryView(
   page: Page,
   viewport: ViewportName,
@@ -179,6 +227,31 @@ for (const appearance of appearances) {
         ).toBeVisible();
         await capture(page, viewportName, "ask");
 
+        await seedAskHistory(page);
+        await page.reload();
+        await openPrimaryView(page, viewportName, "Ask");
+        await expect(
+          page.getByText("I found two checks that still need evidence."),
+        ).toBeVisible();
+        await page.getByRole("button", { name: "Recent" }).click();
+        const recentChats = page.getByRole("dialog", {
+          name: "Recent chats",
+        });
+        await expect(recentChats).toBeVisible();
+        await recentChats
+          .getByRole("button", {
+            name: "Delete chat: Check the Desktop layout",
+          })
+          .click();
+        const deleteChat = page.getByRole("button", { name: "Delete chat" });
+        await expect(page.getByRole("alertdialog")).toBeVisible();
+        await expect(deleteChat).toBeFocused();
+        await capture(page, viewportName, "ask-delete-chat");
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("alertdialog")).toBeHidden();
+        await page.keyboard.press("Escape");
+        await expect(recentChats).toBeHidden();
+
         await openPrimaryView(page, viewportName, "Work");
         await expect(
           page.getByRole("heading", { name: "Work", exact: true }),
@@ -187,7 +260,9 @@ for (const appearance of appearances) {
           const cardTitleSize = await page
             .locator(".alfred-card__outcome")
             .first()
-            .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+            .evaluate((element) =>
+              Number.parseFloat(getComputedStyle(element).fontSize),
+            );
           expect(
             cardTitleSize,
             `${appearance.theme} must keep the more spacious approved card typography`,
@@ -271,9 +346,7 @@ for (const appearance of appearances) {
 
         await page.getByRole("tab", { name: "Collaborators" }).click();
         await capture(page, viewportName, "settings-collaborators");
-        await page
-          .getByRole("button", { name: "Remove UTEAM12345" })
-          .click();
+        await page.getByRole("button", { name: "Remove UTEAM12345" }).click();
         const removeCollaborator = page.getByRole("button", {
           name: "Remove collaborator",
         });

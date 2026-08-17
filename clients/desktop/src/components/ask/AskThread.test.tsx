@@ -528,6 +528,7 @@ describe("Ask chat-history panel (redesigned recent switcher)", () => {
     await user.click(
       within(panel).getByRole("button", { name: /delete chat: drop me/i }),
     );
+    await user.click(screen.getByRole("button", { name: "Delete chat" }));
 
     // The panel stays open, the deleted thread is gone, and the others remain.
     panel = await screen.findByRole("dialog", { name: /recent chats/i });
@@ -552,6 +553,7 @@ describe("Ask chat-history panel (redesigned recent switcher)", () => {
         name: /delete chat: delete current/i,
       }),
     );
+    await user.click(screen.getByRole("button", { name: "Delete chat" }));
 
     expect(
       await screen.findByText(/surviving chat reply\./i),
