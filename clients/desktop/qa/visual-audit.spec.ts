@@ -11,6 +11,8 @@ import {
 const outputDir = resolve(process.cwd(), "test-results/visual-audit");
 const viewports = {
   desktop: { width: 1440, height: 900 },
+  short: { width: 1280, height: 720 },
+  tablet: { width: 768, height: 900 },
   mobile: { width: 390, height: 844 },
 } as const;
 const appearances = [
@@ -115,7 +117,7 @@ async function assertShellContract(
   page: Page,
   viewport: ViewportName,
 ): Promise<void> {
-  if (viewport === "desktop") {
+  if (viewport !== "mobile") {
     const sidebar = page.locator('[data-slot="sidebar"]').first();
     const width = await sidebar.evaluate(
       (element) => element.getBoundingClientRect().width,
@@ -298,7 +300,7 @@ for (const appearance of appearances) {
         }
         await capture(page, viewportName, "work-inspector");
 
-        if (viewportName === "mobile") {
+        if (viewportName !== "desktop") {
           await page.getByRole("button", { name: "Close" }).click();
         } else {
           await page.getByRole("button", { name: "Close inspector" }).click();
