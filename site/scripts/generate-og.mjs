@@ -11,6 +11,7 @@ const root = resolve(import.meta.dirname, "..");
 const logoPath = resolve(root, "src/assets/alfred-logo-transparent.png");
 const outPath = resolve(root, "public/brand/alfred-og.png");
 const positioning = "An autonomous engineering team that ships while you're away.";
+const publicMediaMode = "light";
 
 // Fonts are inlined as base64 woff2 so the Chrome headless render does not
 // depend on network access.
@@ -65,7 +66,7 @@ async function findChrome() {
 
 function html({ fontCss, logoData }) {
   return `<!doctype html>
-<html>
+<html data-theme="${publicMediaMode}">
 <head>
   <meta charset="utf-8" />
   <style>
@@ -76,8 +77,8 @@ function html({ fontCss, logoData }) {
       height: 630px;
       margin: 0;
       overflow: hidden;
-      background: #0A0E14;
-      color: #C5D0E0;
+      background: #F7F9FC;
+      color: #44506B;
       font-family: "Instrument Sans Var", "Quicksand Var", Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
@@ -88,21 +89,17 @@ function html({ fontCss, logoData }) {
       height: 630px;
       padding: 64px 72px 56px;
       background:
-        radial-gradient(ellipse 760px 460px at 10% 0%, rgba(0, 229, 199, 0.16), transparent 62%),
-        radial-gradient(ellipse 700px 460px at 90% 100%, rgba(87, 137, 255, 0.10), transparent 62%),
-        linear-gradient(160deg, #0c1119 0%, #0A0E14 50%, #060a10 100%);
+        radial-gradient(ellipse 760px 460px at 8% 0%, rgba(40, 85, 200, 0.12), transparent 64%),
+        radial-gradient(ellipse 700px 460px at 92% 100%, rgba(8, 122, 93, 0.08), transparent 64%),
+        linear-gradient(160deg, #FFFFFF 0%, #F7F9FC 54%, #EEF3FA 100%);
     }
     .canvas::before {
       content: "";
       position: absolute;
       inset: 0;
-      opacity: 0.30;
-      background-image:
-        linear-gradient(rgba(0, 229, 199, 0.10) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 229, 199, 0.10) 1px, transparent 1px);
-      background-size: 80px 80px;
-      mask-image: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.0) 60%);
-      -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.0) 60%);
+      background:
+        linear-gradient(116deg, transparent 0 68%, rgba(40, 85, 200, 0.06) 68% 69%, transparent 69%),
+        linear-gradient(116deg, transparent 0 76%, rgba(8, 122, 93, 0.05) 76% 77%, transparent 77%);
     }
     .content {
       position: relative;
@@ -130,17 +127,17 @@ function html({ fontCss, logoData }) {
       font-size: 30px;
       font-weight: 700;
       letter-spacing: -0.01em;
-      color: #F2F6FF;
+      color: #0D1322;
     }
     .meta {
       font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 14px;
       font-weight: 500;
       letter-spacing: 0.14em;
-      color: #6B7A8F;
+      color: #66718C;
       text-transform: uppercase;
     }
-    .meta .accent { color: #00E5C7; }
+    .meta .accent { color: #087A5D; }
     .hero {
       flex: 1;
       display: flex;
@@ -154,7 +151,7 @@ function html({ fontCss, logoData }) {
       font-size: 13px;
       font-weight: 600;
       letter-spacing: 0.20em;
-      color: #00E5C7;
+      color: #2855C8;
       text-transform: uppercase;
       margin-bottom: 16px;
     }
@@ -164,15 +161,15 @@ function html({ fontCss, logoData }) {
       line-height: 1.06;
       font-weight: 700;
       letter-spacing: -2px;
-      color: #FFFFFF;
+      color: #0D1322;
     }
     h1 .away {
-      color: #00E5C7;
+      color: #2855C8;
     }
     .sub {
       margin: 26px 0 0;
       max-width: 840px;
-      color: #B6C7EE;
+      color: #44506B;
       font-family: "Quicksand Var", "Instrument Sans Var", Arial, sans-serif;
       font-size: 22px;
       line-height: 1.4;
@@ -186,23 +183,23 @@ function html({ fontCss, logoData }) {
       padding-top: 22px;
       font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 13px;
-      color: #6B7A8F;
+      color: #66718C;
       letter-spacing: 0.04em;
     }
-    .stripe .dot { color: #00E5C7; }
-    .stripe .dot.warn { color: #F4B43E; }
-    .stripe .sep { color: #2A3548; }
+    .stripe .dot { color: #087A5D; }
+    .stripe .dot.warn { color: #8F5600; }
+    .stripe .sep { color: #D4DBE9; }
     .footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 24px;
-      color: #6B7A8F;
+      color: #66718C;
       font-family: "Fragment Mono", ui-monospace, monospace;
       font-size: 14px;
       letter-spacing: 0.04em;
     }
-    .footer .url { color: #B6C7EE; }
+    .footer .url { color: #1F2A44; }
   </style>
 </head>
 <body>
@@ -278,7 +275,7 @@ async function renderWithSharp(htmlText) {
 
   const fallbackSvg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
-  <rect width="1200" height="630" fill="#0A0E14"/>
+  <rect width="1200" height="630" fill="#F7F9FC"/>
   <foreignObject width="1200" height="630">
     ${escaped}
   </foreignObject>
