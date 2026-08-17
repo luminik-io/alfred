@@ -24,7 +24,7 @@ const agent = {
   role_title: "Architect",
   purpose: "Plans and coordinates changes across repositories.",
   last_firing_id: null,
-  last_run_at: "2026-07-23T20:15:00Z",
+  last_run_at: "2026-08-17T20:15:00Z",
   status: "idle",
   last_summary: "Ready for the next request.",
   firings_today: 2,
@@ -86,7 +86,7 @@ const workflowAgents = [
     last_summary: "Waiting for approval.",
     firings_today: 2,
     paused: true,
-    paused_since: "2026-07-23T20:05:00Z",
+    paused_since: "2026-08-17T20:05:00Z",
     loaded: false,
   },
   {
@@ -107,7 +107,7 @@ const plan = {
   status: "awaiting approval",
   parent: "https://github.com/luminik-io/alfred/issues/42",
   affected_repos: "luminik-io/alfred",
-  updated_at: "2026-07-23T20:00:00Z",
+  updated_at: "2026-08-17T20:00:00Z",
   path: "plans/42-plan.json",
   preview: "Use the provider chain that ships with Alfred and record exact benchmark evidence.",
   content: "## Plan\n\nRun the memory benchmark through Alfred's shipped provider chain.",
@@ -130,7 +130,7 @@ const card = (
   url: `https://github.com/luminik-io/alfred/${kind === "pr" ? "pull" : "issues"}/${number}`,
   author,
   kind,
-  timestamp: "2026-07-23T20:00:00Z",
+  timestamp: "2026-08-17T20:00:00Z",
   age_days: 0,
   is_draft: false,
   labels: [],
@@ -139,18 +139,18 @@ const card = (
 
 const sampleBoard = {
   sample: true,
-  generated_at: "2026-07-23T20:15:00Z",
+  generated_at: "2026-08-17T20:15:00Z",
   lookback_days: 14,
   repos: ["luminik-io/alfred"],
   columns: {
     queued: [card(621, "Add OpenCode capability probe", "issue", "architect")],
     in_progress: [
-      card(622, "Replace legacy appearance presets", "pr", "senior-dev", {
+      card(683, "Record engine settings for every run", "pr", "senior-dev", {
         is_draft: true,
         labels: ["agent:authored", "harness:codex"],
-        agent_evidence: ["label:agent:authored", "branch:senior-dev/themes"],
+        agent_evidence: ["label:agent:authored", "branch:senior-dev/run-evidence"],
         github_evidence: {
-          head_sha: "4248c8f8e6d83f4ca38e49624d9cb583cc7c5571",
+          head_sha: "dc759788a0300891d6c21718a9e4fa8d23f69cf7",
           review_state: "REVIEW_REQUIRED",
           checks: [
             { name: "Desktop client", status: "SUCCESS" },
@@ -158,13 +158,13 @@ const sampleBoard = {
             { name: "Independent review", status: "PENDING" },
           ],
           changed_files: [
-            "clients/desktop/src/lib/useTheme.ts",
-            "clients/desktop/src/styles/tokens.css",
-            "docs/THEME_SYSTEM.md",
+            "clients/desktop/src/components/LogsView.tsx",
+            "lib/agent_runner/process.py",
+            "lib/server/run_evidence.py",
           ],
           changed_file_count: 3,
           changed_file_count_incomplete: false,
-          commit_count: 3,
+          commit_count: 1,
           commit_count_incomplete: false,
           latest_reviews: [{ author: "reviewer", state: "COMMENTED" }],
         },
@@ -186,7 +186,7 @@ const sampleBoard = {
 
 const emptyBoard = {
   sample: false,
-  generated_at: "2026-07-23T20:15:00Z",
+  generated_at: "2026-08-17T20:15:00Z",
   lookback_days: 14,
   repos: ["example/workspace"],
   columns: {
@@ -506,7 +506,7 @@ export class AlfredApiFixture {
                   body: "Keep fixture data separate from operator data.",
                   tags: ["privacy", "testing"],
                   severity: "info",
-                  created_at: "2026-07-23T19:45:00Z",
+                  created_at: "2026-08-17T19:45:00Z",
                   firing_id: "senior-dev-visual-contract",
                   match_reason: "Active lesson for example/workspace.",
                   recall_provider: "sqlite",
@@ -534,8 +534,8 @@ export class AlfredApiFixture {
                 {
                   firing_id: "senior-dev-visual-contract",
                   codename: "senior-dev",
-                  started_at: "2026-07-23T19:40:00Z",
-                  ended_at: "2026-07-23T19:44:00Z",
+                  started_at: "2026-08-17T19:40:00Z",
+                  ended_at: "2026-08-17T19:44:00Z",
                   status: "ok",
                   summary: "Completed the Desktop visual contract",
                   transcript_path: null,
@@ -611,21 +611,21 @@ export class AlfredApiFixture {
                         label: "Selected the Desktop visual contract",
                         detail: "example/workspace",
                         tone: "info",
-                        ts: "2026-07-23T19:40:00Z",
+                        ts: "2026-08-17T19:40:00Z",
                       },
                       {
                         kind: "checks",
                         label: "Ran layout and responsive checks",
                         detail: "All checks passed",
                         tone: "ok",
-                        ts: "2026-07-23T19:43:00Z",
+                        ts: "2026-08-17T19:43:00Z",
                       },
                       {
                         kind: "completed",
                         label: "Prepared the review evidence",
                         detail: "Ready for operator review",
                         tone: "ok",
-                        ts: "2026-07-23T19:44:00Z",
+                        ts: "2026-08-17T19:44:00Z",
                       },
                     ],
                   },
@@ -650,7 +650,7 @@ export class AlfredApiFixture {
                 {
                   user_id: "UTEAM12345",
                   sources: ["state"],
-                  added_at: "2026-07-23T19:45:00Z",
+                  added_at: "2026-08-17T19:45:00Z",
                   added_by: "desktop",
                   can_remove: true,
                 },
@@ -693,7 +693,7 @@ export class AlfredApiFixture {
         block: null,
         codex: {
           latest_day: {
-            date: "2026-07-23",
+            date: "2026-08-17",
             total_tokens: 82_400,
             cost_usd: null,
             input_tokens: 70_200,
@@ -701,24 +701,24 @@ export class AlfredApiFixture {
           },
           totals: { total_tokens: 1_240_000, cost_usd: null },
           quota: {
-            primary: { used_percent: 28, resets_at: "2026-07-23T23:00:00Z" },
-            secondary: { used_percent: 39, resets_at: "2026-07-28T20:00:00Z" },
+            primary: { used_percent: 28, resets_at: "2026-08-17T23:00:00Z" },
+            secondary: { used_percent: 39, resets_at: "2026-08-22T20:00:00Z" },
             plan_type: "sample",
           },
         },
         limits: {
           source: "fixture",
-          updated_at: "2026-07-23T20:15:00Z",
+          updated_at: "2026-08-17T20:15:00Z",
           five_hour: {
             utilization: 28,
             remaining_percent: 72,
-            resets_at: "2026-07-23T23:00:00Z",
+            resets_at: "2026-08-17T23:00:00Z",
             minutes_to_reset: 165,
           },
           seven_day: {
             utilization: 39,
             remaining_percent: 61,
-            resets_at: "2026-07-28T20:00:00Z",
+            resets_at: "2026-08-22T20:00:00Z",
             minutes_to_reset: 7_185,
           },
           seven_day_sonnet: null,
@@ -787,7 +787,7 @@ export class AlfredApiFixture {
         this.isReady && Boolean(selectedRepo && queryPath);
       await this.fulfill(route, {
         schema: "alfred.code-intelligence.v1",
-        generated_at: "2026-07-23T20:15:00Z",
+        generated_at: "2026-08-17T20:15:00Z",
         repos:
           this.isReady
             ? [

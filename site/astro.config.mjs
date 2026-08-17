@@ -373,7 +373,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "Alfred. Coding agents that keep development moving while you are away.",
+            content: "Alfred. An autonomous engineering team that ships while you're away.",
           },
         },
         {
@@ -387,7 +387,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "Alfred. Coding agents that keep development moving while you are away.",
+            content: "Alfred. An autonomous engineering team that ships while you're away.",
           },
         },
         {

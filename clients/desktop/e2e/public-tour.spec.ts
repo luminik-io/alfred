@@ -50,7 +50,7 @@ test("records the public tour from sample data only", async ({ page }) => {
     "Demo data. No real repositories or agent activity.",
   );
   await page
-    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
   await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
   await pause();

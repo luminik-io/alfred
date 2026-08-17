@@ -54,7 +54,7 @@ test("captures autonomous work and evidence", async ({ page }) => {
   await prepare(page, "signal-edge");
   await page.getByRole("button", { name: "Work", exact: true }).click();
   await page
-    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
   await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
   await capture(page, "alfred-gallery-work.png");
@@ -115,4 +115,20 @@ test("captures the operator approval gate", async ({ page }) => {
   ).toBe(true);
   await page.setViewportSize({ width: 1440, height: 862 });
   await capture(page, "alfred-gallery-approval.png");
+});
+
+test("captures Settings at the supported narrow width", async ({ page }) => {
+  await prepare(page, "category-standard");
+  await page.setViewportSize({ width: 760, height: 900 });
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await page.getByRole("tab", { name: "Appearance" }).click();
+  for (const theme of ["Prism", "Graphite", "Ledger"]) {
+    await expect(page.getByText(theme, { exact: true })).toBeVisible();
+  }
+  await expect
+    .poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight]))
+    .toEqual([760, 900]);
+  await capture(page, "alfred-gallery-settings-narrow.png");
 });

@@ -133,6 +133,8 @@ npm --prefix clients/desktop run capture:gallery
 ```
 
 The gallery command writes 1270 by 760 pixel images of Work evidence, an agent
-run, and the approval queue. Both capture commands force light mode and use the
-same synthetic fixture. Public Alfred screenshots and recordings must use light
-mode. Dark mode remains part of the internal visual test matrix.
+run, and the approval queue. It also writes a 760 by 900 pixel Settings image
+that checks the narrow-window layout and the Prism, Graphite, and Ledger theme
+names. Both capture commands force light mode and use the same synthetic
+fixture. Public Alfred screenshots and recordings must use light mode. Dark
+mode remains part of the internal visual test matrix.

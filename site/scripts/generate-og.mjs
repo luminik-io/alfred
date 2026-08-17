@@ -215,11 +215,11 @@ function html({ fontCss, logoData }) {
       <div class="hero">
         <div class="eyebrow">specs in, PRs out</div>
         <h1 aria-label="${positioning}">An autonomous engineering<br />team that ships<br /><span class="away">while you're away.</span></h1>
-        <p class="sub">Alfred turns Claude Code and Codex into a spec-driven engineering team. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges.</p>
+        <p class="sub">Alfred turns Claude Code, Codex, and OpenCode into one engineering team. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges.</p>
         <div class="stripe">
           <span><span class="dot">●</span> self-hosted</span>
           <span class="sep">·</span>
-          <span><span class="dot">●</span> claude code + codex</span>
+          <span><span class="dot">●</span> claude code · codex · opencode</span>
           <span class="sep">·</span>
           <span><span class="dot">●</span> github-native</span>
           <span class="sep">·</span>
