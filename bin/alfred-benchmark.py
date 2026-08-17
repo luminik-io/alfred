@@ -315,9 +315,19 @@ def render_recall_quality_table(report: RecallQualityReport) -> str:
         f"  empty miss rate ......... {_fmt_rate(metrics.empty_miss_rate)}",
         f"  mean provider latency ... {metrics.mean_latency_ms or 0.0:.2f}ms",
         f"  prompt bytes ............ {metrics.prompt_bytes:,}",
-        "",
-        "per-case:",
     ]
+    if report.index is not None:
+        index = report.index
+        lines.extend(
+            [
+                f"  searchable text bytes ... {index.searchable_text_bytes:,}",
+                f"  hydrated body bytes ..... {index.hydrated_body_bytes:,}",
+                f"  body bytes avoided ...... {_fmt_rate(index.avoided_body_rate)} "
+                f"({index.avoided_body_bytes:,}/{index.full_scan_body_bytes:,})",
+                f"  index/body queries ...... {index.index_queries}/{index.hydration_queries}",
+            ]
+        )
+    lines.extend(["", "per-case:"])
     for result in report.results:
         recalled = ",".join(result.recalled_lesson_ids) or "empty"
         expected = ",".join(result.relevant_lesson_ids) or "empty"

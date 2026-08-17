@@ -37,6 +37,12 @@ fallback uses literal matching. Alfred does not substitute unrelated recent
 lessons into an agent prompt. A recall without a query is an explicit
 unfiltered listing and uses recency order.
 
+SQLite keeps ranking work on lesson IDs and normalized searchable text. After
+ranking, it fetches the final lesson bodies in one query and preserves the
+ranked order. Run `alfred benchmark memory-recall` to see the searchable-text
+payload, final body payload, query counts, and avoided full-scan bytes on the
+fixed fixture.
+
 The optional dense arm returns nearest semantic candidates. Vector search does
 not have a universal model-independent definition of a miss, so dense recall
 can return a candidate when lexical recall is empty. Leave dense recall off

@@ -30,6 +30,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The memory recall benchmark now records searchable-text bytes, final body
+  bytes, avoided full-scan bytes, and index/body query counts. SQLite fetches
+  all final lesson bodies in one query after ranking IDs and searchable text.
 - Renamed the three Desktop appearances to Prism, Graphite, and Ledger. The
   names now describe what each appearance looks like.
 - Split Work, Ask, Code, Agents, Settings, Activity, and Learnings into separate

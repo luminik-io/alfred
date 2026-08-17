@@ -357,6 +357,25 @@ class RecallQualityMetrics:
 
 
 @dataclass(frozen=True)
+class RecallQualityIndexMetrics:
+    """Logical payload and query counts for the SQLite index and hydration path."""
+
+    corpus_lessons: int
+    corpus_body_bytes: int
+    searchable_text_bytes: int
+    index_queries: int
+    hydration_queries: int
+    hydrated_lessons: int
+    hydrated_body_bytes: int
+    full_scan_body_bytes: int
+    avoided_body_bytes: int
+    avoided_body_rate: float | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
 class RecallQualityReport:
     """Provider-level recall benchmark without an LLM or network dependency."""
 
@@ -367,6 +386,7 @@ class RecallQualityReport:
     limit: int
     metrics: RecallQualityMetrics
     results: tuple[RecallQualityResult, ...]
+    index: RecallQualityIndexMetrics | None = None
     fixture_schema_version: int = RECALL_QUALITY_FIXTURE_SCHEMA_VERSION
     fixture_digest: str = "unrecorded"
     prompt_max_chars: int = DEFAULT_RECALL_PROMPT_MAX_CHARS
@@ -392,6 +412,7 @@ class RecallQualityReport:
             "network": self.network,
             "limitations": list(self.limitations),
             "metrics": self.metrics.to_dict(),
+            "index": self.index.to_dict() if self.index is not None else None,
             "results": [result.to_dict() for result in self.results],
         }
 
@@ -864,6 +885,89 @@ def _install_recall_diagnostics(provider: RecallProvider) -> _RecallFailureLog |
     return failures
 
 
+@dataclass
+class _SqliteRecallProbe:
+    """Observe the benchmark's isolated SQLite index without changing recall."""
+
+    conn: Any
+    corpus_lessons: int
+    corpus_body_bytes: int
+    searchable_text_bytes: int
+    statements: list[str] = field(default_factory=list)
+    index_queries: int = 0
+    hydration_queries: int = 0
+    hydrated_lessons: int = 0
+    hydrated_body_bytes: int = 0
+
+    def begin(self) -> None:
+        self.statements.clear()
+        self.conn.set_trace_callback(self.statements.append)
+
+    def finish(self, lessons: Sequence[Lesson]) -> None:
+        self.conn.set_trace_callback(None)
+        for statement in self.statements:
+            normalized = " ".join(statement.upper().split())
+            if not normalized.startswith("SELECT "):
+                continue
+            if "SELECT ID, CODENAME, REPO, BODY, TAGS_JSON" in normalized:
+                self.hydration_queries += 1
+            elif "LESSONS_FTS" in normalized or "LEXICAL_TEXT" in normalized:
+                self.index_queries += 1
+        self.hydrated_lessons += len(lessons)
+        self.hydrated_body_bytes += sum(
+            len(str(getattr(lesson, "body", "")).encode("utf-8")) for lesson in lessons
+        )
+
+    def result(self, *, cases: int) -> RecallQualityIndexMetrics:
+        full_scan_body_bytes = self.corpus_body_bytes * cases
+        avoided_body_bytes = max(0, full_scan_body_bytes - self.hydrated_body_bytes)
+        return RecallQualityIndexMetrics(
+            corpus_lessons=self.corpus_lessons,
+            corpus_body_bytes=self.corpus_body_bytes,
+            searchable_text_bytes=self.searchable_text_bytes,
+            index_queries=self.index_queries,
+            hydration_queries=self.hydration_queries,
+            hydrated_lessons=self.hydrated_lessons,
+            hydrated_body_bytes=self.hydrated_body_bytes,
+            full_scan_body_bytes=full_scan_body_bytes,
+            avoided_body_bytes=avoided_body_bytes,
+            avoided_body_rate=(
+                avoided_body_bytes / full_scan_body_bytes if full_scan_body_bytes else None
+            ),
+        )
+
+
+def _sqlite_recall_probe(provider: RecallProvider) -> _SqliteRecallProbe | None:
+    """Return a probe only for the isolated in-memory SQLite benchmark store."""
+    from memory.sqlite_hybrid import SqliteHybridProvider
+
+    candidates: list[Any] = [provider, *list(getattr(provider, "providers", ()))]
+    candidates.extend(
+        wrapped
+        for item in tuple(candidates)
+        if (wrapped := getattr(item, "_provider", None)) is not None
+    )
+    writer = next(
+        (item for item in candidates if isinstance(item, SqliteHybridProvider)),
+        None,
+    )
+    if writer is None or str(writer.db_path) != ":memory:":
+        return None
+    with writer._connect() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*), "
+            "COALESCE(SUM(length(CAST(body AS BLOB))), 0), "
+            "COALESCE(SUM(length(CAST(lexical_text AS BLOB))), 0) "
+            "FROM lessons"
+        ).fetchone()
+    return _SqliteRecallProbe(
+        conn=conn,
+        corpus_lessons=int(row[0]),
+        corpus_body_bytes=int(row[1]),
+        searchable_text_bytes=int(row[2]),
+    )
+
+
 def run_recall_quality(
     cases: Sequence[RecallQualityCase],
     *,
@@ -884,6 +988,7 @@ def run_recall_quality(
     not abort the complete benchmark. Prompt formatting is measured separately
     from provider latency and uses the same runtime formatter as a firing.
     """
+    index_probe = _sqlite_recall_probe(provider)
     failure_log = _install_recall_diagnostics(provider)
     results: list[RecallQualityResult] = []
     for case in cases:
@@ -891,6 +996,9 @@ def run_recall_quality(
             failure_log.take()
         error: str | None = None
         started = clock()
+        lessons: list[Lesson] = []
+        if index_probe is not None:
+            index_probe.begin()
         try:
             lessons = provider.recall(
                 query=case.query,
@@ -902,6 +1010,9 @@ def run_recall_quality(
             logger.exception("mem-bench: recall-quality lookup failed for %s", case.case_id)
             lessons = []
             error = "provider_lookup_failed"
+        finally:
+            if index_probe is not None:
+                index_probe.finish(lessons)
         latency_ms = max(0.0, (clock() - started) * 1000.0)
         member_failures = failure_log.take() if failure_log is not None else ()
         if member_failures:
@@ -944,6 +1055,7 @@ def run_recall_quality(
         limit=limit,
         metrics=_recall_quality_metrics(result_tuple),
         results=result_tuple,
+        index=index_probe.result(cases=len(result_tuple)) if index_probe is not None else None,
         fixture_digest=fixture_digest,
         prompt_max_chars=prompt_max_chars,
     )

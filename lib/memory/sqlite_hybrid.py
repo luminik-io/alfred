@@ -947,17 +947,17 @@ class SqliteHybridProvider:
         return [r[0] for r in rows]
 
     def _hydrate(self, conn: sqlite3.Connection, ids: list[str]) -> list[Lesson]:
-        out: list[Lesson] = []
-        for lesson_id in ids:
-            row = conn.execute(
-                "SELECT id, codename, repo, body, tags_json, severity, firing_id, "
-                "created_at, kind, valid_until, superseded_by, provenance "
-                "FROM lessons WHERE id = ?",
-                (lesson_id,),
-            ).fetchone()
-            if row is not None:
-                out.append(_row_to_lesson(row))
-        return out
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        rows = conn.execute(
+            "SELECT id, codename, repo, body, tags_json, severity, firing_id, "
+            "created_at, kind, valid_until, superseded_by, provenance "
+            f"FROM lessons WHERE id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        by_id = {str(row[0]): _row_to_lesson(row) for row in rows}
+        return [by_id[lesson_id] for lesson_id in ids if lesson_id in by_id]
 
     # ----- anchors + validity (Phase 2) ---------------------------------
 
