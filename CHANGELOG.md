@@ -10,6 +10,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Renamed the three Desktop appearances to Prism, Graphite, and Ledger. The
   names now describe what each appearance looks like.
+- Split Work, Ask, Code, Agents, Settings, Activity, and Learnings into separate
+  Desktop bundles. The initial JavaScript in the production build decreased
+  from 1,489.16 kB to 494.44 kB.
+- Preload a Desktop screen when pointer or keyboard focus reaches its navigation
+  control. A build check now rejects an initial bundle above 550 kB raw or 170
+  kB gzip.
 
 ## [0.7.5] - 2026-08-17
 

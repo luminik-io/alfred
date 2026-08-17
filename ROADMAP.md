@@ -23,11 +23,15 @@ The order can change when testing finds a reliability or safety problem.
 - [Match every Desktop screen](https://github.com/luminik-io/alfred/issues/652)
   to the approved Prism, Graphite, and Ledger references. Verify light and dark
   mode at desktop and phone widths on a real Mac.
+- [Reduce Desktop startup work](https://github.com/luminik-io/alfred/issues/657)
+  with screen-level bundles, navigation preloading, and a checked size limit.
 - Keep the current top-level information architecture unless task testing shows
   that a destination is duplicated or hard to find. Fix screen composition,
   spacing, type, empty states, and responsive behavior without hiding evidence.
 - Publish only fixture-backed light-mode screenshots and video. Keep dark-mode
   captures in the internal visual audit.
+- [Refresh all public screenshots and video](https://github.com/luminik-io/alfred/issues/659)
+  after the v0.8.0 screens and features are stable.
 - Require clean Markdown, direct copy, and current verification evidence in
   every pull request description, including documentation-only changes.
 - Add a complete scratch-home test. It must install Alfred, configure a fleet,

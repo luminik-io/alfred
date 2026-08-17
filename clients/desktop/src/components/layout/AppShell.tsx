@@ -51,6 +51,7 @@ export function AppShell({
   navItems,
   onCommand,
   onNavigate,
+  onNavigateIntent,
   onRefresh,
   onToggleTheme,
   snapshot,
@@ -65,6 +66,7 @@ export function AppShell({
   navItems: ShellNavItem[];
   onCommand: () => void;
   onNavigate: (key: TabKey) => void;
+  onNavigateIntent?: (key: TabKey) => void;
   onRefresh: () => void;
   onToggleTheme: () => void;
   snapshot: Snapshot | null;
@@ -111,6 +113,7 @@ export function AppShell({
                       badge={badge}
                       item={item}
                       onNavigate={onNavigate}
+                      onNavigateIntent={onNavigateIntent}
                       unseenCount={unseenCount}
                     />
                   );
@@ -230,12 +233,14 @@ function ShellNavMenuItem({
   badge,
   item,
   onNavigate,
+  onNavigateIntent,
   unseenCount,
 }: {
   active: boolean;
   badge: string | null;
   item: ShellNavItem;
   onNavigate: (key: TabKey) => void;
+  onNavigateIntent?: (key: TabKey) => void;
   unseenCount: number;
 }) {
   const { isMobile, setOpenMobile } = useSidebar();
@@ -251,6 +256,8 @@ function ShellNavMenuItem({
         isActive={active}
         tooltip={item.label}
         onClick={navigate}
+        onMouseEnter={() => onNavigateIntent?.(item.key)}
+        onFocus={() => onNavigateIntent?.(item.key)}
         className={`${active ? "nav-item-active" : ""} transition-transform duration-150 hover:translate-x-0.5 data-active:translate-x-0.5`}
       >
         <Icon aria-hidden="true" />

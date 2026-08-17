@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Tabs, type TabItem } from "./Tabs";
 
@@ -28,6 +28,32 @@ function AgentsTabsHarness({ initial = "roster" as const }: { initial?: "roster"
 }
 
 describe("Tabs (WAI-ARIA keyboard navigation)", () => {
+  it("preloads a panel when pointer or keyboard intent reaches its tab", async () => {
+    const onIntent = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <Tabs
+        tabs={[
+          { key: "roster", label: "Roster" },
+          { key: "activity", label: "Activity" },
+        ]}
+        active="roster"
+        onChange={() => {}}
+        onIntent={onIntent}
+        idBase="agents"
+        ariaLabel="Agent sections"
+      />,
+    );
+
+    await user.hover(screen.getByRole("tab", { name: "Activity" }));
+    expect(onIntent).toHaveBeenCalledWith("activity");
+
+    onIntent.mockClear();
+    screen.getByRole("tab", { name: "Activity" }).focus();
+    expect(onIntent).toHaveBeenCalledWith("activity");
+  });
+
   it("keeps the active tab in the tab order (roving tabindex)", () => {
     render(<AgentsTabsHarness />);
     expect(screen.getByRole("tab", { name: "Roster" })).toHaveAttribute("tabindex", "0");

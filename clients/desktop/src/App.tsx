@@ -3,28 +3,28 @@ import {
   RefreshCw,
   Sun,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   ConnectionBanner,
   NativeResultPanel,
 } from "./components/atoms";
 import { CommandPalette, type Command } from "./components/CommandPalette";
-import { CodeIntelligenceView } from "./components/CodeIntelligenceView";
-import { ComposeView } from "./components/ComposeView";
-import { CustomAgentsPanel } from "./components/CustomAgentsPanel";
-import { FleetControlView } from "./components/FleetControlView";
 import { AppShell } from "./components/layout/AppShell";
-import { LogsView } from "./components/LogsView";
-import { MemoryView } from "./components/MemoryView";
 import { OnboardingView } from "./components/OnboardingView";
-import { PipelineView } from "./components/PipelineView";
 import { RequestThread } from "./components/RequestThread";
 import { ReviewView } from "./components/ReviewView";
 import { CustomThemeEditor } from "./components/CustomThemeEditor";
 import { RosterThemePicker } from "./components/RosterThemePicker";
 import { ThemeBuilderDialog } from "./components/ThemeBuilderDialog";
-import { SettingsView } from "./components/SettingsView";
 import { Tabs, type TabItem } from "./components/Tabs";
 import {
   Dialog,
@@ -39,6 +39,11 @@ import { isSetupComplete } from "./lib/setupCompletion";
 import { listenAppMenuEvents } from "./lib/appMenuEvents";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
 import {
+  desktopScreenImporters,
+  preloadAgentTab,
+  preloadDesktopTab,
+} from "./lib/desktopScreenLoaders";
+import {
   type CustomRosterNames,
   editableAgents,
   type EditableAgentSource,
@@ -48,6 +53,31 @@ import { scheduleRoleLabelForEditor } from "./lib/agentRoster";
 import type { OperatorKey, RequestThreadModel, TabKey } from "./lib/uiTypes";
 import { useRosterTheme } from "./lib/useRosterTheme";
 import { useTheme } from "./lib/useTheme";
+
+const CodeIntelligenceView = lazy(async () => ({
+  default: (await desktopScreenImporters.code()).CodeIntelligenceView,
+}));
+const ComposeView = lazy(async () => ({
+  default: (await desktopScreenImporters.ask()).ComposeView,
+}));
+const CustomAgentsPanel = lazy(async () => ({
+  default: (await desktopScreenImporters.customAgents()).CustomAgentsPanel,
+}));
+const FleetControlView = lazy(async () => ({
+  default: (await desktopScreenImporters.agentRoster()).FleetControlView,
+}));
+const LogsView = lazy(async () => ({
+  default: (await desktopScreenImporters.activity()).LogsView,
+}));
+const MemoryView = lazy(async () => ({
+  default: (await desktopScreenImporters.learnings()).MemoryView,
+}));
+const PipelineView = lazy(async () => ({
+  default: (await desktopScreenImporters.work()).PipelineView,
+}));
+const SettingsView = lazy(async () => ({
+  default: (await desktopScreenImporters.settings()).SettingsView,
+}));
 
 function App() {
   const { fleetTab, setFleetTab, setTab, tab } = useDesktopRoute();
@@ -61,6 +91,7 @@ function App() {
   });
   // Navigation router. Activity and Lessons are first-class Agents subtabs.
   const goTo = useCallback((key: TabKey) => {
+    void preloadDesktopTab(key);
     // Agents opens on the role roster. Lessons and Activity remain subtabs.
     if (key === "fleet") {
       setFleetTab("fleet");
@@ -68,9 +99,14 @@ function App() {
     setTab(key);
   }, [setTab, setFleetTab]);
 
+  const selectFleetTab = useCallback((key: OperatorKey) => {
+    void preloadAgentTab(key);
+    setFleetTab(key);
+  }, [setFleetTab]);
+
   const viewAgentLogs = (codename: string) => {
     setLogsFocus((prev) => ({ agent: codename, nonce: prev.nonce + 1 }));
-    setFleetTab("logs");
+    selectFleetTab("logs");
   };
 
   const {
@@ -353,6 +389,7 @@ function App() {
       navItems={PRIMARY_TABS}
       onCommand={() => setPaletteOpen(true)}
       onNavigate={goTo}
+      onNavigateIntent={(key) => void preloadDesktopTab(key)}
       onRefresh={() => void refresh()}
       onToggleTheme={toggleTheme}
       snapshot={snapshot}
@@ -395,53 +432,63 @@ function App() {
       ) : null}
       {tab === "pipeline" ? (
         <section className="board-page">
-          <PipelineView
-            board={shipped}
-            state={shippedState}
-            error={shippedError}
-            plans={snapshot?.plans || []}
-            busyPlanAction={busyPlanAction}
-            busyQueue={busyQueue}
-            notice={noticeFor("board") || noticeFor("plans")}
-            onRefresh={() => void refreshShipped()}
-            onQueueAction={runQueueAction}
-            onDecision={runPlanDecision}
-            onDiscardPlan={runPlanDiscard}
-            onFileIssue={runPlanIssueFile}
-            onFollowupAction={runFollowupAction}
-            rosterTheme={rosterTheme}
-            customNames={customNames}
-          />
+          <Suspense fallback={<ScreenChunkFallback label="Loading Work" />}>
+            <PipelineView
+              board={shipped}
+              state={shippedState}
+              error={shippedError}
+              plans={snapshot?.plans || []}
+              busyPlanAction={busyPlanAction}
+              busyQueue={busyQueue}
+              notice={noticeFor("board") || noticeFor("plans")}
+              onRefresh={() => void refreshShipped()}
+              onQueueAction={runQueueAction}
+              onDecision={runPlanDecision}
+              onDiscardPlan={runPlanDiscard}
+              onFileIssue={runPlanIssueFile}
+              onFollowupAction={runFollowupAction}
+              rosterTheme={rosterTheme}
+              customNames={customNames}
+            />
+          </Suspense>
         </section>
       ) : null}
       {tab === "compose" ? (
-        <ComposeView
-          baseUrl={baseUrl}
-          selectedRepos={snapshot?.status.setup_repos?.selected || shipped?.repos || []}
-          onSwitch={goTo}
-        />
+        <Suspense fallback={<ScreenChunkFallback label="Loading Ask" />}>
+          <ComposeView
+            baseUrl={baseUrl}
+            selectedRepos={snapshot?.status.setup_repos?.selected || shipped?.repos || []}
+            onSwitch={goTo}
+          />
+        </Suspense>
       ) : null}
-      {tab === "code" ? <CodeIntelligenceView baseUrl={baseUrl} /> : null}
+      {tab === "code" ? (
+        <Suspense fallback={<ScreenChunkFallback label="Loading Code" />}>
+          <CodeIntelligenceView baseUrl={baseUrl} />
+        </Suspense>
+      ) : null}
       {tab === "settings" ? (
-        <SettingsView
-          baseUrl={baseUrl}
-          loading={loading}
-          connected={Boolean(snapshot) && !error}
-          actionNotice={noticeFor("setup")}
-          trustedSlack={snapshot?.trustedSlack || null}
-          busyTrustedUser={busyTrustedUser}
-          nativeBusy={nativeBusy}
-          themeName={themeName}
-          mode={mode}
-          onSelectTheme={setThemeName}
-          onSelectMode={setMode}
-          onAddTrustedUser={addTrustedUser}
-          onRemoveTrustedUser={removeTrustedUser}
-          onRunLocalAction={runLocalAction}
-          onInstallCore={installCore}
-          onStartRuntime={startRuntime}
-          onConnectServer={(url) => void refresh(url)}
-        />
+        <Suspense fallback={<ScreenChunkFallback label="Loading Settings" />}>
+          <SettingsView
+            baseUrl={baseUrl}
+            loading={loading}
+            connected={Boolean(snapshot) && !error}
+            actionNotice={noticeFor("setup")}
+            trustedSlack={snapshot?.trustedSlack || null}
+            busyTrustedUser={busyTrustedUser}
+            nativeBusy={nativeBusy}
+            themeName={themeName}
+            mode={mode}
+            onSelectTheme={setThemeName}
+            onSelectMode={setMode}
+            onAddTrustedUser={addTrustedUser}
+            onRemoveTrustedUser={removeTrustedUser}
+            onRunLocalAction={runLocalAction}
+            onInstallCore={installCore}
+            onStartRuntime={startRuntime}
+            onConnectServer={(url) => void refresh(url)}
+          />
+        </Suspense>
       ) : null}
 
       {tab === "fleet" ? (
@@ -476,51 +523,58 @@ function App() {
               badge: s.key === "logs" && unseenCount > 0 ? unseenCount : null,
             }))}
             active={fleetTab}
-            onChange={setFleetTab}
+            onChange={selectFleetTab}
+            onIntent={(key) => void preloadAgentTab(key)}
             idBase="fleet"
             ariaLabel="Agent sections"
           />
           {fleetTab === "fleet" ? (
-            <div className="space-y-4 motion-fade" key="fleet-roster">
-              <CustomAgentsPanel baseUrl={baseUrl} onChanged={() => void refresh()} />
-              <FleetControlView
-                baseUrl={baseUrl}
-                modelRefreshVersion={snapshotRevision}
-                agents={snapshot?.status.agents || []}
-                schedule={snapshot?.schedule || []}
-                service={fleetService}
-                nativeBusy={nativeBusy}
-                rosterTheme={rosterTheme}
-                customNames={customNames}
-                onRunLocalAction={runLocalAction}
-                onViewLogs={viewAgentLogs}
-              />
-            </div>
+            <Suspense fallback={<ScreenChunkFallback label="Loading Roster" />}>
+              <div className="space-y-4 motion-fade" key="fleet-roster">
+                <CustomAgentsPanel baseUrl={baseUrl} onChanged={() => void refresh()} />
+                <FleetControlView
+                  baseUrl={baseUrl}
+                  modelRefreshVersion={snapshotRevision}
+                  agents={snapshot?.status.agents || []}
+                  schedule={snapshot?.schedule || []}
+                  service={fleetService}
+                  nativeBusy={nativeBusy}
+                  rosterTheme={rosterTheme}
+                  customNames={customNames}
+                  onRunLocalAction={runLocalAction}
+                  onViewLogs={viewAgentLogs}
+                />
+              </div>
+            </Suspense>
           ) : null}
           {fleetTab === "logs" ? (
-            <LogsView
-              baseUrl={baseUrl}
-              feed={feed}
-              unseen={unseenCount}
-              seen={seenIds}
-              onMarkAllSeen={markActivitySeen}
-              onOpenMemory={() => goTo("lessons")}
-              firings={snapshot?.firings || []}
-              focus={logsFocus}
-              sample={Boolean(shipped?.sample)}
-            />
+            <Suspense fallback={<ScreenChunkFallback label="Loading Activity" />}>
+              <LogsView
+                baseUrl={baseUrl}
+                feed={feed}
+                unseen={unseenCount}
+                seen={seenIds}
+                onMarkAllSeen={markActivitySeen}
+                onOpenMemory={() => goTo("lessons")}
+                firings={snapshot?.firings || []}
+                focus={logsFocus}
+                sample={Boolean(shipped?.sample)}
+              />
+            </Suspense>
           ) : null}
           {fleetTab === "lessons" ? (
-            <section className="space-y-4 motion-fade" aria-label="Lessons">
-              <MemoryView
-                snapshot={snapshot}
-                actionNotice={noticeFor("memory")}
-                busyMemoryAction={busyMemoryAction}
-                nativeBusy={nativeBusy}
-                onMemoryCandidateAction={runMemoryCandidateAction}
-                onRunLocalAction={runLocalAction}
-              />
-            </section>
+            <Suspense fallback={<ScreenChunkFallback label="Loading Learnings" />}>
+              <section className="space-y-4 motion-fade" aria-label="Lessons">
+                <MemoryView
+                  snapshot={snapshot}
+                  actionNotice={noticeFor("memory")}
+                  busyMemoryAction={busyMemoryAction}
+                  nativeBusy={nativeBusy}
+                  onMemoryCandidateAction={runMemoryCandidateAction}
+                  onRunLocalAction={runLocalAction}
+                />
+              </section>
+            </Suspense>
           ) : null}
         </section>
       ) : null}
@@ -579,6 +633,17 @@ function StartupGate() {
         </div>
       </div>
     </main>
+  );
+}
+
+function ScreenChunkFallback({ label }: { label: string }) {
+  return (
+    <div
+      className="flex min-h-48 items-center justify-center rounded-xl border border-border/60 bg-card/35 text-sm text-muted-foreground"
+      role="status"
+    >
+      {label}
+    </div>
   );
 }
 
