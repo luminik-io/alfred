@@ -8,6 +8,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 No changes are pending.
 
+## [0.7.5] - 2026-08-17
+
+### Highlights
+
+- Added confirmation before removing a trusted collaborator or deleting a
+  saved Ask chat.
+- Kept keyboard focus on the destructive action and made Escape cancel without
+  closing the parent screen.
+- Expanded the permanent Desktop audit to 168 fixture-backed captures across
+  every theme, mode, and supported width.
+
+### Fixed
+
+- Settings no longer removes a trusted collaborator on the first click.
+- Ask no longer deletes a saved conversation on the first click.
+- Confirmation dialogs name the affected item, state that the action cannot be
+  undone, and preserve a clear Cancel path.
+
 ## [0.7.4] - 2026-08-17
 
 ### Highlights
