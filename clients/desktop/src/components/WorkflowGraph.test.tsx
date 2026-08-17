@@ -49,7 +49,7 @@ describe("WorkflowGraph", () => {
 
   it("maximizes the canvas to a full-viewport overlay and exits again", () => {
     const onMaximize = vi.fn();
-    const { container } = render(
+    render(
       <WorkflowGraph
         agents={ROSTER}
         selectedCodename="senior-dev"
@@ -57,29 +57,36 @@ describe("WorkflowGraph", () => {
         onMaximize={onMaximize}
       />,
     );
-    const canvas = container.querySelector(".workflow-graph") as HTMLElement;
+    const canvas = screen.getByRole("region", {
+      name: /agent workflow/i,
+    });
     expect(canvas.dataset.maximized).toBe("false");
 
     fireEvent.click(screen.getByRole("button", { name: /maximize workflow/i }));
-    expect(canvas.dataset.maximized).toBe("true");
+    expect(
+      screen.getByRole("dialog", { name: /agent workflow/i }).dataset.maximized,
+    ).toBe("true");
     expect(onMaximize).toHaveBeenCalledOnce();
 
     // Escape exits full screen.
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(canvas.dataset.maximized).toBe("false");
+    expect(
+      screen.getByRole("region", { name: /agent workflow/i }).dataset.maximized,
+    ).toBe("false");
   });
 
   it("exits the overlay before opening an agent drawer from a node", () => {
     const onSelect = vi.fn();
-    const { container } = render(
+    render(
       <WorkflowGraph agents={ROSTER} selectedCodename={null} onSelect={onSelect} />,
     );
-    const canvas = container.querySelector(".workflow-graph") as HTMLElement;
 
     fireEvent.click(screen.getByRole("button", { name: /maximize workflow/i }));
     fireEvent.click(screen.getByText("senior-dev"));
 
-    expect(canvas.dataset.maximized).toBe("false");
+    expect(
+      screen.getByRole("region", { name: /agent workflow/i }).dataset.maximized,
+    ).toBe("false");
     expect(onSelect).toHaveBeenCalledWith("senior-dev");
   });
 });
