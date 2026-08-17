@@ -21,6 +21,10 @@ shipped work. The canonical source is
 - Finish the [screen-by-screen Desktop quality pass](https://github.com/luminik-io/alfred/issues/652)
   across Prism, Graphite, and Ledger. Test light and dark mode at every supported
   size. Publish only fixture-backed light-mode media.
+- [Reduce Desktop startup work](https://github.com/luminik-io/alfred/issues/657)
+  with screen-level bundles, navigation preloading, and a checked size limit.
+- [Refresh public screenshots and video](https://github.com/luminik-io/alfred/issues/659)
+  after the v0.8.0 screens and features are stable.
 - Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.

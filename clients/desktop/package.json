@@ -12,6 +12,7 @@
     "posttypecheck": "tsc --noEmit -p tsconfig.e2e.json",
     "lint": "eslint . --max-warnings 0",
     "build": "tsc && vite build",
+    "postbuild": "node scripts/check-entry-budget.mjs",
     "precapture:tour": "npm run build",
     "capture:tour": "node scripts/capture-public-tour.mjs",
     "precapture:gallery": "npm run build",

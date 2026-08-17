@@ -36,12 +36,14 @@ export function Tabs<K extends string>({
   tabs,
   active,
   onChange,
+  onIntent,
   idBase,
   ariaLabel,
 }: {
   tabs: TabItem<K>[];
   active: K;
   onChange: (key: K) => void;
+  onIntent?: (key: K) => void;
   idBase: string;
   ariaLabel: string;
 }) {
@@ -61,6 +63,8 @@ export function Tabs<K extends string>({
               className="min-w-0 gap-1 px-1.5 text-[0.78rem] sm:gap-1.5 sm:px-3 sm:text-sm [&>span]:min-w-0 [&>span]:truncate"
               value={tab.key}
               aria-controls={`${idBase}-panel`}
+              onMouseEnter={() => onIntent?.(tab.key)}
+              onFocus={() => onIntent?.(tab.key)}
               // Explicit roving tabindex: the active tab is the tab stop, so Tab
               // lands directly on it. Radix still owns arrow/Home/End behaviour.
               tabIndex={tab.key === active ? 0 : -1}
