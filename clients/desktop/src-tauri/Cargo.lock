@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "alfred_desktop"
-version = "0.7.5"
+version = "0.8.0"
 dependencies = [
  "libc",
  "reqwest 0.12.28",

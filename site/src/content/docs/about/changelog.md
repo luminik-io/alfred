@@ -16,10 +16,33 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-adds OpenCode memory and code-graph parity, groups batteries by operating cost,
-and limits the default skill set to three skills that passed paired task
-evaluation. It also renames the Desktop appearances to Prism, Graphite, and
-Ledger.
+currently has no pending changes.
+
+## 0.8.0 (2026-08-17)
+
+Version 0.8.0 adds OpenCode, benchmarks memory recall, starter skills, and
+compression, records each run's configuration and evidence, and finishes the
+Desktop screen pass.
+
+- OpenCode can run scheduled roles, custom agents, Desktop conversations, and
+  Slack conversations after version, protocol, login, and containment checks.
+- Memory recall reports its reason, provider, source, repository scope, age,
+  expiry, and current state. A provider-only benchmark measures false
+  injections, latency, prompt bytes, and query work.
+- Paired task tests limit the default starter set to three skills that improved
+  their fixtures. A separate gate checks whether compression keeps required
+  facts before it reports token savings.
+- Saved runs record engine and model selection, capability checks, timeout,
+  write boundary, memory attachments, approvals, decisions, commit, pull
+  request, and an optional imported transcript.
+- Prism, Graphite, and Ledger pass the screen matrix in light and dark modes at
+  desktop and phone widths. Public screenshots and video use fixture data in
+  light mode.
+- Screen-level bundles cut initial Desktop JavaScript from 1,489.16 kB to
+  495.17 kB in the v0.8.0 release build.
+
+Read the complete
+[`0.8.0` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#080---2026-08-17).
 
 ## 0.7.5 (2026-08-17)
 
