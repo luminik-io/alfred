@@ -73,6 +73,45 @@ test("compact Work windows open the inspector as a sheet", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "Work item inspector" })).toHaveCount(0);
 });
 
+test("standard desktop Work windows keep the inspector in a sheet", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Work", exact: true }).click();
+  await page
+    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .click();
+
+  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Work item inspector" }),
+  ).toHaveCount(0);
+});
+
+test("wide Work windows dock evidence without narrowing lifecycle lanes", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 1680, height: 900 });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Work", exact: true }).click();
+  await page
+    .getByRole("button", { name: /Replace legacy appearance presets/ })
+    .click();
+
+  const inspector = page.getByRole("complementary", {
+    name: "Work item inspector",
+  });
+  await expect(inspector).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Work item" })).toHaveCount(0);
+
+  const lanes = await page.locator(".alfred-pipeline__column").all();
+  for (const lane of lanes) {
+    const box = await lane.boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(230);
+  }
+});
+
 test("narrow Settings keeps every section label readable", async ({ page }) => {
   await installAlfredApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
