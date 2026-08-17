@@ -29,7 +29,7 @@
   font-weight: 650;
 }
 
-/* Signal Edge ------------------------------------------------------------ */
+/* Prism ------------------------------------------------------------------ */
 
 :root[data-theme="signal-edge"] .alfred-app-atmosphere {
   background:
@@ -251,7 +251,7 @@
   --theme-warn: oklch(0.76 0.13 76);
 }
 
-/* Category Standard ------------------------------------------------------ */
+/* Graphite --------------------------------------------------------------- */
 
 :root[data-theme="category-standard"] body {
   --theme-font-heading: "Roboto Condensed Variable", "Arial Narrow", sans-serif;
@@ -352,7 +352,7 @@
   box-shadow: inset 2px 0 0 var(--blue);
 }
 
-/* Linked Fold ------------------------------------------------------------ */
+/* Ledger ----------------------------------------------------------------- */
 
 :root[data-theme="linked-fold"] body {
   --theme-font-heading: "Source Serif 4 Variable", Georgia, serif;

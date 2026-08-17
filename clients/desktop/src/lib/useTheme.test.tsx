@@ -10,7 +10,7 @@ describe("useTheme", () => {
     delete document.documentElement.dataset.theme;
   });
 
-  it("rejects legacy palette identifiers and starts with Signal Edge light", async () => {
+  it("rejects legacy palette identifiers and starts with Prism light", async () => {
     localStorage.setItem("alfred-theme-name", "mineral");
 
     const { result } = renderHook(() => useTheme());
@@ -32,7 +32,13 @@ describe("useTheme", () => {
     expect(Object.keys(THEME_META)).toEqual(THEME_NAMES);
   });
 
-  it("applies and persists Linked Fold independently from the mode", async () => {
+  it("uses concrete public names for each visual theme", () => {
+    expect(THEME_META["signal-edge"].label).toBe("Prism");
+    expect(THEME_META["category-standard"].label).toBe("Graphite");
+    expect(THEME_META["linked-fold"].label).toBe("Ledger");
+  });
+
+  it("applies and persists Ledger independently from the mode", async () => {
     const { result } = renderHook(() => useTheme());
 
     act(() => {

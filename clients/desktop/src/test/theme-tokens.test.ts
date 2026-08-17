@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 // reads index.css, treats the base :root block as the canonical token set, and
 // fails CI if any theme block drops one of those tokens.
 //
-// The base :root block is Signal Edge Light (the default), so it doubles as the
+// The base :root block is Prism Light (the default), so it doubles as the
 // reference set. Theme blocks may add tokens, but must never define fewer color
 // tokens than the base.
 
@@ -125,23 +125,23 @@ const requiredColorTokens = THEME_PRIMITIVES;
 
 const THEME_BLOCKS: Array<{ name: string; selector: string }> = [
   {
-    name: "Signal Edge Dark",
+    name: "Prism Dark",
     selector: ':root[data-theme="signal-edge"].dark {',
   },
   {
-    name: "Category Standard Light",
+    name: "Graphite Light",
     selector: ':root[data-theme="category-standard"].light {',
   },
   {
-    name: "Category Standard Dark",
+    name: "Graphite Dark",
     selector: ':root[data-theme="category-standard"].dark {',
   },
   {
-    name: "Linked Fold Light",
+    name: "Ledger Light",
     selector: ':root[data-theme="linked-fold"].light {',
   },
   {
-    name: "Linked Fold Dark",
+    name: "Ledger Dark",
     selector: ':root[data-theme="linked-fold"].dark {',
   },
 ];
@@ -176,7 +176,7 @@ describe("theme token completeness (do not revert)", () => {
     }
   });
 
-  it("keeps Signal Edge light as the warm-neutral default with spectral edges", () => {
+  it("keeps Prism light as the warm-neutral default with spectral edges", () => {
     const body = blockBody(css, ":root {");
     expect(body).toMatch(/color-scheme:\s*light/);
     expect(body).toMatch(/--background:\s*oklch\(0\.975/);
@@ -190,7 +190,7 @@ describe("theme token completeness (do not revert)", () => {
     expect(css).not.toContain('data-theme="carbon"');
   });
 
-  it("keeps Linked Fold dark on warm graphite instead of a brown field", () => {
+  it("keeps Ledger dark on warm graphite instead of a brown field", () => {
     const body = lastBlockBody(css, ':root[data-theme="linked-fold"].dark {');
 
     expect(body).toMatch(/--theme-background:\s*oklch\(0\.155 0\.008 55\)/);

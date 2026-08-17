@@ -15,16 +15,16 @@ export const THEME_NAMES: ThemeName[] = [
 
 export const THEME_META: Record<ThemeName, { label: string; blurb: string }> = {
   "signal-edge": {
-    label: "Signal Edge",
-    blurb: "Quiet glass with spectral edges reserved for live state.",
+    label: "Prism",
+    blurb: "Soft glass with restrained color for active work.",
   },
   "category-standard": {
-    label: "The category standard",
-    blurb: "Dense operations surfaces with familiar status semantics.",
+    label: "Graphite",
+    blurb: "Compact panels with familiar status colors.",
   },
   "linked-fold": {
-    label: "Linked Fold",
-    blurb: "Warm material, precise folds, and decision-first color.",
+    label: "Ledger",
+    blurb: "Warm paper, crisp folds, and gold for decisions.",
   },
 };
 

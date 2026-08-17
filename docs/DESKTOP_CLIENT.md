@@ -129,7 +129,7 @@ and save in the theme editor. See [`ONBOARDING.md`](ONBOARDING.md) for the full
 sequence.
 
 Settings separates visual appearance from roster naming. Appearance selects
-Signal Edge, The Category Standard, or Linked Fold. A separate control selects
+Prism, Graphite, or Ledger. A separate control selects
 light or dark mode. Roster themes only change the names shown for roles.
 
 ## How it talks to the fleet
@@ -304,8 +304,8 @@ Distribution sequence:
 The desktop uses the two-axis system in
 [`THEME_SYSTEM.md`](THEME_SYSTEM.md):
 
-- Signal Edge is the default appearance.
-- The Category Standard and Linked Fold are the other shipped appearances.
+- Prism is the default appearance.
+- Graphite and Ledger are the other shipped appearances.
 - Light and dark are separate modes within each appearance.
 - Components use semantic tokens from `clients/desktop/src/styles/tokens.css`.
 - Liquid-glass material is for chrome, dialogs, popovers, inspectors, and other

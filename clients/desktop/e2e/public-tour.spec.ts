@@ -71,6 +71,6 @@ test("records the public tour from sample data only", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await page.getByRole("tab", { name: "Appearance" }).click();
   await expect(page.getByRole("region", { name: "Appearance" })).toBeVisible();
-  await expect(page.getByText("Signal Edge", { exact: true })).toBeVisible();
+  await expect(page.getByText("Prism", { exact: true })).toBeVisible();
   await pause();
 });

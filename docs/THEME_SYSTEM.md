@@ -6,14 +6,14 @@ Alfred Desktop uses a two-axis theme model:
 - `.dark` / `.light` selects the mode inside that palette.
 
 The base `:root` block in `clients/desktop/src/styles/tokens.css` is the
-complete primitive contract and the Signal Edge light default. Each appearance
+complete primitive contract and the Prism light default. Each appearance
 and mode defines the same primitive set. A single mapping exposes stable
 semantic tokens to components.
 
-Signal Edge uses a quiet neutral field with mint, rose, and violet reserved for
-active or uncertain edges. The category standard uses compact graphite panels
-and familiar blue, green, amber, and red state semantics. Linked Fold uses warm
-paper, ink, crease lines, and gold for operator decisions.
+Prism uses a quiet neutral field with mint, rose, and violet reserved for
+active or uncertain edges. Graphite uses compact panels and familiar blue,
+green, amber, and red status colors. Ledger uses warm paper, ink, crease lines,
+and gold for operator decisions.
 
 ## Glass And Flat Surfaces
 
