@@ -42,7 +42,12 @@ from .plan_approvals import (
     decision_for_issue,
     issue_num_from_plan_id,
 )
-from .run_evidence import RunEvidenceRecord, derive_run_evidence, discover_transcript_artifact
+from .run_evidence import (
+    RunEvidenceRecord,
+    derive_run_evidence,
+    discover_imported_transcript_artifacts,
+    discover_transcript_artifact,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -615,17 +620,27 @@ def _firing_from_events(
         summary_text = _short_summary(events[-1])
     if not started and events:
         started = events[0].get("ts")
-    transcript_path = next(
+    native_transcript_path = next(
         (e.get("transcript_path") for e in events if e.get("transcript_path")),
         None,
     )
-    if transcript_path is None and state_root is not None:
+    imported_transcript_paths: list[Path] = []
+    if native_transcript_path is None and state_root is not None:
         discovered = discover_transcript_artifact(
             state_root,
             agent=codename,
             run_id=firing_id,
         )
-        transcript_path = str(discovered) if discovered is not None else None
+        native_transcript_path = str(discovered) if discovered is not None else None
+    if state_root is not None:
+        imported_transcript_paths = discover_imported_transcript_artifacts(
+            state_root,
+            agent=codename,
+            run_id=firing_id,
+        )
+    transcript_path = native_transcript_path or (
+        str(imported_transcript_paths[0]) if imported_transcript_paths else None
+    )
     return FiringRecord(
         firing_id=firing_id,
         codename=codename,
@@ -642,7 +657,8 @@ def _firing_from_events(
             run_id=firing_id,
             events=events,
             events_path=events_path,
-            transcript_path=transcript_path,
+            transcript_path=native_transcript_path,
+            imported_transcript_paths=imported_transcript_paths,
         ),
     )
 

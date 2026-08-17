@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ if str(LIB) not in sys.path:
 from agent_runner.agent_events import Event, parse_record  # noqa: E402
 from server.run_evidence import (  # noqa: E402
     derive_run_evidence,
+    discover_imported_transcript_artifacts,
     discover_transcript_artifact,
 )
 
@@ -161,6 +163,27 @@ def test_run_evidence_marks_missing_transcript_as_unavailable(tmp_path: Path) ->
     assert record.facts == []
 
 
+def test_run_evidence_lists_imported_session_separately_from_native_transcript(
+    tmp_path: Path,
+) -> None:
+    native = tmp_path / "native.jsonl"
+    imported = tmp_path / "imported.txt"
+    record = derive_run_evidence(
+        agent="reviewer",
+        run_id="run-1",
+        events=[_event("firing_complete", 1, "alfred", outcome="done")],
+        events_path=tmp_path / "run-1.jsonl",
+        transcript_path=native,
+        imported_transcript_paths=[imported],
+    )
+
+    assert [(artifact.kind, artifact.path) for artifact in record.artifacts] == [
+        ("events", str(tmp_path / "run-1.jsonl")),
+        ("transcript", str(native)),
+        ("imported_session", str(imported)),
+    ]
+
+
 def test_transcript_discovery_covers_all_supported_engines(tmp_path: Path) -> None:
     state = tmp_path / "state"
     cases = (
@@ -180,6 +203,34 @@ def test_transcript_discovery_covers_all_supported_engines(tmp_path: Path) -> No
             )
             == path
         )
+
+
+def test_imported_transcript_is_indexed_without_hiding_native_artifact(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    native = state / "codex" / "reviewer" / "2026-08" / "run-1.stdout.txt"
+    imported = state / "imports" / "reviewer" / "run-1" / "transcript.jsonl"
+    native.parent.mkdir(parents=True)
+    imported.parent.mkdir(parents=True)
+    native.write_text("native\n", encoding="utf-8")
+    imported.write_text("imported\n", encoding="utf-8")
+    (imported.parent / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "agent": "reviewer",
+                "run_id": "run-1",
+                "transcript_name": "transcript.jsonl",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert discover_transcript_artifact(state, agent="reviewer", run_id="run-1") == native
+    assert discover_imported_transcript_artifacts(
+        state,
+        agent="reviewer",
+        run_id="run-1",
+    ) == [imported]
 
 
 def test_transcript_discovery_rejects_untrusted_names(tmp_path: Path) -> None:

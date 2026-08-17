@@ -54,11 +54,12 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Session and evidence continuity
 
-- [Define one local event envelope](https://github.com/luminik-io/alfred/issues/656)
+- [x] [Define one local event envelope](https://github.com/luminik-io/alfred/issues/656)
   for sessions, turns, tools, evidence,
   repositories, branches, pull requests, roles, and firing IDs.
-- Link interactive coding sessions to scheduled Alfred work when the operator
-  chooses to import them.
+- [x] Link an interactive transcript to a saved Alfred run only when the
+  operator names the run and its exact repository. Keep removal local and
+  reversible.
 - Keep collection local by default. Require explicit repository scope and apply
   redaction before any export.
 - Make recovery and review use the same evidence instead of separate harness
