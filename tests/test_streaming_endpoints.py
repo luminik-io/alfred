@@ -115,6 +115,26 @@ def test_find_transcript_rejects_path_traversal(tmp_path: Path) -> None:
     assert streaming.find_transcript(state, "..") is None
 
 
+@pytest.mark.parametrize(
+    ("root", "suffix"),
+    (("opencode", ".events.jsonl"), ("codex", ".stdout.txt")),
+)
+def test_tail_finds_non_claude_engine_artifacts(
+    tmp_path: Path,
+    root: str,
+    suffix: str,
+) -> None:
+    state = tmp_path / "state"
+    path = state / root / "lucius" / "2026-08" / f"fire-engine{suffix}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("engine evidence\n", encoding="utf-8")
+
+    chunk = streaming.tail_transcript_chunk(state, "fire-engine")
+
+    assert chunk["found"] is True
+    assert chunk["lines"] == ["engine evidence"]
+
+
 def test_assistant_text_fragments_in_order(tmp_path: Path) -> None:
     transcript = tmp_path / "t.jsonl"
     transcript.write_text(

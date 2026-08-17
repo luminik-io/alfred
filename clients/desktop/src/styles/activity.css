@@ -217,6 +217,88 @@
   font-size: 0.8rem;
 }
 
+.run-evidence {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--hairline);
+  padding-top: 0.65rem;
+}
+
+.run-evidence__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--foreground);
+  font-size: 0.78rem;
+}
+
+.run-evidence__head > span {
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+}
+
+.run-evidence__facts {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-evidence__facts > li {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.run-evidence__kind {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.run-evidence__value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-evidence__source,
+.run-evidence__artifact {
+  border: 1px solid var(--hairline);
+  padding: 0.08rem 0.34rem;
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+  font-weight: 650;
+}
+
+.run-evidence__source--github,
+.run-evidence__source--engine,
+.run-evidence__artifact--available {
+  border-color: color-mix(in oklch, var(--primary), var(--hairline) 55%);
+  color: var(--primary);
+}
+
+.run-evidence__artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.run-evidence__empty {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
 .run-step {
   display: flex;
   align-items: baseline;
@@ -621,6 +703,51 @@
   .feed-item__side,
   .request-thread__actions {
     justify-content: flex-start;
+  }
+
+  .run-card__body {
+    padding-left: 0.7rem;
+  }
+
+  .run-card__time,
+  .run-step__ts {
+    display: none;
+  }
+
+  .run-step {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .run-step__label,
+  .run-step__detail {
+    grid-column: 2;
+  }
+
+  .run-step__detail {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .run-evidence__facts > li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .run-evidence__kind {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .run-evidence__source {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .run-evidence__value {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 

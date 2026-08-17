@@ -734,6 +734,7 @@ def main() -> int:
         events.emit(
             "llm_invoke_done",
             engine=engine_used,
+            session_id=getattr(result, "session_id", None),
             comment_id=cid,
             turns=result.num_turns,
             subtype=result.subtype,

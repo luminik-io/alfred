@@ -80,10 +80,13 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     firings = client.get("/api/firings", params={"codename": "architect"})
     assert firings.status_code == 200
     assert firings.json()["rows"][0]["status"] == "ok"
+    assert "raw_events" not in firings.json()["rows"][0]
+    assert firings.json()["rows"][0]["evidence"]["schema_version"] == 1
 
     detail = client.get("/api/firings/2026-05-27-1200-aa")
     assert detail.status_code == 200
     assert detail.json()["raw_events"][1]["event"] == "firing_complete"
+    assert detail.json()["evidence"]["event_count"] == 2
 
     plan = client.get("/api/plans/61-plan")
     assert plan.status_code == 200

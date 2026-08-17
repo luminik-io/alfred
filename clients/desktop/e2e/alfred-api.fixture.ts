@@ -540,6 +540,61 @@ export class AlfredApiFixture {
                   summary: "Completed the Desktop visual contract",
                   transcript_path: null,
                   events_path: "state/fixtures/visual-contract.jsonl",
+                  evidence: {
+                    schema_version: 1,
+                    run_id: "senior-dev-visual-contract",
+                    agent: "senior-dev",
+                    event_count: 8,
+                    facts: [
+                      {
+                        kind: "issue",
+                        source: "github",
+                        event_type: "issue_picked",
+                        event_seq: 2,
+                        data: { repo: "example/workspace", number: 42 },
+                      },
+                      {
+                        kind: "engine_session",
+                        source: "engine",
+                        event_type: "llm_invoke_done",
+                        event_seq: 4,
+                        data: {
+                          engine: "opencode",
+                          session_id: "session_fixture_42",
+                          turns: 7,
+                        },
+                      },
+                      {
+                        kind: "approval",
+                        source: "operator",
+                        event_type: "plan_approved",
+                        event_seq: 5,
+                        data: { decision: "approved" },
+                      },
+                      {
+                        kind: "pull_request",
+                        source: "github",
+                        event_type: "pr_opened",
+                        event_seq: 7,
+                        data: {
+                          repo: "example/workspace",
+                          number: 42,
+                        },
+                      },
+                    ],
+                    artifacts: [
+                      {
+                        kind: "events",
+                        status: "available",
+                        path: "state/fixtures/visual-contract.jsonl",
+                      },
+                      {
+                        kind: "transcript",
+                        status: "available",
+                        path: "state/fixtures/visual-contract.events.jsonl",
+                      },
+                    ],
+                  },
                   timeline: {
                     headline: "Completed the Desktop visual contract",
                     severity: "ok",

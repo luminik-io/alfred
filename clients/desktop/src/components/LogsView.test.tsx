@@ -158,6 +158,49 @@ describe("LogsView live tail (#41)", () => {
     expect(screen.queryByText(/rate.?limit/i)).not.toBeInTheDocument();
   });
 
+  it("shows the compact evidence record and artifact state for an expanded run", () => {
+    renderLogs([
+      runningFiring({
+        status: "ok",
+        ended_at: "2026-06-03T12:05:00Z",
+        evidence: {
+          schema_version: 1,
+          run_id: "senior-dev-2026-06-03-1200",
+          agent: "senior-dev",
+          event_count: 8,
+          facts: [
+            {
+              kind: "issue",
+              source: "github",
+              event_type: "issue_picked",
+              event_seq: 2,
+              data: { repo: "example/app", number: 42 },
+            },
+            {
+              kind: "engine_session",
+              source: "engine",
+              event_type: "llm_invoke_done",
+              event_seq: 4,
+              data: { engine: "opencode", session_id: "ses_123", turns: 7 },
+            },
+          ],
+          artifacts: [
+            { kind: "events", status: "available", path: "/state/events/run.jsonl" },
+            { kind: "transcript", status: "unavailable", path: null },
+          ],
+        },
+      }),
+    ]);
+
+    const evidence = screen.getByRole("region", { name: /run evidence/i });
+    expect(within(evidence).getByText("Issue")).toBeInTheDocument();
+    expect(within(evidence).getByText(/example\/app · #42/i)).toBeInTheDocument();
+    expect(within(evidence).getByText("GitHub")).toBeInTheDocument();
+    expect(within(evidence).getByText(/opencode · ses_123 · 7 turns/i)).toBeInTheDocument();
+    expect(within(evidence).getByText(/event log ready/i)).toBeInTheDocument();
+    expect(within(evidence).getByText(/transcript unavailable/i)).toBeInTheDocument();
+  });
+
   it("filters to error runs when 'Errors only' is toggled on", async () => {
     const okRun = runningFiring({
       firing_id: "senior-dev-ok",

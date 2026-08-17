@@ -23,7 +23,10 @@ async def api_firings(
         limit=min(max(1, limit), 200),
         codename=codename,
     )
-    return JSONResponse(views._jsonable({"rows": rows}))
+    payload = views._jsonable({"rows": rows})
+    for row in payload["rows"]:
+        row.pop("raw_events", None)
+    return JSONResponse(payload)
 
 
 @router.get("/api/firings/{firing_id}", response_class=JSONResponse)

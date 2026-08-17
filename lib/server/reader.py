@@ -42,6 +42,7 @@ from .plan_approvals import (
     decision_for_issue,
     issue_num_from_plan_id,
 )
+from .run_evidence import RunEvidenceRecord, derive_run_evidence, discover_transcript_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class FiringRecord:
     # any future surface share one honest source of truth. Optional so legacy
     # callers that construct a record by hand keep working.
     timeline: FiringTimeline | None = None
+    evidence: RunEvidenceRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -275,7 +277,13 @@ class FilesystemReader:
             except (OSError, json.JSONDecodeError):
                 return None
             codename = str(data.get("agent") or data.get("codename") or "unknown")
-            return _firing_from_events(codename, firing_id, [data], str(opt))
+            return _firing_from_events(
+                codename,
+                firing_id,
+                [data],
+                str(opt),
+                state_root=self.state_root,
+            )
         return None
 
     def reliability_report(self) -> dict[str, Any]:
@@ -437,7 +445,13 @@ class FilesystemReader:
                 # One malformed line should not nuke the whole firing.
                 continue
         firing_id = path.stem
-        return _firing_from_events(codename, firing_id, events, str(path))
+        return _firing_from_events(
+            codename,
+            firing_id,
+            events,
+            str(path),
+            state_root=self.state_root,
+        )
 
     def _firings_today(self, codename: str) -> int:
         today = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -567,6 +581,8 @@ def _firing_from_events(
     firing_id: str,
     events: list[dict],
     events_path: str,
+    *,
+    state_root: Path | None = None,
 ) -> FiringRecord:
     """Distill a :class:`FiringRecord` from raw event dicts."""
     started = next(
@@ -603,6 +619,13 @@ def _firing_from_events(
         (e.get("transcript_path") for e in events if e.get("transcript_path")),
         None,
     )
+    if transcript_path is None and state_root is not None:
+        discovered = discover_transcript_artifact(
+            state_root,
+            agent=codename,
+            run_id=firing_id,
+        )
+        transcript_path = str(discovered) if discovered is not None else None
     return FiringRecord(
         firing_id=firing_id,
         codename=codename,
@@ -614,6 +637,13 @@ def _firing_from_events(
         events_path=events_path,
         raw_events=events,
         timeline=derive_timeline(events),
+        evidence=derive_run_evidence(
+            agent=codename,
+            run_id=firing_id,
+            events=events,
+            events_path=events_path,
+            transcript_path=transcript_path,
+        ),
     )
 
 

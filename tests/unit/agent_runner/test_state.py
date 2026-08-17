@@ -21,10 +21,24 @@ def test_event_log_appends_jsonl(fresh_agent_runner, tmp_path):
     assert first["type"] == "firing_started"
     assert first["agent"] == "lucius"
     assert first["firing_id"] == "test-1"
+    assert first["schema_version"] == 1
+    assert first["source"] == "alfred"
     assert "ts" in first
     # Monotonic per-firing seq stamped at append time.
     assert first["seq"] == 1
     assert json.loads(lines[1])["seq"] == 2
+
+
+def test_event_log_identifies_the_origin_of_observed_facts(fresh_agent_runner, tmp_path):
+    ar = fresh_agent_runner
+    log = ar.EventLog(agent="lucius", firing_id="test-2", path=tmp_path / "events.jsonl")
+
+    log.emit("llm_invoke_done", engine="opencode", turns=3, success=True)
+    log.emit("plan_approved", number=42)
+    log.emit("pr_opened", repo="example/app", url="https://github.com/example/app/pull/7")
+
+    records = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
+    assert [record["source"] for record in records] == ["engine", "operator", "github"]
 
 
 def test_spend_state_increment_persists(fresh_agent_runner):
