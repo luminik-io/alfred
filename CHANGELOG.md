@@ -33,6 +33,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Headroom setup now installs the pinned library into Alfred's Python
+  interpreter. A CLI-only install no longer appears ready without a configured
+  compression command.
 - The memory recall benchmark now records searchable-text bytes, final body
   bytes, avoided full-scan bytes, and index/body query counts. SQLite fetches
   all final lesson bodies in one query after ranking IDs and searchable text.

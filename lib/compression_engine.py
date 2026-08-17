@@ -6,7 +6,7 @@ Alfred ships two compression engines for verbose tool output:
 * **builtin** - the pure-Python, stdlib-only #453 compactor in
   ``lib/tool_compactor.py``. It is the ZERO-INSTALL DEFAULT and the fallback:
   a fresh solo install needs nothing extra.
-* **headroom** - the optional, more capable ``headroom-ai`` engine
+* **headroom** - the optional ``headroom-ai`` engine
   (Apache-2.0, wired in ``lib/headroom_engine.py``). Used only when it is both
   selected and actually available; otherwise the selector silently falls back
   to the built-in compactor.

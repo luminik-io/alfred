@@ -624,7 +624,7 @@ at 0% reduction because Alfred passes failed output through unchanged. Headroom
 remains `not-run` unless the benchmark process can call a real Headroom
 compression path. Token savings alone do not qualify an engine as the default.
 
-Measured with Headroom 0.27.0 in its isolated Python environment, all three
+Measured with the pinned Headroom 0.29.0 package in an isolated environment, all three
 successful payloads used the built-in fallback and the failed payload used raw
 passthrough. The selected Headroom arm therefore matched the built-in 70.5%
 token reduction and 100% fact-retention result, but Headroom itself was the
