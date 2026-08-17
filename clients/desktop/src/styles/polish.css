@@ -14,6 +14,34 @@
   font-weight: 620;
 }
 
+/* The approved comps use page titles as navigation landmarks, not as cards.
+ * Keep glass for true overlays and persistent chrome. A page heading should not
+ * compete with the work directly below it. */
+.alfred-page-hero {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0.25rem 0 0.65rem;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Settings and Agents already contain their own sections, tables, and cards.
+ * A second frame around the whole route creates a false window inside the app. */
+:is(.settings-view.panel, .agents-page .panel) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.settings-view {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+}
+
 .ask__head-title {
   margin: 0;
   font-size: 1rem;
@@ -159,17 +187,6 @@
   border-color: var(--hairline);
   background: var(--surface);
   box-shadow: none;
-}
-
-:root[data-theme="signal-edge"] :is(.settings-view.panel, .agents-page .panel) {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 0;
-}
-
-:root[data-theme="signal-edge"] .settings-view {
-  max-width: 70rem;
 }
 
 :root[data-theme="signal-edge"] [aria-label="Code intelligence"] > form {
@@ -592,4 +609,21 @@
   :root[data-theme="linked-fold"] .alfred-pipeline__column::before {
     content: none;
   }
+}
+
+/* Page hierarchy is shared by every appearance. Theme material may change the
+ * work surfaces below, but it must not turn the route title into another card. */
+:root[data-theme] .alfred-page-hero {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme] :is(.settings-view.panel, .agents-page .panel) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
