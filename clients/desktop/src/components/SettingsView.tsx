@@ -456,6 +456,12 @@ export function SettingsView({
               panel at the top of the app. Per-agent controls live on Agents;
               memory checks live in Learnings.
             </p>
+            {!canRun ? (
+              <p className="console-note">
+                Open Alfred Desktop to run these checks. Browser preview is
+                read-only.
+              </p>
+            ) : null}
             <div className="console-panel__actions">
               <button
                 className="secondary-button"
@@ -564,12 +570,6 @@ export function SettingsView({
                 <code>alfred run &lt;codename&gt;</code>
               </div>
             </details>
-            {!canRun ? (
-              <p className="console-note">
-                Native actions appear in the desktop app. Browser preview stays
-                read-only.
-              </p>
-            ) : null}
           </div>
         ) : null}
       </div>
