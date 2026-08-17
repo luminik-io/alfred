@@ -407,6 +407,94 @@ def test_recall_quality_formats_the_scored_recall_without_a_second_lookup():
     assert report.results[0].prompt_bytes > 0
 
 
+def test_recall_quality_measures_index_and_one_body_hydration_query():
+    lessons = (
+        mb.RecallQualitySeedLesson(
+            lesson_id="L-one",
+            body="GraphQL schema checks run before deployment.",
+            repo="acme/api",
+            tags=("graphql", "schema"),
+        ),
+        mb.RecallQualitySeedLesson(
+            lesson_id="L-two",
+            body="GraphQL schema changes require compatibility tests.",
+            repo="acme/api",
+            tags=("graphql", "schema"),
+        ),
+        mb.RecallQualitySeedLesson(
+            lesson_id="L-other",
+            body="Redis cache keys include the repository name.",
+            repo="acme/api",
+            tags=("redis", "cache"),
+        ),
+    )
+    case = mb.RecallQualityCase(
+        case_id="two-results",
+        category="exact",
+        query="GraphQL schema",
+        repo="acme/api",
+        relevant_lesson_ids=("L-one", "L-two"),
+    )
+    provider = mb.seed_recall_quality_provider(lessons)
+
+    report = mb.run_recall_quality(
+        (case,),
+        provider=provider,
+        context_fn=lambda *_args: "",
+    )
+
+    index = report.index
+    assert index is not None
+    assert index.corpus_lessons == 3
+    assert index.corpus_body_bytes == sum(len(item.body.encode("utf-8")) for item in lessons)
+    assert index.searchable_text_bytes >= index.corpus_body_bytes
+    assert index.index_queries >= 1
+    assert index.hydration_queries == 1
+    assert index.hydrated_lessons == 2
+    assert index.hydrated_body_bytes == sum(len(item.body.encode("utf-8")) for item in lessons[:2])
+    assert index.full_scan_body_bytes == index.corpus_body_bytes
+    assert index.avoided_body_bytes == index.corpus_body_bytes - index.hydrated_body_bytes
+    assert index.avoided_body_rate == pytest.approx(
+        index.avoided_body_bytes / index.full_scan_body_bytes
+    )
+
+
+def test_recall_quality_does_not_invent_index_metrics_for_an_unknown_provider():
+    class Provider:
+        name = "unknown"
+
+        def recall(self, **_kwargs):
+            return []
+
+    report = mb.run_recall_quality((), provider=Provider())
+
+    assert report.index is None
+
+
+def test_recall_quality_keeps_index_metrics_when_the_same_chain_is_reused():
+    lesson = mb.RecallQualitySeedLesson(
+        lesson_id="L-schema",
+        body="Run GraphQL schema validation before deployment.",
+        repo="acme/api",
+    )
+    case = mb.RecallQualityCase(
+        case_id="exact",
+        category="exact",
+        query="GraphQL schema validation",
+        repo="acme/api",
+        relevant_lesson_ids=(lesson.lesson_id,),
+    )
+    provider = mb.seed_recall_quality_provider((lesson,))
+
+    first = mb.run_recall_quality((case,), provider=provider, context_fn=lambda *_args: "")
+    second = mb.run_recall_quality((case,), provider=provider, context_fn=lambda *_args: "")
+
+    assert first.index is not None
+    assert second.index is not None
+    assert second.index.corpus_lessons == 1
+    assert second.index.hydration_queries == 1
+
+
 def test_recall_quality_uses_and_records_an_isolated_prompt_budget(monkeypatch):
     from memory import Lesson
 
@@ -794,6 +882,7 @@ def test_cli_memory_recall_quality_table(capsys):
     assert "empty miss rate" in out
     assert "temporal-update" in out
     assert "memory: sqlite,fleet" in out
+    assert "body bytes avoided" in out
 
 
 def test_cli_memory_recall_quality_json(capsys):
@@ -815,6 +904,11 @@ def test_cli_memory_recall_quality_json(capsys):
     ]
     assert payload["metrics"]["cases"] == 7
     assert payload["metrics"]["false_injections"] == 0
+    assert payload["index"]["corpus_lessons"] > 0
+    assert payload["index"]["searchable_text_bytes"] > 0
+    assert payload["index"]["hydration_queries"] > 0
+    assert payload["index"]["hydrated_body_bytes"] > 0
+    assert payload["index"]["avoided_body_bytes"] > 0
     assert len(payload["results"]) == 7
 
 

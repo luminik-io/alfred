@@ -330,10 +330,27 @@ The built-in fixture covers seven cases:
 - a true query miss
 
 The report includes precision, recall, false-injection rate, true-miss rate,
-provider latency, and prompt bytes. It also lists the expected and recalled
-lesson IDs for each case. The JSON record includes the fixture schema, fixture
-SHA-256 digest, provider chain, recall limit, fixed 8,000-character prompt
-budget, case category, and any provider or context-format error.
+provider latency, prompt bytes, and index/hydration measurements. It lists the
+expected and recalled lesson IDs for each case. The JSON record includes the
+fixture schema, fixture SHA-256 digest, provider chain, recall limit, fixed
+8,000-character prompt budget, case category, and any provider or
+context-format error.
+
+The index/hydration measurements report:
+
+- stored lesson-body bytes and searchable-text bytes
+- index queries and final body-hydration queries
+- body bytes returned for the final ranked lessons
+- body bytes avoided compared with reading every stored body for every case
+
+These are logical UTF-8 payload counts from the isolated fixture, not an
+estimate of physical disk reads. SQLite ranks IDs and normalized searchable
+text, then fetches the final lesson bodies in one batched query. The built-in
+fixture currently avoids 2,857 of 3,101 possible body bytes, or 92.1%, while
+keeping 100% precision and recall with zero false injections. Its searchable
+text is 586 bytes for 443 bytes of stored lesson bodies because it also carries
+tags. A summary index would be smaller, but this fixture does not show a recall
+benefit that would justify changing the stored search surface.
 
 Each case makes one provider call. Provider latency measures that call only.
 Prompt bytes measure the same recalled lessons after the runtime memory
