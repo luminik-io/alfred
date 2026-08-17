@@ -13,6 +13,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added explicit, repository-scoped transcript import for saved runs. Alfred
+  copies Claude Code, Codex, or OpenCode output into managed state, verifies the
+  repository against the run event log, and can remove its copy without
+  changing the source file.
 - Added a paired starter-skill benchmark. It runs baseline and skill-assisted
   tasks in fresh local repositories, grades them outside the agent workspace,
   and records task quality, regressions, findings, turns, tokens, prompt bytes,

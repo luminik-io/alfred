@@ -7,11 +7,13 @@ GitHub, an engine, or transcript contents while building the firing list.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from event_provenance import EVENT_SOURCE_VALUES, infer_event_source
+from run_import import IMPORT_SCHEMA_VERSION, MANAGED_TRANSCRIPT_NAMES
 
 RUN_EVIDENCE_SCHEMA_VERSION = 1
 _SAFE_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
@@ -87,6 +89,7 @@ def derive_run_evidence(
     events: list[dict[str, Any]],
     events_path: str | Path,
     transcript_path: str | Path | None,
+    imported_transcript_paths: Sequence[str | Path] | None = None,
 ) -> RunEvidenceRecord:
     """Derive stable facts and local artifact locations without external reads."""
 
@@ -133,13 +136,21 @@ def derive_run_evidence(
         status="available" if transcript_path is not None else "unavailable",
         path=str(transcript_path) if transcript_path is not None else None,
     )
+    imported_artifacts = [
+        EvidenceArtifact(
+            kind="imported_session",
+            status="available",
+            path=str(path),
+        )
+        for path in (imported_transcript_paths or [])
+    ]
     return RunEvidenceRecord(
         schema_version=RUN_EVIDENCE_SCHEMA_VERSION,
         run_id=run_id,
         agent=agent,
         event_count=len(events),
         facts=facts,
-        artifacts=[event_artifact, transcript_artifact],
+        artifacts=[event_artifact, transcript_artifact, *imported_artifacts],
     )
 
 
@@ -165,6 +176,34 @@ def discover_transcript_artifact(
     return None
 
 
+def discover_imported_transcript_artifacts(
+    state_root: Path,
+    *,
+    agent: str,
+    run_id: str,
+) -> list[Path]:
+    """List explicit managed transcript imports for one run."""
+
+    if not _safe_name(agent) or not _safe_name(run_id):
+        return []
+    import_dir = state_root / "imports" / agent / run_id
+    if not import_dir.is_dir():
+        return []
+    try:
+        manifest = json.loads((import_dir / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != IMPORT_SCHEMA_VERSION:
+        return []
+    if manifest.get("agent") != agent or manifest.get("run_id") != run_id:
+        return []
+    transcript_name = str(manifest.get("transcript_name") or "")
+    if transcript_name not in MANAGED_TRANSCRIPT_NAMES:
+        return []
+    transcript_path = import_dir / transcript_name
+    return [transcript_path] if transcript_path.is_file() else []
+
+
 def discover_transcript_by_run_id(state_root: Path, run_id: str) -> Path | None:
     """Find one known transcript artifact when the agent name is unavailable."""
 
@@ -181,6 +220,18 @@ def discover_transcript_by_run_id(state_root: Path, run_id: str) -> Path | None:
         for path in sorted(root.glob(pattern), reverse=True):
             if path.is_file():
                 return path
+    imports_root = state_root / "imports"
+    if imports_root.is_dir():
+        for agent_dir in sorted(imports_root.iterdir(), reverse=True):
+            if not agent_dir.is_dir() or not _safe_name(agent_dir.name):
+                continue
+            imported = discover_imported_transcript_artifacts(
+                state_root,
+                agent=agent_dir.name,
+                run_id=run_id,
+            )
+            if imported:
+                return imported[0]
     return None
 
 
@@ -194,6 +245,7 @@ __all__ = [
     "EvidenceFact",
     "RunEvidenceRecord",
     "derive_run_evidence",
+    "discover_imported_transcript_artifacts",
     "discover_transcript_artifact",
     "discover_transcript_by_run_id",
 ]

@@ -593,6 +593,11 @@ export class AlfredApiFixture {
                         status: "available",
                         path: "state/fixtures/visual-contract.events.jsonl",
                       },
+                      {
+                        kind: "imported_session",
+                        status: "available",
+                        path: "state/imports/senior-dev/visual-contract/stdout.txt",
+                      },
                     ],
                   },
                   timeline: {

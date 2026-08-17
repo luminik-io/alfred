@@ -74,6 +74,8 @@ Subcommands today:
   alfred logs <codename>      Inspect stream-JSON transcripts for one agent:
                               recent firings, tool-call summary, or a full
                               pretty-printed dump of one firing.
+  alfred evidence import ... Copy one engine transcript into a verified run.
+  alfred evidence remove ... Remove only Alfred's managed transcript copy.
   alfred brain ...            Inspect and seed the local fleet-brain memory
                               layer (`status`, `lessons`, `reflect`,
                               `governor`, `failure-patterns`, `firings`,
@@ -4055,6 +4057,65 @@ def cmd_auth(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_evidence(args: argparse.Namespace) -> int:
+    """Import or remove one repo-scoped run transcript."""
+
+    from run_import import import_run_transcript, remove_run_import
+
+    state_root = _alfred_home_path() / "state"
+    try:
+        if args.evidence_command == "import":
+            result = import_run_transcript(
+                state_root=state_root,
+                agent=args.agent,
+                run_id=args.run_id,
+                repo=args.repo,
+                engine=args.engine,
+                source=Path(args.source),
+            )
+            payload = {
+                "status": result.status,
+                "agent": args.agent,
+                "run_id": args.run_id,
+                "repo": args.repo,
+                "engine": args.engine,
+                "transcript_path": str(result.transcript_path),
+                "sha256": result.sha256,
+                "imported_at": result.imported_at,
+            }
+        elif args.evidence_command == "remove":
+            result = remove_run_import(
+                state_root=state_root,
+                agent=args.agent,
+                run_id=args.run_id,
+                repo=args.repo,
+            )
+            payload = {
+                "status": result.status,
+                "agent": args.agent,
+                "run_id": args.run_id,
+                "repo": args.repo,
+            }
+        else:  # pragma: no cover - argparse requires one known action
+            print("Usage: alfred evidence {import|remove}", file=sys.stderr)
+            return 2
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(f"evidence {args.evidence_command}: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(payload, sort_keys=True))
+    elif result.status == "imported":
+        print(f"Imported transcript for {args.agent}/{args.run_id}: {result.transcript_path}")
+    elif result.status == "unchanged":
+        print(f"Transcript already imported for {args.agent}/{args.run_id}")
+    elif result.status == "removed":
+        print(f"Removed managed transcript for {args.agent}/{args.run_id}")
+    else:
+        print(f"No managed transcript found for {args.agent}/{args.run_id}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     previous_env = os.environ.copy()
     _hydrate_cli_env_from_runtime_env()
@@ -4499,6 +4560,33 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_logs.add_argument("--show-tool-calls", action="store_true", help="aggregate tool/skill calls")
     p_logs.add_argument("--json", action="store_true")
     p_logs.set_defaults(func=cmd_logs)
+
+    p_evidence = sub.add_parser("evidence", help="manage saved evidence for one local run")
+    evidence_sub = p_evidence.add_subparsers(dest="evidence_command", required=True)
+    p_evidence_import = evidence_sub.add_parser(
+        "import",
+        help="copy one engine transcript into a verified repository run",
+    )
+    p_evidence_import.add_argument("--agent", required=True, help="agent codename")
+    p_evidence_import.add_argument("--run-id", required=True, help="existing Alfred run ID")
+    p_evidence_import.add_argument("--repo", required=True, help="exact owner/repo scope")
+    p_evidence_import.add_argument(
+        "--engine",
+        required=True,
+        choices=["claude", "codex", "opencode"],
+    )
+    p_evidence_import.add_argument("--source", required=True, help="transcript file to copy")
+    p_evidence_import.add_argument("--json", action="store_true")
+    p_evidence_import.set_defaults(func=cmd_evidence)
+    p_evidence_remove = evidence_sub.add_parser(
+        "remove",
+        help="remove Alfred's managed copy and keep the source file",
+    )
+    p_evidence_remove.add_argument("--agent", required=True, help="agent codename")
+    p_evidence_remove.add_argument("--run-id", required=True, help="existing Alfred run ID")
+    p_evidence_remove.add_argument("--repo", required=True, help="exact owner/repo scope")
+    p_evidence_remove.add_argument("--json", action="store_true")
+    p_evidence_remove.set_defaults(func=cmd_evidence)
 
     p_brain = sub.add_parser("brain", help="inspect and seed local fleet-brain memory")
     p_brain.add_argument("brain_args", nargs=argparse.REMAINDER)

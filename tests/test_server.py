@@ -23,6 +23,7 @@ import compose_converse as cc  # noqa: E402
 import server.views as server_views  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from fleet_brain import Lesson  # noqa: E402
+from run_import import import_run_transcript  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
 from server import setup as setup_mod  # noqa: E402
 from spec_helper import IssueDraft  # noqa: E402
@@ -91,6 +92,51 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     plan = client.get("/api/plans/61-plan")
     assert plan.status_code == 200
     assert plan.json()["title"] == "Architect Plan for Issue #61"
+
+
+def test_firing_detail_indexes_imported_session_without_hiding_native_transcript(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    run_id = "2026-08-17-imported"
+    events = state / "reviewer" / "events" / f"{run_id}.jsonl"
+    _write_jsonl(
+        events,
+        [
+            {"ts": "2026-08-17T10:00:00Z", "event": "repo_picked", "repo": "example/app"},
+            {"ts": "2026-08-17T10:01:00Z", "event": "firing_complete"},
+        ],
+    )
+    native = state / "codex" / "reviewer" / "2026-08" / f"{run_id}.stdout.txt"
+    native.parent.mkdir(parents=True)
+    native.write_text("native transcript\n", encoding="utf-8")
+    source = tmp_path / "interactive.jsonl"
+    source.write_text("imported transcript\n", encoding="utf-8")
+    imported = import_run_transcript(
+        state_root=state,
+        agent="reviewer",
+        run_id=run_id,
+        repo="example/app",
+        engine="claude",
+        source=source,
+    )
+
+    detail = TestClient(create_app(FilesystemReader(state_root=state))).get(
+        f"/api/firings/{run_id}"
+    )
+
+    assert detail.status_code == 200
+    payload = detail.json()
+    assert payload["transcript_path"] == str(native)
+    assert payload["evidence"]["artifacts"] == [
+        {"kind": "events", "status": "available", "path": str(events)},
+        {"kind": "transcript", "status": "available", "path": str(native)},
+        {
+            "kind": "imported_session",
+            "status": "available",
+            "path": str(imported.transcript_path),
+        },
+    ]
 
 
 def test_api_firings_surface_distilled_timeline(tmp_path: Path) -> None:

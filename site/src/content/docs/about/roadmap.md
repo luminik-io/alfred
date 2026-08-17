@@ -40,10 +40,10 @@ shipped work. The canonical source is
 
 ### Session and evidence continuity
 
-- [Normalize local session, turn, tool, evidence, repository, branch, PR, role,
+- [x] [Normalize local session, turn, tool, evidence, repository, branch, PR, role,
   and firing identifiers](https://github.com/luminik-io/alfred/issues/656) across coding CLIs.
-- Link imported interactive sessions to scheduled work only when the operator
-  chooses the repository scope.
+- [x] Import an interactive transcript only when the operator names a saved
+  run and its exact repository scope. Keep import removal local and reversible.
 - Apply redaction before any export.
 - Use the same evidence for recovery, review, and run history.
 

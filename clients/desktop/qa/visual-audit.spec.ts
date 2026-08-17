@@ -379,6 +379,7 @@ for (const appearance of appearances) {
           page.getByRole("region", { name: "Run evidence" }),
           "the fixture-backed visual audit must exercise the saved run evidence record",
         ).toBeVisible();
+        await expect(page.getByText("Imported session ready")).toBeVisible();
         await capture(page, viewportName, "agents-latest-run");
 
         await page.getByRole("tab", { name: "Learnings" }).click();

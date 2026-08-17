@@ -263,6 +263,38 @@ events one per line, with tool-use blocks summarised inline.
 [result] subtype=success turns=4 cost=$0.1400 stop_reason=end_turn
 ```
 
+## `alfred evidence`
+
+Attach an existing Claude Code, Codex, or OpenCode transcript to one saved
+Alfred run:
+
+```sh
+alfred evidence import \
+  --agent reviewer \
+  --run-id 2026-08-17-1042-abc \
+  --repo owner/repo \
+  --engine codex \
+  --source ./session.txt
+```
+
+Alfred accepts the import only when the run event log records the exact
+repository. It copies the file under
+`$ALFRED_HOME/state/imports/<agent>/<run-id>/` and records the managed file
+name, size, SHA-256 digest, engine, repository, and import time. It does not
+record the source file name or directory. The original file stays in place.
+
+Remove Alfred's managed copy with the same repository scope:
+
+```sh
+alfred evidence remove \
+  --agent reviewer \
+  --run-id 2026-08-17-1042-abc \
+  --repo owner/repo
+```
+
+Both actions support `--json`. A conflicting import must be removed before a
+different transcript can be attached to the run.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -289,6 +321,11 @@ $ALFRED_HOME/state/
         <firing-id>.stdout.txt
         <firing-id>.stderr.txt
         <firing-id>.last.md
+  imports/
+    <codename>/
+      <firing-id>/
+        manifest.json
+        stdout.txt
 ```
 
 The `claude_invoke_streaming()` helper in `lib/agent_runner/` writes

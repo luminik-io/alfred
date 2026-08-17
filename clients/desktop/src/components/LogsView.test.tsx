@@ -187,6 +187,7 @@ describe("LogsView live tail (#41)", () => {
           artifacts: [
             { kind: "events", status: "available", path: "/state/events/run.jsonl" },
             { kind: "transcript", status: "unavailable", path: null },
+            { kind: "imported_session", status: "available", path: "/state/imports/run.txt" },
           ],
         },
       }),
@@ -199,6 +200,7 @@ describe("LogsView live tail (#41)", () => {
     expect(within(evidence).getByText(/opencode · ses_123 · 7 turns/i)).toBeInTheDocument();
     expect(within(evidence).getByText(/event log ready/i)).toBeInTheDocument();
     expect(within(evidence).getByText(/transcript unavailable/i)).toBeInTheDocument();
+    expect(within(evidence).getByText(/imported session ready/i)).toBeInTheDocument();
   });
 
   it("filters to error runs when 'Errors only' is toggled on", async () => {

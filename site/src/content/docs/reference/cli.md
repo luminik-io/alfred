@@ -361,6 +361,33 @@ summarised inline.
 See [`docs/CLI.md`](https://github.com/luminik-io/alfred/blob/main/docs/CLI.md)
 for the full reference including library examples.
 
+## `alfred evidence`
+
+Copy an existing engine transcript into one saved run:
+
+```sh
+alfred evidence import \
+  --agent reviewer \
+  --run-id 2026-08-17-1042-abc \
+  --repo owner/repo \
+  --engine codex \
+  --source ./session.txt
+```
+
+The run event log must record the exact repository. Alfred stores a managed
+copy and its SHA-256 digest under
+`$ALFRED_HOME/state/imports/<agent>/<run-id>/`. The source file remains in
+place, and its name and directory are not stored.
+
+```sh
+alfred evidence remove \
+  --agent reviewer \
+  --run-id 2026-08-17-1042-abc \
+  --repo owner/repo
+```
+
+Remove deletes only Alfred's managed copy. Both actions support `--json`.
+
 ## `bin/connector-sync.py`
 
 Drain registered input connectors and file `agent:implement` issues for
