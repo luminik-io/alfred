@@ -36,11 +36,11 @@ import type {
   ScheduledRun,
 } from "../types";
 import { AgentDetailDrawer } from "./AgentDetailDrawer";
+import { EmptyState } from "./atoms";
 import { WorkflowGraph } from "./WorkflowGraph";
 import { AlfredMetric, AlfredStatusDot, type AlfredTone } from "./ui/alfred";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { CardDescription, CardHeader, CardTitle } from "./ui/card";
 import {
   Dialog,
   DialogContent,
@@ -433,12 +433,10 @@ export function FleetControlView({
           />
         </>
       ) : (
-        <div className="agents-deck__empty">
-          <CardHeader>
-            <CardTitle>No agents detected</CardTitle>
-            <CardDescription>Connect to Alfred serve to load the roster.</CardDescription>
-          </CardHeader>
-        </div>
+        <EmptyState
+          title="No agent roles yet."
+          body="Use New agent above to add the first role."
+        />
       )}
 
       <Dialog open={Boolean(pending)} onOpenChange={(open) => !open && setPending(null)}>

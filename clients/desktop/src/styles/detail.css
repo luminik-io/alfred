@@ -205,10 +205,6 @@
   }
 }
 
-.agents-deck__empty {
-  padding: 0.5rem;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .agents-deck__row,
   .agents-deck__row:hover {

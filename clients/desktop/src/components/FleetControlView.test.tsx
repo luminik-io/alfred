@@ -195,6 +195,27 @@ describe("FleetControlView", () => {
     );
   });
 
+  it("directs an empty configured roster to the new-agent action", () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[]}
+        schedule={[]}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("No agent roles yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Use New agent above to add the first role."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/connect to alfred serve/i)).not.toBeInTheDocument();
+  });
+
   it("shows selected-agent controls and switches to a paused agent", async () => {
     renderView();
     const user = userEvent.setup();

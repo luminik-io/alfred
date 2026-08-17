@@ -95,12 +95,15 @@ async function capture(
     `${name} moved the app viewport`,
   ).toBe(0);
   if (name !== "work-inspector") {
-    expect(
-      await page
-        .locator("[data-alfred-scroll-region]")
-        .evaluate((element) => element.scrollTop),
-      `${name} did not start at the top`,
-    ).toBe(0);
+    const scrollRegions = await page.locator("[data-alfred-scroll-region]").all();
+    for (const region of scrollRegions) {
+      if (await region.isVisible()) {
+        expect(
+          await region.evaluate((element) => element.scrollTop),
+          `${name} did not start at the top`,
+        ).toBe(0);
+      }
+    }
   }
   expect(
     await page.evaluate(
@@ -377,6 +380,70 @@ for (const appearance of appearances) {
 
         await page.getByRole("tab", { name: "Diagnostics" }).click();
         await capture(page, viewportName, "settings-diagnostics");
+      });
+    });
+  }
+}
+
+const stateViewports = {
+  desktop: viewports.desktop,
+  mobile: viewports.mobile,
+} as const;
+
+for (const appearance of appearances) {
+  for (const [viewportName, viewport] of Object.entries(stateViewports) as Array<
+    [keyof typeof stateViewports, (typeof stateViewports)[keyof typeof stateViewports]]
+  >) {
+    test.describe(`${appearance.theme}-${appearance.mode}-${viewportName}-empty`, () => {
+      test.beforeEach(async ({ page }) => {
+        await mkdir(outputDir, { recursive: true });
+        await page.setViewportSize(viewport);
+        await page.addInitScript(({ theme, mode }) => {
+          localStorage.setItem("alfred-theme-name", theme);
+          localStorage.setItem("alfred-theme", mode);
+        }, appearance);
+        await installAlfredApi(page, "empty");
+        await page.goto("/");
+      });
+
+      test.afterEach(async ({ page }) => {
+        assertAlfredApiComplete(page);
+      });
+
+      test("empty primary screens", async ({ page }) => {
+        await expect(
+          page.getByRole("heading", { name: "Alfred is clear" }),
+        ).toBeVisible();
+        await capture(page, viewportName, "inbox-empty");
+
+        await openPrimaryView(page, viewportName, "Work");
+        await expect(page.getByText("Nothing in the pipeline yet.")).toBeVisible();
+        await capture(page, viewportName, "work-empty");
+
+        await openPrimaryView(page, viewportName, "Code");
+        await expect(
+          page.getByRole("heading", { name: "No repositories indexed yet" }),
+        ).toBeVisible();
+        await capture(page, viewportName, "code-empty");
+
+        await openPrimaryView(page, viewportName, "Agents");
+        await expect(page.getByText("No agent roles yet.")).toBeVisible();
+        await capture(page, viewportName, "agents-empty");
+
+        await page.getByRole("tab", { name: "Activity" }).click();
+        await expect(page.getByText("No activity yet.")).toBeVisible();
+        await capture(page, viewportName, "activity-empty");
+
+        await page.getByRole("tab", { name: "Learnings" }).click();
+        await expect(
+          page.getByText("Alfred has not remembered anything yet."),
+        ).toBeVisible();
+        await capture(page, viewportName, "learnings-empty");
+
+        await openPrimaryView(page, viewportName, "Settings");
+        await page.getByRole("tab", { name: "Collaborators" }).click();
+        await expect(page.getByText("No collaborators yet.")).toBeVisible();
+        await capture(page, viewportName, "collaborators-empty");
       });
     });
   }

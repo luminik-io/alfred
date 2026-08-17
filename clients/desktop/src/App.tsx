@@ -215,6 +215,12 @@ function App() {
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document
+      .querySelectorAll<HTMLElement>("[data-alfred-scroll-region]")
+      .forEach((region) => {
+        region.scrollTop = 0;
+        region.scrollLeft = 0;
+      });
   }, [tab, fleetTab]);
 
   // Boot into one of two product states: first-run takeover or the normal app.
