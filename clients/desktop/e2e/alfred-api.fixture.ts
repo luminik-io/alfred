@@ -432,6 +432,17 @@ export class AlfredApiFixture {
                   severity: "info",
                   created_at: "2026-07-23T19:45:00Z",
                   firing_id: "senior-dev-visual-contract",
+                  match_reason: "Active lesson for example/workspace.",
+                  recall_provider: "sqlite",
+                  provenance:
+                    "pr:https://github.com/example/workspace/pull/42",
+                  valid_until: "2026-10-23T19:45:00Z",
+                  memory_status: "active",
+                  age_seconds: 86400,
+                  scope: {
+                    codename: "senior-dev",
+                    repo: "example/workspace",
+                  },
                   ops: false,
                 },
               ]

@@ -212,11 +212,13 @@ function ActiveLessonRow({
           <strong>Why:</strong> {lesson.match_reason}
         </span>
         <span className="active-lesson__details">
-          Provider: {memoryProviderName(lesson.recall_provider)}
-          {source ? ` · Source: ${source}` : ""}
-          {lesson.valid_until
-            ? ` · Expires ${friendlyTime(lesson.valid_until)}`
-            : " · No expiry"}
+          <span>Provider: {memoryProviderName(lesson.recall_provider)}</span>
+          {source ? <span>Source: {source}</span> : null}
+          <span>
+            {lesson.valid_until
+              ? `Expires ${friendlyTime(lesson.valid_until)}`
+              : "No expiry"}
+          </span>
         </span>
       </div>
       {canUndo ? (
