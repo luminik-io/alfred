@@ -114,7 +114,7 @@ test("captures the operator approval gate", async ({ page }) => {
     .evaluate((card) => getComputedStyle(card).clipPath !== "none");
   expect(
     decisionHasFold,
-    "the Linked Fold decision card must carry the approved fold geometry",
+    "the Ledger decision card must carry the approved fold geometry",
   ).toBe(true);
   await page.setViewportSize({ width: 1440, height: 862 });
   await capture(page, "alfred-gallery-approval.png");

@@ -16,7 +16,8 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-currently has no pending changes.
+renames the Desktop appearances to Prism, Graphite, and Ledger. The new names
+describe the material and color of each theme.
 
 ## 0.7.5 (2026-08-17)
 
@@ -34,7 +35,7 @@ Read the complete
 
 ## 0.7.4 (2026-08-17)
 
-Version 0.7.4 replaces the brown Linked Fold dark field with warm graphite
+Version 0.7.4 replaces the brown Ledger dark field with warm graphite
 surfaces while keeping its gold accent and clipped-corner treatment.
 
 - The background, sidebar, cards, and overlays now have clear separation.
@@ -68,7 +69,7 @@ in short windows, and restores the approved approval-card treatment.
   decision in light mode at 1270 by 760.
 - The short-window Inbox keeps the selected agent card visible.
 - The run view identifies sample data.
-- Linked Fold approval cards use the approved clipped-corner treatment.
+- Ledger approval cards use the approved clipped-corner treatment.
 - The capture command and tests keep the documentation and site images
   identical.
 
@@ -82,7 +83,7 @@ Desktop workflow.
 
 - One capability registry now controls engine discovery, authentication,
   routing, setup, diagnostics, scheduled roles, Slack, and Desktop.
-- Signal Edge, The Category Standard, and Linked Fold provide coordinated
+- Prism, Graphite, and Ledger provide coordinated
   light and dark desktop themes. The Work inspector shows checks, reviews,
   files, commits, and unavailable GitHub evidence. Every primary screen is
   checked at desktop and phone widths against the approved theme references.

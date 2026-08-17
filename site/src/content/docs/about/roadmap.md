@@ -18,6 +18,9 @@ shipped work. The canonical source is
 
 - Publish v0.7.5 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
+- Finish the [screen-by-screen Desktop quality pass](https://github.com/luminik-io/alfred/issues/652)
+  across Prism, Graphite, and Ledger. Test light and dark mode at every supported
+  size. Publish only fixture-backed light-mode media.
 - Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.
@@ -27,14 +30,14 @@ shipped work. The canonical source is
 
 ### Harness capability contract
 
-- Validate OpenCode isolation, permissions, structured events, and failure
-  behavior before enabling dispatch.
+- [Validate OpenCode isolation, permissions, structured events, and failure
+  behavior](https://github.com/luminik-io/alfred/issues/653) before enabling dispatch.
 - Keep CLI detection separate from support status.
 
 ### Session and evidence continuity
 
-- Normalize local session, turn, tool, evidence, repository, branch, PR, role,
-  and firing identifiers across harnesses.
+- [Normalize local session, turn, tool, evidence, repository, branch, PR, role,
+  and firing identifiers](https://github.com/luminik-io/alfred/issues/656) across harnesses.
 - Link imported interactive sessions to scheduled work only when the operator
   chooses the repository scope.
 - Apply redaction before any export.
@@ -42,14 +45,17 @@ shipped work. The canonical source is
 
 ### Memory quality and proof
 
-- Repeat the real-engine memory A/B after retrieval-policy changes and publish
-  the fixture, provider chain, engine, and limitations with each result.
+- [Benchmark memory recall](https://github.com/luminik-io/alfred/issues/654)
+  after retrieval-policy changes. Publish the fixture, provider chain, engine,
+  false-recall rate, latency, and limitations with each result.
 - Show a lesson's source, recall reason, and validity period.
 - Keep every memory change visible and reversible.
 
 ### Curated batteries
 
 - Keep built-in context controls available without a daemon.
+- [Benchmark skills and compression](https://github.com/luminik-io/alfred/issues/655)
+  on task outcomes before expanding the default set.
 - Pin external tools and record checksums, versions, licenses, and provenance.
 - Package small, opt-in skill and MCP sets by use case.
 - Preserve user-owned harness configuration during setup and removal.

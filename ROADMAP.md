@@ -20,9 +20,9 @@ The order can change when testing finds a reliability or safety problem.
 
 - Publish v0.7.5 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
-- Match every Desktop screen to the approved Signal Edge, Category Standard,
-  and Linked Fold references. Verify light and dark mode at desktop and phone
-  widths on a real Mac.
+- [Match every Desktop screen](https://github.com/luminik-io/alfred/issues/652)
+  to the approved Prism, Graphite, and Ledger references. Verify light and dark
+  mode at desktop and phone widths on a real Mac.
 - Keep the current top-level information architecture unless task testing shows
   that a destination is duplicated or hard to find. Fix screen composition,
   spacing, type, empty states, and responsive behavior without hiding evidence.
@@ -43,7 +43,8 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Harness capability contract
 
-- Validate OpenCode before enabling dispatch. The adapter must prove isolated
+- [Validate OpenCode](https://github.com/luminik-io/alfred/issues/653) before
+  enabling dispatch. The adapter must prove isolated
   config, repository scope, permission behavior, structured events, and a
   fail-closed response to interactive prompts.
 - Separate detection from support. A detected CLI must not become dispatchable
@@ -51,7 +52,8 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Session and evidence continuity
 
-- Define one local event envelope for sessions, turns, tools, evidence,
+- [Define one local event envelope](https://github.com/luminik-io/alfred/issues/656)
+  for sessions, turns, tools, evidence,
   repositories, branches, pull requests, roles, and firing IDs.
 - Link interactive harness sessions to scheduled Alfred work when the operator
   chooses to import them.
@@ -62,7 +64,8 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Memory quality and proof
 
-- Repeat the real-engine memory A/B after retrieval-policy changes and publish
+- [Benchmark memory recall](https://github.com/luminik-io/alfred/issues/654)
+  after retrieval-policy changes and publish
   the fixture, provider chain, engine, and limitations with each result.
 - Show why a lesson was recalled, where it came from, and when it expires.
 - Keep promotion, retirement, merge, and revert actions visible and reversible.
@@ -70,6 +73,8 @@ The order can change when testing finds a reliability or safety problem.
 ### Curated batteries
 
 - Keep built-in context controls enabled without a daemon.
+- [Benchmark skills and compression](https://github.com/luminik-io/alfred/issues/655)
+  on task outcomes before expanding the default set.
 - Pin external tools and record checksums, versions, licenses, and provenance.
 - Package small, opt-in skill and MCP sets by use case. Do not bundle an
   unreviewed marketplace.

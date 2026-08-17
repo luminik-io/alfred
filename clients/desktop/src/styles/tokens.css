@@ -3,7 +3,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Components consume semantic tokens only. Signal Edge light is the boot-time
+ * Components consume semantic tokens only. Prism light is the boot-time
  * default. Each appearance supplies the same primitive contract; the mapping
  * near the end of this file keeps component CSS independent of visual identity.
  */
@@ -213,7 +213,7 @@
   --sidebar-ring: oklch(0.50 0.14 235);
 }
 
-/* The category standard uses denser graphite and conventional state color. */
+/* Graphite uses denser panels and conventional state color. */
 :root[data-theme="category-standard"].dark {
   color-scheme: dark;
   --theme-background: oklch(0.125 0.004 245);
@@ -406,7 +406,7 @@
   --sidebar-ring: oklch(0.51 0.14 50);
 }
 
-/* Linked Fold uses paper and ink with gold reserved for operator decisions. */
+/* Ledger uses paper and ink with gold reserved for operator decisions. */
 :root[data-theme="linked-fold"].light {
   color-scheme: light;
   --theme-background: oklch(0.955 0.018 82);

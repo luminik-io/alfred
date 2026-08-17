@@ -103,19 +103,19 @@ components:
 
 ## Overview
 
-**Creative North Star: "Signal Edge"**
+**Creative North Star: "Prism"**
 
 Alfred is a quiet operations field that reveals change at its edges. Neutral planes and compact typography carry the working state; narrow mint, rose, and violet signals appear only where work is active, selected, uncertain, or awaiting a decision. The result is calm enough for long sessions while keeping intervention points unmistakable.
 
-Signal Edge is the default appearance. Category Standard maps the same semantic contract to denser graphite panels and conventional status color. Linked Fold maps it to warm paper, fine crease geometry, and gold decision accents. Theme changes may alter material, radius, and heading character, but they do not alter information architecture, control meaning, or status semantics.
+Prism is the default appearance. Graphite maps the same semantic contract to denser graphite panels and conventional status color. Ledger maps it to warm paper, fine crease geometry, and gold decision accents. Theme changes may alter material, radius, and heading character, but they do not alter information architecture, control meaning, or status semantics.
 
 ### Direction contract
 
 - **THESIS:** Alfred shows autonomous work as a compact lifecycle. It rejects the generic assistant dashboard.
-- **OWN-WORLD:** Signal Edge uses quiet glass and spectral state edges. Category Standard uses compressed operations type and hard graphite panels. Linked Fold uses paper grain, connected creases, and gold decisions.
+- **OWN-WORLD:** Prism uses quiet glass and spectral state edges. Graphite uses compressed operations type and hard graphite panels. Ledger uses paper grain, connected creases, and gold decisions.
 - **STORY:** The operator sees what needs a decision, what runs now, and what shipped, then opens evidence or acts.
 - **FIRST VIEWPORT:** A compact rail, four ordered Work lanes, and a separate evidence inspector fill the desktop viewport. Narrow screens keep the same order and move evidence into a sheet.
-- **FORM:** Established-world extension, 1 of 1. Seed key `established-world:signal-edge-v1`. The approved Signal Edge, Category Standard, and Linked Fold comps are the authority; a new-world concept roll does not apply.
+- **FORM:** Established-world extension, 1 of 1. Seed key `established-world:signal-edge-v1`. The approved Prism, Graphite, and Ledger comps are the authority; a new-world concept roll does not apply.
 - **FINISH:** unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 
 **Key Characteristics:**
@@ -168,7 +168,7 @@ The default palette is warm cloud paper and slate ink with a low-chroma teal pri
 **Body Font:** Quicksand Variable with Instrument Sans Variable fallback
 **Label/Mono Font:** Fragment Mono with platform monospace fallbacks
 
-**Character:** Signal Edge pairs slightly condensed, controlled headings with a rounder, readable body voice. Monospace is reserved for repositories, commands, branches, hashes, and machine evidence.
+**Character:** Prism pairs slightly condensed, controlled headings with a rounder, readable body voice. Monospace is reserved for repositories, commands, branches, hashes, and machine evidence.
 
 ### Hierarchy
 
@@ -210,7 +210,7 @@ Alfred uses a hybrid depth model. Persistent chrome, inspectors, dialogs, popove
 
 ## Shapes
 
-Signal Edge uses gently curved container corners derived from a 0.7rem base radius. Small controls and cards use scaled versions of that radius, while status chips, repository chips, assignment fields, segmented controls, and structural rails often remain square. Circular dots and avatars use a full pill radius. Category Standard tightens the base radius; Linked Fold uses sharp corners and clipped folded corners on selected structures.
+Prism uses gently curved container corners derived from a 0.7rem base radius. Small controls and cards use scaled versions of that radius, while status chips, repository chips, assignment fields, segmented controls, and structural rails often remain square. Circular dots and avatars use a full pill radius. Graphite tightens the base radius; Ledger uses sharp corners and clipped folded corners on selected structures.
 
 **The Structural Shape Rule.** Radius follows hierarchy: chrome may curve, dense metadata stays square, and circles are reserved for compact identity or status marks.
 
@@ -244,7 +244,7 @@ Signal Edge uses gently curved container corners derived from a 0.7rem base radi
 
 ### Navigation
 
-The sidebar is persistent glass chrome on desktop and a compact top bar on mobile. The active item uses a soft wash and a narrow semantic rail. Signal Edge renders that rail as a three-color spectral edge. Labels and icons remain visible so color is never the only selected-state cue.
+The sidebar is persistent glass chrome on desktop and a compact top bar on mobile. The active item uses a soft wash and a narrow semantic rail. Prism renders that rail as a three-color spectral edge. Labels and icons remain visible so color is never the only selected-state cue.
 
 ### Lifecycle Lane
 

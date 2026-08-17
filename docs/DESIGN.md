@@ -23,13 +23,13 @@ Alfred Desktop has two independent appearance settings:
 - `.light` or `.dark` selects the mode for that appearance.
 
 `useTheme.ts` stores the appearance in `alfred-theme-name` and the mode in
-`alfred-theme`. Signal Edge in light mode is the default.
+`alfred-theme`. Prism in light mode is the default.
 
 | Appearance | Visual character | State language |
 |---|---|---|
-| **Signal Edge** | Quiet neutral fields and clear liquid-glass layers. | Mint, rose, and violet identify active or uncertain edges. |
-| **The Category Standard** | Dense graphite operations surfaces with compact spacing. | Blue, green, amber, and red use familiar status meanings. |
-| **Linked Fold** | Warm paper, ink, crease lines, and sharper corners. | Gold marks operator decisions and important handoffs. |
+| **Prism** | Quiet neutral fields and clear liquid-glass layers. | Mint, rose, and violet identify active or uncertain edges. |
+| **Graphite** | Dense graphite panels with compact spacing. | Blue, green, amber, and red use familiar status meanings. |
+| **Ledger** | Warm paper, ink, crease lines, and sharper corners. | Gold marks operator decisions and important handoffs. |
 
 Each appearance and mode defines the same `--theme-*` primitive set. The final
 mapping in `tokens.css` exposes stable component tokens such as `--background`,
@@ -48,7 +48,7 @@ Color must describe state or hierarchy. It must not decorate data.
 - Use the accent, a dashed line, and a text label for an operator approval edge.
 - Keep a text label, icon, border, or layout change with every color signal.
 
-Signal Edge can use spectral edge colors for active or uncertain transitions.
+Prism can use spectral edge colors for active or uncertain transitions.
 The other appearances keep the same meaning with their own palette.
 
 ## Site color system
@@ -74,9 +74,9 @@ appearance selects the heading and body voice:
 
 | Appearance | Headings | Body |
 |---|---|---|
-| Signal Edge | Instrument Sans | Quicksand |
-| The Category Standard | Instrument Sans | Instrument Sans |
-| Linked Fold | Iowan Old Style or the configured serif fallback | Instrument Sans |
+| Prism | Instrument Sans | Quicksand |
+| Graphite | Instrument Sans | Instrument Sans |
+| Ledger | Iowan Old Style or the configured serif fallback | Instrument Sans |
 
 Fragment Mono is for code, IDs, command previews, timestamps, and logs. Do not
 use it for normal interface text.
@@ -115,8 +115,8 @@ radial blooms, or floating orbs.
 
 ## Shape and spacing
 
-Use the radius and spacing tokens for the active appearance. Signal Edge uses
-softer corners. The Category Standard is compact. Linked Fold uses sharper
+Use the radius and spacing tokens for the active appearance. Prism uses
+softer corners. Graphite is compact. Ledger uses sharper
 fold-like edges.
 
 Avoid nested card stacks. Use one containing surface, clear section spacing,

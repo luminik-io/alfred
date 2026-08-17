@@ -6,7 +6,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes are pending.
+### Changed
+
+- Renamed the three Desktop appearances to Prism, Graphite, and Ledger. The
+  names now describe what each appearance looks like.
 
 ## [0.7.5] - 2026-08-17
 
@@ -30,16 +33,16 @@ No changes are pending.
 
 ### Highlights
 
-- Replaced the brown Linked Fold dark field with warm graphite surfaces.
+- Replaced the brown Ledger dark field with warm graphite surfaces.
 - Kept the approved gold accent and clipped-corner treatment.
 - Checked the final palette in 144 fixture-backed Desktop captures across all
   themes, modes, and supported widths.
 
 ### Fixed
 
-- Linked Fold dark mode now separates the background, sidebar, cards, and
+- Ledger dark mode now separates the background, sidebar, cards, and
   overlays without tinting the whole interface brown.
-- A focused regression test locks the final Linked Fold dark cascade values.
+- A focused regression test locks the final Ledger dark cascade values.
 
 ## [0.7.3] - 2026-08-17
 
@@ -72,7 +75,7 @@ No changes are pending.
 - Added three fixture-backed light-mode screenshots for the Work board, agent
   run, and approval decision.
 - Fixed the short-window Inbox layout so the selected agent card stays visible.
-- Added a visible sample-data notice and restored the Linked Fold approval-card
+- Added a visible sample-data notice and restored the Ledger approval-card
   edge.
 
 ### Added
@@ -86,7 +89,7 @@ No changes are pending.
 
 - The agent-role rail no longer clips in short desktop windows.
 - Sample run data is now identified in the run view.
-- Approval decisions use the approved Linked Fold clipped-corner treatment.
+- Approval decisions use the approved Ledger clipped-corner treatment.
 
 ## [0.7.1] - 2026-08-17
 
@@ -111,7 +114,7 @@ No changes are pending.
 - A shared engine registry for Claude Code and Codex. Setup, diagnostics,
   scheduled runs, Slack, and Desktop now use the same executable, version,
   authentication, and routing checks.
-- Three desktop themes: Signal Edge, The Category Standard, and Linked Fold.
+- Three desktop themes: Prism, Graphite, and Ledger.
   Each theme has coordinated light and dark modes, translucent surfaces, and
   accessible operational states.
 - A Work inspector that shows pull-request evidence, checks, reviews, files,
