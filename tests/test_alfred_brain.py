@@ -319,6 +319,34 @@ def test_cli_lessons_json(
     assert len(payload) == 1
     assert payload[0]["body"] == "first lesson"
     assert payload[0]["codename"] == "lucius"
+    assert payload[0]["match_reason"] == "Active lesson for org/api."
+    assert payload[0]["recall_provider"] == "fleet"
+    assert payload[0]["memory_status"] == "active"
+    assert payload[0]["scope"] == {"codename": "lucius", "repo": "org/api"}
+
+
+def test_cli_lessons_explains_query_match(
+    cli_mod: ModuleType, brain_db: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli_mod.main(
+        [
+            "reflect",
+            "lucius",
+            "org/api",
+            "GraphQL schema guidance lives with the API fixtures.",
+            "--tag",
+            "graphql",
+        ]
+    )
+    capsys.readouterr()
+
+    assert cli_mod.main(["lessons", "lucius", "org/api", "--query", "Fix GraphQL schema"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Why: Matches request terms: graphql, schema." in out
+    assert "Provider: fleet" in out
+    assert "Scope: lucius / org/api" in out
+    assert "Age:" in out
 
 
 def test_cli_lessons_honors_db_flag(

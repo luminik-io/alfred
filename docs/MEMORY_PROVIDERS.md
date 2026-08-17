@@ -169,6 +169,14 @@ suppress weakly related lessons. Lessons whose backend reports no score are
 never dropped by the threshold (the gate cannot judge them), so providers
 without scores keep their existing behavior.
 
+Every lesson that reaches an agent prompt includes a short reason. Alfred names
+the matching request concepts when the provider returned a lexical match. For a
+semantic result with no direct term match, Alfred states that the provider
+ranked the lesson for the request. Run `alfred brain lessons <codename> <repo>`
+to inspect the same reason together with the provider, provenance, repository
+scope, age, expiry, and current state. Desktop shows this information in
+Learnings.
+
 ## Injection quality: ranking, decay, and delta
 
 Gating decides *which* recalled lessons are eligible. A second, optional pass

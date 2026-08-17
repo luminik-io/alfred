@@ -277,6 +277,8 @@ def test_chain_reserves_room_for_later_providers_when_first_fills_limit() -> Non
     out = chain.recall(query="q", limit=3)
 
     assert [L.body for L in out] == ["redis-1", "fleet-reviewed", "redis-2"]
+    assert [L.recall_provider for L in out] == ["redis", "fleet", "redis"]
+    assert out[0].match_reason == "Provider ranked this lesson for the request."
 
 
 def test_chain_falls_through_when_all_empty() -> None:

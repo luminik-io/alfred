@@ -266,9 +266,17 @@ def recall_lessons(
     an empty list by the chain itself, so this never raises on a down backend.
     """
     chain = provider if provider is not None else load_provider(env)
-    return chain.recall(
+    lessons = chain.recall(
         codename=codename,
         repo=repo,
         query=query,
         limit=max(1, int(limit)),
+    )
+    from .explanations import annotate_recalled_lessons
+
+    return annotate_recalled_lessons(
+        lessons,
+        provider=str(getattr(chain, "name", "unknown") or "unknown"),
+        query=query,
+        repo=repo,
     )

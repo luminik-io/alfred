@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING
 
 from fleet_brain import FleetBrain, Lesson, Severity
 
+from memory.explanations import annotate_recalled_lessons
+
 if TYPE_CHECKING:
     from . import MemoryProvider
 
@@ -274,6 +276,12 @@ class ChainedMemoryProvider:
                     provider.name,
                 )
                 continue
+            lessons = annotate_recalled_lessons(
+                lessons,
+                provider=str(provider.name),
+                query=query,
+                repo=repo,
+            )
             bucket: list[Lesson] = []
             for lesson in lessons:
                 key = lesson.id or f"{lesson.codename}:{lesson.repo}:{lesson.body}"

@@ -71,6 +71,7 @@ The operator surface is `alfred brain ...`, a passthrough to the standalone
 alfred brain status
 alfred brain stats [--json]                   # lesson-quality metrics
 alfred brain lessons <codename> <repo>
+alfred brain lessons <codename> <repo> --query "Fix GraphQL schema" --json
 alfred brain lessons - your-org/api          # widen codename
 alfred brain reflect <codename> <repo> <body> [--tag T --severity warning]
 alfred brain reflect <codename> <repo> <body> --candidate
@@ -96,6 +97,10 @@ alfred brain forget <id>
 alfred brain forget --before 30d
 alfred brain export [--out PATH]
 ```
+
+`alfred brain lessons` explains why each row was recalled. Its text and JSON
+output also identify the provider, provenance, repository scope, age, expiry,
+and current state. Use `--query` to see the match reason for a specific request.
 
 `alfred brain stats` reports lesson-quality metrics: candidate counts by state
 (candidate / validated / rejected / retired), the auto-promote acceptance rate,

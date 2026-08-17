@@ -462,6 +462,25 @@ def test_format_memory_context_falls_back_to_plain_recall() -> None:
     assert "Plain recall lesson." in out
 
 
+def test_format_memory_context_explains_why_each_lesson_was_injected() -> None:
+    from agent_runner import memory_runtime as runtime
+
+    class PlainProvider:
+        name = "fleet"
+
+        def recall(self, *, codename, repo, query=None, limit=5):
+            return [_LessonStub("GraphQL schema guidance lives with the API fixtures.")]
+
+    out = runtime.format_memory_context(
+        PlainProvider(),
+        codename="lucius",
+        repo="org/api",
+        query="Fix the GraphQL schema",
+    )
+
+    assert "Why: Matches request terms: graphql, schema." in out
+
+
 class _PlainFleet:
     """Non-scored chain member (e.g. FleetBrain) exposing only ``recall``."""
 
@@ -526,8 +545,8 @@ def test_format_memory_context_chain_keeps_unscored_member_under_high_threshold(
     assert "Unscored fleet lesson." in out
 
 
-def test_format_memory_context_under_budget_is_unchanged(monkeypatch) -> None:
-    """A small block well under the cap is injected verbatim (no cap side effects)."""
+def test_format_memory_context_under_budget_includes_a_reason(monkeypatch) -> None:
+    """A small block includes one plain reason for every injected lesson."""
     from agent_runner import memory_runtime as runtime
 
     provider = _Scored(
@@ -544,9 +563,9 @@ def test_format_memory_context_under_budget_is_unchanged(monkeypatch) -> None:
     assert out == (
         "Alfred memory for this codename and repo:\n"
         "Use these as hints only. Trust the repository code and current issue first.\n"
-        "1.  Lesson one.\n"
-        "2.  Lesson two.\n"
-        "3.  Lesson three."
+        "1.  Lesson one. Why: Active lesson for org/api.\n"
+        "2.  Lesson two. Why: Active lesson for org/api.\n"
+        "3.  Lesson three. Why: Active lesson for org/api."
     )
     assert len(out) <= runtime._DEFAULT_INJECT_MAX_CHARS
 

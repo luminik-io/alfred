@@ -8,6 +8,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added a plain reason to every lesson placed in an agent prompt. The CLI and
+  Desktop also show the recall provider, source, repository scope, age, expiry,
+  and current state for each active lesson.
 - Added a provider-only memory recall benchmark for exact terms, wording
   changes, repository scope, current guidance, expired guidance, and true
   misses. The report records precision, recall, false injections, provider

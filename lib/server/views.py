@@ -353,6 +353,14 @@ def _lesson_to_api(lesson: Any) -> dict[str, Any]:
         # Same ops/codebase flag as candidates, so the desktop groups active
         # lessons about Alfred's runs apart from lessons about the codebase.
         payload["ops"] = _is_ops_memory(payload.get("tags"))
+        from memory.explanations import age_seconds, memory_status
+
+        payload["age_seconds"] = age_seconds(lesson)
+        payload["memory_status"] = memory_status(lesson)
+        payload["scope"] = {
+            "codename": payload.get("codename"),
+            "repo": payload.get("repo"),
+        }
         return payload
     return {}
 

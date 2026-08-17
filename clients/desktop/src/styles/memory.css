@@ -25,8 +25,10 @@
 
 .active-lesson-list {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 0.4rem;
   margin: 0.25rem 0 0;
+  max-width: 900px;
   padding: 0;
   list-style: none;
 }
@@ -55,7 +57,28 @@
 
 .active-lesson__where {
   color: var(--muted-foreground);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
+}
+
+.active-lesson__why {
+  color: var(--foreground);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.active-lesson__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.65rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.active-lesson__details > span + span::before {
+  content: "·";
+  margin-right: 0.65rem;
 }
 
 .active-lesson__undo {

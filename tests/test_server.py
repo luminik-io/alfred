@@ -477,6 +477,8 @@ def test_api_memory_lessons_lists_active_lessons(
                 tags=["graphql"],
                 created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
                 firing_id=None,
+                valid_until=datetime(2026, 8, 30, 12, 0, tzinfo=UTC),
+                provenance="pr:https://github.com/example-org/alfred/pull/12",
             ),
             # A harvested run-failure lesson: about Alfred's runtime, not the
             # codebase. The endpoint must flag it ops so the UI groups it apart.
@@ -504,6 +506,11 @@ def test_api_memory_lessons_lists_active_lessons(
     assert rows[0]["body"].startswith("GraphQL")
     assert rows[0]["tags"] == ["graphql"]
     assert rows[0]["severity"] == "info"
+    assert rows[0]["match_reason"] == "Active lesson for example-org/alfred."
+    assert rows[0]["recall_provider"] == "stub"
+    assert rows[0]["provenance"] == "pr:https://github.com/example-org/alfred/pull/12"
+    assert rows[0]["valid_until"] == "2026-08-30T12:00:00+00:00"
+    assert rows[0]["memory_status"] == "active"
     # Ops flag: the codebase lesson is not ops; the harvested one is.
     assert rows[0]["ops"] is False
     assert rows[1]["ops"] is True
