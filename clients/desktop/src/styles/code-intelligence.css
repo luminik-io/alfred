@@ -1,0 +1,353 @@
+/* Code Intelligence: repository index summary, file analysis, and impact evidence. */
+
+.code-intelligence,
+.code-intelligence__overview,
+.code-intelligence__impact {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+
+.code-intelligence__query,
+.code-intelligence__surface,
+.code-intelligence__notice,
+.code-intelligence__empty,
+.code-intelligence__metrics,
+.code-intelligence__evidence {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.code-intelligence__query {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.36fr) minmax(18rem, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.code-intelligence__query-intro {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.125rem;
+}
+
+.code-intelligence__query-intro strong {
+  color: var(--foreground);
+  font: 600 0.9rem/1.3 var(--font-sans);
+}
+
+.code-intelligence__query-intro span {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.code-intelligence__field {
+  display: grid;
+  min-width: 0;
+  gap: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.code-intelligence__query-action {
+  min-width: 9.5rem;
+  min-height: 2.5rem;
+}
+
+.code-intelligence__empty {
+  border-style: dashed;
+  padding: clamp(2rem, 5vw, 4.5rem) 1.5rem;
+  text-align: center;
+}
+
+.code-intelligence__command,
+.code-intelligence__revision {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 0.6);
+  background: var(--surface-2);
+  color: var(--foreground);
+  font-size: 0.75rem;
+}
+
+.code-intelligence__command {
+  margin-top: 1rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.code-intelligence__revision {
+  padding: 0.3rem 0.5rem;
+  color: var(--muted-foreground);
+}
+
+.code-intelligence__metrics {
+  display: grid;
+  overflow: hidden;
+  gap: 1px;
+  background: var(--border);
+}
+
+.code-intelligence__metrics--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.code-intelligence__metrics--five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.code-intelligence__metric {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  background: var(--surface);
+}
+
+.code-intelligence__metric strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-intelligence__overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.38fr);
+  gap: 1rem;
+}
+
+.code-intelligence__surface,
+.code-intelligence__notice,
+.code-intelligence__evidence {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.code-intelligence__repository-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 1rem;
+  border-block: 1px solid var(--border);
+}
+
+.code-intelligence__fact {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0.5rem;
+}
+
+.code-intelligence__fact + .code-intelligence__fact {
+  border-left: 1px solid var(--border);
+}
+
+.code-intelligence__limit-note {
+  display: flex;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  border: 1px solid color-mix(in oklch, var(--warn), var(--border) 64%);
+  padding: 0.65rem 0.75rem;
+  background: color-mix(in oklch, var(--warn), transparent 90%);
+  color: var(--foreground);
+  font-size: 0.875rem;
+}
+
+.code-intelligence__languages {
+  align-content: start;
+}
+
+.code-intelligence__notice--choice {
+  border-color: color-mix(in oklch, var(--primary), var(--border) 50%);
+  background: color-mix(in oklch, var(--primary), var(--surface) 93%);
+}
+
+.code-intelligence__relationship-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.65fr) minmax(0, 1fr);
+  overflow: hidden;
+  padding: 0;
+}
+
+.code-intelligence__relationship-list {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.code-intelligence__relationship-rows {
+  display: grid;
+  gap: 0;
+  margin-top: 0.75rem;
+}
+
+.code-intelligence__relationship-row {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding: 0.7rem 0;
+}
+
+.code-intelligence__focus-file {
+  display: flex;
+  min-height: 8rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-inline: 1px solid var(--border);
+  padding: 1rem;
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.code-intelligence__focus-file > svg {
+  margin-bottom: 0.5rem;
+  color: var(--primary);
+}
+
+.code-intelligence__evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.code-intelligence__evidence-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.code-intelligence__evidence--warn {
+  border-color: color-mix(in oklch, var(--error), var(--border) 48%);
+  background: color-mix(in oklch, var(--error), var(--surface) 94%);
+}
+
+/* Prism keeps a quiet glass edge and one spectral highlight per surface. */
+:root[data-theme="signal-edge"] .code-intelligence
+  :is(
+    .code-intelligence__query,
+    .code-intelligence__notice,
+    .code-intelligence__empty
+  ) {
+  border-color: var(--hairline);
+  background:
+    linear-gradient(135deg, var(--glass-highlight), transparent 38%),
+    var(--glass-strong);
+  box-shadow: 0 12px 34px
+    color-mix(in oklch, var(--glass-shadow), transparent 62%);
+  backdrop-filter: blur(calc(var(--glass-blur) * 0.6));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.6));
+}
+
+:root[data-theme="signal-edge"] .code-intelligence
+  :is(.code-intelligence__surface, .code-intelligence__evidence) {
+  border-color: var(--hairline);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+/* Graphite is flat, square, and compact. */
+:root[data-theme="category-standard"] .code-intelligence
+  :is(
+    .code-intelligence__query,
+    .code-intelligence__surface,
+    .code-intelligence__notice,
+    .code-intelligence__empty,
+    .code-intelligence__metrics,
+    .code-intelligence__evidence,
+    .code-intelligence__command,
+    .code-intelligence__revision
+  ) {
+  border-radius: 0;
+  border-color: var(--border-strong);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme="category-standard"] .code-intelligence__query,
+:root[data-theme="category-standard"] .code-intelligence__surface {
+  border-top-width: 2px;
+}
+
+/* Ledger uses warm paper planes and a restrained ruled edge. */
+:root[data-theme="linked-fold"] .code-intelligence
+  :is(
+    .code-intelligence__query,
+    .code-intelligence__surface,
+    .code-intelligence__notice,
+    .code-intelligence__empty,
+    .code-intelligence__evidence
+  ) {
+  border-radius: 0.2rem;
+  border-color: var(--fold-line);
+  background: color-mix(in oklch, var(--surface), var(--background) 16%);
+  box-shadow: 3px 3px 0 color-mix(in oklch, var(--fold-line), transparent 28%);
+}
+
+:root[data-theme="linked-fold"] .code-intelligence__query,
+:root[data-theme="linked-fold"] .code-intelligence__impact-summary {
+  border-top-color: color-mix(in oklch, var(--primary), var(--fold-line) 50%);
+}
+
+@media (max-width: 959px) {
+  .code-intelligence__query {
+    grid-template-columns: minmax(11rem, 0.42fr) minmax(0, 1fr);
+  }
+
+  .code-intelligence__query-action {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .code-intelligence__overview-grid,
+  .code-intelligence__relationship-map {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .code-intelligence__focus-file {
+    order: -1;
+    min-height: 6.5rem;
+    border-inline: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 767px) {
+  .code-intelligence__query {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .code-intelligence__query-intro,
+  .code-intelligence__query-action {
+    grid-column: auto;
+  }
+
+  .code-intelligence__query-intro {
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .code-intelligence__query-action {
+    width: 100%;
+    min-height: 2.75rem;
+  }
+
+  .code-intelligence__metrics--four,
+  .code-intelligence__metrics--five,
+  .code-intelligence__evidence-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .code-intelligence__metric--wide,
+  .code-intelligence__evidence-grid > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .code-intelligence__repository-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .code-intelligence__fact + .code-intelligence__fact {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}

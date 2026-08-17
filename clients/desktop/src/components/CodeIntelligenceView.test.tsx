@@ -111,6 +111,12 @@ describe("CodeIntelligenceView", () => {
     expect(await screen.findByText("Code intelligence")).toBeInTheDocument();
     expect((await screen.findAllByText("12")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Typescript")).toBeInTheDocument();
+    expect(screen.getByLabelText("Code intelligence")).toHaveClass(
+      "code-intelligence",
+    );
+    expect(screen.getByLabelText("web index summary")).toHaveClass(
+      "code-intelligence__overview",
+    );
     expect(mockedLoad).toHaveBeenCalledWith("http://127.0.0.1:7010", {});
   });
 

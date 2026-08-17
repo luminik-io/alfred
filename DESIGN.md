@@ -254,6 +254,12 @@ Each lane combines a label, count, semantic edge, and internally scrolling card 
 
 The inspector is stronger glass than the board lanes. It groups outcome, repository, review state, evidence, checks, files, and operator controls with hairline dividers. It uses an opaque fallback and remains independently scrollable on wide screens.
 
+### Code Intelligence
+
+Code Intelligence uses one file-query surface, one metric strip, and one result surface. The repository view keeps route, endpoint, and API-call facts in a ruled row instead of placing cards inside cards. The impact view reads from callers to the selected file to dependencies, followed by the checks and contract evidence. On narrow screens, the selected file moves ahead of the relationship lists and the primary action fills the query surface.
+
+The structure stays fixed across themes. Prism adds a quiet glass edge. Graphite uses square, flat panels and strong dividers. Ledger uses warm paper planes and a ruled top edge. Repository names, file paths, and revisions use the evidence voice; explanations stay in the body voice.
+
 ## Do's and Don'ts
 
 ### Do:

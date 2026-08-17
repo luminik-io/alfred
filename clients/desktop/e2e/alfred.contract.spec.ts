@@ -169,6 +169,12 @@ test("primary navigation loads code, models, settings, and returns to Inbox", as
   await expect(page.getByRole("heading", { name: "Code intelligence" })).toBeVisible();
   const codeSummary = page.getByRole("region", { name: "example/workspace index summary" });
   await expect(codeSummary.getByText("128", { exact: true })).toBeVisible();
+  await page.getByLabel("File path").fill("src/server/routes.ts");
+  await page.getByRole("button", { name: "Analyze impact" }).click();
+  await expect(page.getByRole("region", { name: "Impact analysis" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "src/server/routes.ts" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Agents" }).click();
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
@@ -183,5 +189,11 @@ test("primary navigation loads code, models, settings, and returns to Inbox", as
   await expect(page.getByLabel("Inbox", { exact: true })).toBeVisible();
 
   expect(api.find("GET", "/api/code-intelligence")).toBeDefined();
+  expect(
+    api.find(
+      "GET",
+      "/api/code-intelligence?repo=example%2Fworkspace&path=src%2Fserver%2Froutes.ts",
+    ),
+  ).toBeDefined();
   expect(api.find("GET", "/api/agent-models")).toBeDefined();
 });

@@ -207,6 +207,46 @@ async function assertWorkflowContract(
   }
 }
 
+async function assertCodeIntelligenceContract(
+  page: Page,
+  viewport: ViewportName,
+  theme: (typeof appearances)[number]["theme"],
+): Promise<void> {
+  const root = page.getByLabel("Code intelligence", { exact: true });
+  const query = root.locator(".code-intelligence__query");
+  const action = root.getByRole("button", { name: "Analyze impact" });
+  const [rootBox, queryBox, actionBox] = await Promise.all([
+    root.boundingBox(),
+    query.boundingBox(),
+    action.boundingBox(),
+  ]);
+  expect(rootBox, "Code Intelligence must be visible").not.toBeNull();
+  expect(queryBox, "the file query must be visible").not.toBeNull();
+  expect(actionBox, "the impact action must be visible").not.toBeNull();
+  if (!rootBox || !queryBox || !actionBox) return;
+
+  expect(queryBox.x).toBeGreaterThanOrEqual(rootBox.x);
+  expect(queryBox.x + queryBox.width).toBeLessThanOrEqual(
+    rootBox.x + rootBox.width + 0.5,
+  );
+  expect(actionBox.height, "the primary action must be easy to target").toBeGreaterThanOrEqual(
+    36,
+  );
+  if (viewport === "mobile") {
+    expect(
+      actionBox.width,
+      "the mobile primary action must fill the query surface",
+    ).toBeGreaterThanOrEqual(queryBox.width - 34);
+  }
+
+  const radius = await query.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).borderRadius),
+  );
+  if (theme === "category-standard") expect(radius).toBe(0);
+  if (theme === "linked-fold") expect(radius).toBeLessThanOrEqual(4);
+  if (theme === "signal-edge") expect(radius).toBeGreaterThanOrEqual(8);
+}
+
 for (const appearance of appearances) {
   for (const [viewportName, viewport] of Object.entries(viewports) as Array<
     [ViewportName, (typeof viewports)[ViewportName]]
@@ -303,7 +343,18 @@ for (const appearance of appearances) {
         await expect(
           page.getByRole("heading", { name: "Code intelligence" }),
         ).toBeVisible();
+        await assertCodeIntelligenceContract(
+          page,
+          viewportName,
+          appearance.theme,
+        );
         await capture(page, viewportName, "code");
+        await page.getByLabel("File path").fill("src/server/routes.ts");
+        await page.getByRole("button", { name: "Analyze impact" }).click();
+        await expect(
+          page.getByRole("region", { name: "Impact analysis" }),
+        ).toBeVisible();
+        await capture(page, viewportName, "code-impact");
 
         await openPrimaryView(page, viewportName, "Agents");
         await expect(
