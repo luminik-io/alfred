@@ -26,6 +26,9 @@ Subcommands:
                 known mistake? Headline metric is the repeated-mistake-rate.
                 ``--stub`` runs it offline (no model); ``--engine <name>`` runs
                 a real memory-ON vs memory-OFF A/B. See docs/BENCHMARKS.md.
+  memory-recall Measure the shipped provider chain against exact, wording,
+                scope, validity, contradiction, and true-miss cases. No model
+                or network call is used.
 
 Exit codes:
   0 success
@@ -83,13 +86,20 @@ from compression_benchmark import (  # noqa: E402
     render_report_table as render_compression_table,
 )
 from memory_benchmark import (  # noqa: E402
+    DEFAULT_RECALL_LIMIT,
     MemoryABReport,
     MemoryArmMetrics,
+    RecallQualityReport,
     default_fixture_dir,
+    default_recall_quality_fixture_dir,
     load_fixture,
+    load_recall_quality_fixture,
     make_cli_engine_solver,
     make_stub_solver,
+    recall_quality_fixture_digest,
     run_memory_ab,
+    run_recall_quality,
+    seed_recall_quality_provider,
 )
 from transcripts import default_state_dir  # noqa: E402
 
@@ -289,6 +299,46 @@ def render_memory_suite(report_tasks: tuple, as_json: bool) -> str:
     return "\n".join(lines)
 
 
+def render_recall_quality_table(report: RecallQualityReport) -> str:
+    """Render the provider-only memory recall benchmark."""
+    metrics = report.metrics
+    lines = [
+        "alfred benchmark memory recall quality",
+        f"fixture: {report.fixture}   cases: {metrics.cases}   limit: {report.limit}",
+        f"fixture digest: {report.fixture_digest}   schema: {report.fixture_schema_version}",
+        f"memory: {report.provider}   model: {report.model}   network: no",
+        f"prompt budget: {report.prompt_max_chars:,} characters",
+        "",
+        f"  precision ............... {_fmt_rate(metrics.precision)}",
+        f"  recall .................. {_fmt_rate(metrics.recall)}",
+        f"  false injection rate .... {_fmt_rate(metrics.false_injection_rate)}",
+        f"  empty miss rate ......... {_fmt_rate(metrics.empty_miss_rate)}",
+        f"  mean provider latency ... {metrics.mean_latency_ms or 0.0:.2f}ms",
+        f"  prompt bytes ............ {metrics.prompt_bytes:,}",
+        "",
+        "per-case:",
+    ]
+    for result in report.results:
+        recalled = ",".join(result.recalled_lesson_ids) or "empty"
+        expected = ",".join(result.relevant_lesson_ids) or "empty"
+        suffix = f" error={result.error}" if result.error else ""
+        lines.append(
+            f"  {result.case_id:<20} {result.category:<18} "
+            f"expected={expected} recalled={recalled}{suffix}"
+        )
+    lines.extend(
+        [
+            "",
+            "note: provider-only fixture run. No model or network call was made.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_recall_quality_json(report: RecallQualityReport) -> str:
+    return json.dumps(report.to_dict(), indent=2, default=str)
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -356,9 +406,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="working dir the engine runs in (default: the fixture's repo/ dir)",
     )
-    mem.add_argument("--limit", type=int, default=3, help="lessons recalled per task")
+    mem.add_argument(
+        "--limit", type=int, default=DEFAULT_RECALL_LIMIT, help="lessons recalled per task"
+    )
     mem.add_argument("--json", action="store_true", dest="json_out", help="machine-readable JSON")
     mem.add_argument("--verbose", "-v", action="store_true", help="debug logging")
+
+    recall = sub.add_parser(
+        "memory-recall",
+        help="measure provider recall, false injection, latency, and prompt bytes",
+    )
+    recall.add_argument(
+        "--fixture",
+        type=Path,
+        default=None,
+        help="recall fixture dir (default: built-in tests/fixtures/memory-recall-quality)",
+    )
+    recall.add_argument(
+        "--limit", type=int, default=DEFAULT_RECALL_LIMIT, help="lessons recalled per case"
+    )
+    recall.add_argument(
+        "--json", action="store_true", dest="json_out", help="machine-readable JSON"
+    )
+    recall.add_argument("--verbose", "-v", action="store_true", help="debug logging")
 
     comp = sub.add_parser(
         "compression",
@@ -497,6 +567,35 @@ def _cmd_compression(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_memory_recall(args: argparse.Namespace) -> int:
+    if args.limit <= 0:
+        print("alfred-benchmark: --limit must be greater than zero", file=sys.stderr)
+        return 2
+    fixture_dir = args.fixture or default_recall_quality_fixture_dir()
+    try:
+        fixture = load_recall_quality_fixture(fixture_dir)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"alfred-benchmark: {exc}", file=sys.stderr)
+        return 2
+    if not fixture.cases or not fixture.lessons:
+        print(f"alfred-benchmark: incomplete recall fixture {fixture_dir}", file=sys.stderr)
+        return 2
+    provider = seed_recall_quality_provider(fixture.lessons)
+    report = run_recall_quality(
+        fixture.cases,
+        provider=provider,
+        codename=fixture.codename,
+        fixture=fixture_dir.name,
+        fixture_digest=recall_quality_fixture_digest(fixture),
+        limit=args.limit,
+    )
+    if args.json_out:
+        print(render_recall_quality_json(report))
+    else:
+        print(render_recall_quality_table(report))
+    return 2 if any(result.error for result in report.results) else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -510,6 +609,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_write_suite(args)
     if command == "memory":
         return _cmd_memory(args)
+    if command == "memory-recall":
+        return _cmd_memory_recall(args)
     if command == "compression":
         return _cmd_compression(args)
     return _cmd_report(args)

@@ -629,13 +629,14 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert f"enable gui/{os.getuid()}/alfred.new" in log
 
 
-def test_deploy_copies_skills_registry_into_runtime(tmp_path):
-    """deploy.sh must ship skills/ (manifest + vendored tree) into $ALFRED_HOME.
+def test_deploy_copies_skills_and_benchmark_fixtures_into_runtime(tmp_path):
+    """deploy.sh must ship skills and offline benchmark fixtures.
 
     lib/skill_packs.py resolves the manifest relative to the deployed lib/
     ($ALFRED_HOME/lib -> $ALFRED_HOME/skills), so a deploy that skips skills/
     leaves `alfred skills` crashing on FileNotFoundError (review finding on
-    PR #382).
+    PR #382). The benchmark modules use the same relative runtime layout for
+    their fixed fixtures.
     """
     src = tmp_path / "repo"
     home = tmp_path / "home"
@@ -666,6 +667,17 @@ def test_deploy_copies_skills_registry_into_runtime(tmp_path):
     (src / "skills" / "packs.toml").write_text("schema_version = 1\n")
     (vendored / "SKILL.md").write_text("---\nname: demo-skill\n---\n")
     (vendored / "LICENSE").write_text("MIT License\n")
+    demo_repo = src / "examples" / "demo-repo"
+    demo_repo.mkdir(parents=True)
+    (demo_repo / "README.md").write_text("# Demo\n")
+    fixture_names = ("mem-bench", "mem-bench-hard", "compression", "memory-recall-quality")
+    fixture_manifest = src / "tests" / "fixtures" / "runtime-benchmarks.txt"
+    fixture_manifest.parent.mkdir(parents=True)
+    fixture_manifest.write_text("\n".join(fixture_names) + "\n")
+    for name in fixture_names:
+        fixture = src / "tests" / "fixtures" / name
+        fixture.mkdir(parents=True)
+        (fixture / "fixture.txt").write_text(f"{name}\n")
 
     launch_agents = home / "Library" / "LaunchAgents"
     launch_agents.mkdir(parents=True)
@@ -694,6 +706,10 @@ def test_deploy_copies_skills_registry_into_runtime(tmp_path):
     assert (alfred / "skills" / "packs.toml").is_file()
     assert (alfred / "skills" / "vendored" / "demo-skill" / "SKILL.md").is_file()
     assert (alfred / "skills" / "vendored" / "demo-skill" / "LICENSE").is_file()
+    for name in fixture_names:
+        assert (alfred / "tests" / "fixtures" / name / "fixture.txt").is_file()
+    stale_fixture = alfred / "tests" / "fixtures" / "memory-recall-quality" / "stale.json"
+    stale_fixture.write_text("stale\n")
     # Re-run: the copy is idempotent (no error on the second pass).
     res2 = subprocess.run(
         ["bash", str(src / "deploy.sh")],
@@ -710,6 +726,104 @@ def test_deploy_copies_skills_registry_into_runtime(tmp_path):
     )
     assert res2.returncode == 0, res2.stdout + res2.stderr
     assert (alfred / "skills" / "packs.toml").is_file()
+    assert not stale_fixture.exists()
+
+    in_place_home = tmp_path / "in-place-home"
+    in_place_home.mkdir()
+    in_place = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(in_place_home),
+            "ALFRED_HOME": str(src),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert in_place.returncode == 0, in_place.stdout + in_place.stderr
+
+    shutil.rmtree(src / "tests" / "fixtures" / "compression")
+    missing_source = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert missing_source.returncode != 0
+    assert "benchmark fixture compression is missing" in missing_source.stderr
+
+    fixture_manifest.unlink()
+    missing_manifest = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert missing_manifest.returncode != 0
+    assert "benchmark fixture manifest is missing" in missing_manifest.stderr
+
+
+def test_deployed_runtime_runs_builtin_memory_recall_fixture(tmp_path):
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    fakebin = tmp_path / "fakebin"
+    home.mkdir()
+    fakebin.mkdir()
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+    env = _clean_env(
+        HOME=str(home),
+        ALFRED_HOME=str(alfred),
+        WORKSPACE_ROOT=str(tmp_path / "code"),
+        ALFRED_DEPLOY_SKIP_PYTHON_DEPS="1",
+        ALFRED_DEPLOY_SKIP_UI="1",
+        PATH=f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+    )
+
+    deployed = subprocess.run(
+        ["bash", str(REPO / "deploy.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert deployed.returncode == 0, deployed.stdout + deployed.stderr
+
+    command = subprocess.run(
+        [str(home / ".local" / "bin" / "alfred"), "benchmark", "memory-recall", "--json"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert command.returncode == 0, command.stdout + command.stderr
+    payload = json.loads(command.stdout)
+    assert payload["fixture"] == "memory-recall-quality"
+    assert payload["provider"] == "sqlite,fleet"
+    assert payload["metrics"]["cases"] == 7
 
 
 def test_desktop_deploy_prefers_seeded_runtime_roster(tmp_path):

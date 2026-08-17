@@ -10,10 +10,12 @@ exercising it needs a live model.
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -225,6 +227,426 @@ def test_retrieval_recall_zero_when_nothing_recalled():
 
 
 # --------------------------------------------------------------------------
+# Provider recall-quality benchmark
+# --------------------------------------------------------------------------
+
+
+def test_recall_quality_measures_false_injection_misses_latency_and_prompt_bytes():
+    cases = (
+        mb.RecallQualityCase(
+            case_id="exact",
+            category="exact",
+            query="GraphQL schema",
+            repo="acme/api",
+            relevant_lesson_ids=("L-schema",),
+        ),
+        mb.RecallQualityCase(
+            case_id="wording-variant",
+            category="wording-variant",
+            query="keep database lookups together",
+            repo="acme/api",
+            relevant_lesson_ids=("L-batch",),
+        ),
+        mb.RecallQualityCase(
+            case_id="miss",
+            category="empty-miss",
+            query="change the company logo",
+            repo="acme/api",
+        ),
+    )
+
+    class FakeProvider:
+        name = "fake"
+
+        def recall(self, *, query=None, codename=None, repo=None, limit=3):
+            lesson_ids = {
+                "GraphQL schema": ("L-schema", "D-style"),
+                "keep database lookups together": ("L-batch",),
+                "change the company logo": ("D-style",),
+            }[query]
+            return [type("Lesson", (), {"id": lesson_id})() for lesson_id in lesson_ids]
+
+    clock_values = iter((1.000, 1.004, 2.000, 2.006, 3.000, 3.010))
+    report = mb.run_recall_quality(
+        cases,
+        provider=FakeProvider(),
+        codename="mem-bench",
+        limit=3,
+        context_fn=lambda _provider, case, _codename, _limit: {
+            "exact": "schema lesson",
+            "wording-variant": "batch lesson",
+            "miss": "wrong lesson",
+        }[case.case_id],
+        clock=lambda: next(clock_values),
+    )
+
+    assert report.provider == "fake"
+    assert report.model == "none"
+    assert report.network is False
+    assert report.limitations == (
+        "fixed-fixture-provider-recall",
+        "no-model-reasoning",
+        "no-live-operator-data",
+    )
+    assert report.metrics.cases == 3
+    assert report.metrics.cases_with_relevant == 2
+    assert report.metrics.relevant_total == 2
+    assert report.metrics.recalled_total == 4
+    assert report.metrics.recalled_relevant == 2
+    assert report.metrics.precision == pytest.approx(0.5)
+    assert report.metrics.recall == pytest.approx(1.0)
+    assert report.metrics.false_injections == 2
+    assert report.metrics.false_injection_rate == pytest.approx(0.5)
+    assert report.metrics.empty_miss_cases == 1
+    assert report.metrics.nonempty_misses == 1
+    assert report.metrics.empty_miss_rate == pytest.approx(0.0)
+    assert report.metrics.mean_latency_ms == pytest.approx(20 / 3)
+    assert report.metrics.prompt_bytes == len("schema lessonbatch lessonwrong lesson")
+    assert [result.case_id for result in report.results] == [
+        "exact",
+        "wording-variant",
+        "miss",
+    ]
+
+
+def test_recall_quality_reports_an_empty_result_when_provider_lookup_fails():
+    case = mb.RecallQualityCase(
+        case_id="provider-failure",
+        category="exact",
+        query="GraphQL schema",
+        repo="acme/api",
+        relevant_lesson_ids=("L-schema",),
+    )
+
+    class FailingProvider:
+        name = "failing"
+
+        def recall(self, **_kwargs):
+            raise RuntimeError("offline")
+
+    report = mb.run_recall_quality(
+        (case,),
+        provider=FailingProvider(),
+        codename="mem-bench",
+        context_fn=lambda *_args: "",
+        clock=iter((1.0, 1.0)).__next__,
+    )
+
+    assert report.results[0].recalled_lesson_ids == ()
+    assert report.results[0].error == "provider_lookup_failed"
+    assert report.metrics.recall == pytest.approx(0.0)
+    assert report.metrics.precision is None
+
+
+def test_recall_quality_keeps_recall_metrics_when_context_formatting_fails():
+    case = mb.RecallQualityCase(
+        case_id="context-failure",
+        category="exact",
+        query="GraphQL schema",
+        repo="acme/api",
+        relevant_lesson_ids=("L-schema",),
+    )
+
+    class Provider:
+        name = "fake"
+
+        def recall(self, **_kwargs):
+            return [type("Lesson", (), {"id": "L-schema"})()]
+
+    def fail_context(*_args):
+        raise RuntimeError("formatter offline")
+
+    report = mb.run_recall_quality(
+        (case,),
+        provider=Provider(),
+        context_fn=fail_context,
+        clock=iter((1.0, 1.0)).__next__,
+    )
+
+    assert report.results[0].recalled_lesson_ids == ("L-schema",)
+    assert report.results[0].prompt_bytes == 0
+    assert report.results[0].error == "context_format_failed"
+    assert report.metrics.recall == pytest.approx(1.0)
+
+
+def test_recall_quality_formats_the_scored_recall_without_a_second_lookup():
+    from memory import Lesson
+
+    case = mb.RecallQualityCase(
+        case_id="one-lookup",
+        category="exact",
+        query="GraphQL schema",
+        repo="acme/api",
+        relevant_lesson_ids=("L-schema",),
+    )
+
+    class Provider:
+        name = "fake"
+
+        def __init__(self):
+            self.calls = 0
+
+        def recall(self, **_kwargs):
+            self.calls += 1
+            return [
+                Lesson(
+                    id="L-schema",
+                    codename="mem-bench",
+                    repo="acme/api",
+                    body="Run GraphQL schema validation before deployment.",
+                    tags=[],
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    firing_id=None,
+                )
+            ]
+
+    provider = Provider()
+    report = mb.run_recall_quality((case,), provider=provider)
+
+    assert provider.calls == 1
+    assert report.results[0].prompt_bytes > 0
+
+
+def test_recall_quality_uses_and_records_an_isolated_prompt_budget(monkeypatch):
+    from memory import Lesson
+
+    monkeypatch.setenv("ALFRED_MEMORY_INJECT_MAX_CHARS", "1")
+    case = mb.RecallQualityCase(
+        case_id="isolated-budget",
+        category="exact",
+        query="GraphQL schema",
+        repo="acme/api",
+        relevant_lesson_ids=("L-schema",),
+    )
+
+    class Provider:
+        name = "fake"
+
+        def recall(self, **_kwargs):
+            return [
+                Lesson(
+                    id="L-schema",
+                    codename="mem-bench",
+                    repo="acme/api",
+                    body="Run GraphQL schema validation before deployment.",
+                    tags=[],
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    firing_id=None,
+                )
+            ]
+
+    report = mb.run_recall_quality((case,), provider=Provider())
+
+    assert report.prompt_max_chars == 8000
+    assert report.results[0].prompt_bytes > 0
+
+
+def test_recall_quality_reports_failures_swallowed_by_a_provider_chain():
+    from memory.providers import ChainedMemoryProvider
+
+    case = mb.RecallQualityCase(
+        case_id="member-failure",
+        category="empty-miss",
+        query="company logo typeface",
+        repo="acme/api",
+    )
+
+    class FailingProvider:
+        name = "broken"
+
+        def recall(self, **_kwargs):
+            raise RuntimeError("offline")
+
+    class EmptyProvider:
+        name = "empty"
+
+        def recall(self, **_kwargs):
+            return []
+
+    report = mb.run_recall_quality(
+        (case,),
+        provider=ChainedMemoryProvider([FailingProvider(), EmptyProvider()]),
+        context_fn=lambda *_args: "",
+    )
+
+    assert report.results[0].recalled_lesson_ids == ()
+    assert report.results[0].error == "provider_member_failed:broken"
+
+
+def test_recall_quality_fixture_digest_is_stable_and_content_bound():
+    fixture = mb.load_recall_quality_fixture(mb.default_recall_quality_fixture_dir())
+    digest = mb.recall_quality_fixture_digest(fixture)
+
+    assert len(digest) == 64
+    assert mb.recall_quality_fixture_digest(fixture) == digest
+    changed = mb.RecallQualityFixture(
+        cases=fixture.cases,
+        lessons=(*fixture.lessons[:-1], dataclasses.replace(fixture.lessons[-1], body="changed")),
+        codename=fixture.codename,
+    )
+    assert mb.recall_quality_fixture_digest(changed) != digest
+
+
+def test_recall_quality_empty_suite_has_explicit_undefined_rates():
+    provider = type("Provider", (), {"name": "fake"})()
+    report = mb.run_recall_quality((), provider=provider)
+
+    assert report.results == ()
+    assert report.metrics.cases == 0
+    assert report.metrics.prompt_bytes == 0
+    assert report.metrics.precision is None
+    assert report.metrics.recall is None
+    assert report.metrics.false_injection_rate is None
+    assert report.metrics.empty_miss_rate is None
+    assert report.metrics.mean_latency_ms is None
+    assert report.to_dict()["results"] == []
+
+
+def test_builtin_recall_quality_fixture_covers_v080_risk_categories():
+    fixture_dir = mb.default_recall_quality_fixture_dir()
+    fixture = mb.load_recall_quality_fixture(fixture_dir)
+
+    assert fixture_dir == REPO_ROOT / "tests" / "fixtures" / "memory-recall-quality"
+    assert {case.category for case in fixture.cases} == {
+        "exact",
+        "wording-variant",
+        "repo-scope",
+        "temporal-update",
+        "contradiction",
+        "expired",
+        "empty-miss",
+    }
+    assert len(fixture.lessons) >= 8
+
+
+def test_recall_quality_fixture_rejects_missing_lesson_references(tmp_path):
+    (tmp_path / "cases.json").write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "broken-reference",
+                    "category": "exact",
+                    "query": "GraphQL schema",
+                    "repo": "acme/api",
+                    "relevant_lesson_ids": ["L-missing"],
+                }
+            ]
+        )
+    )
+    (tmp_path / "lessons.json").write_text(
+        json.dumps(
+            [
+                {
+                    "lesson_id": "L-present",
+                    "body": "Run GraphQL schema validation.",
+                    "repo": "acme/api",
+                }
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError, match="unknown lesson L-missing"):
+        mb.load_recall_quality_fixture(tmp_path)
+
+
+def test_recall_quality_fixture_rejects_malformed_case_data(tmp_path):
+    (tmp_path / "cases.json").write_text("not-json")
+    (tmp_path / "lessons.json").write_text("[]")
+
+    with pytest.raises(ValueError, match="invalid recall fixture JSON"):
+        mb.load_recall_quality_fixture(tmp_path)
+
+
+def test_recall_quality_fixture_rejects_invalid_timestamps(tmp_path):
+    (tmp_path / "cases.json").write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "expiry",
+                    "category": "expired",
+                    "query": "cache warmup",
+                    "repo": "acme/api",
+                    "relevant_lesson_ids": [],
+                }
+            ]
+        )
+    )
+    (tmp_path / "lessons.json").write_text(
+        json.dumps(
+            [
+                {
+                    "lesson_id": "L-expired",
+                    "body": "Use the expired cache warmup.",
+                    "repo": "acme/api",
+                    "valid_until": "not-a-time",
+                }
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError, match="invalid recall fixture timestamp"):
+        mb.load_recall_quality_fixture(tmp_path)
+
+
+def test_recall_quality_fixture_requires_complete_supersession_pairs(tmp_path):
+    (tmp_path / "cases.json").write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "expiry",
+                    "category": "expired",
+                    "query": "cache warmup",
+                    "repo": "acme/api",
+                    "relevant_lesson_ids": [],
+                }
+            ]
+        )
+    )
+    (tmp_path / "lessons.json").write_text(
+        json.dumps(
+            [
+                {
+                    "lesson_id": "L-old",
+                    "body": "Use the old cache warmup.",
+                    "repo": "acme/api",
+                    "superseded_by": "L-new",
+                },
+                {
+                    "lesson_id": "L-new",
+                    "body": "Cache population is automatic.",
+                    "repo": "acme/api",
+                },
+            ]
+        )
+    )
+
+    with pytest.raises(ValueError, match="valid_until with superseded_by"):
+        mb.load_recall_quality_fixture(tmp_path)
+
+
+def test_builtin_recall_quality_fixture_runs_against_the_shipped_chain():
+    fixture = mb.load_recall_quality_fixture(mb.default_recall_quality_fixture_dir())
+    provider = mb.seed_recall_quality_provider(fixture.lessons)
+    report = mb.run_recall_quality(
+        fixture.cases,
+        provider=provider,
+        codename=fixture.codename,
+        context_fn=lambda *_args: "",
+    )
+
+    by_id = {result.case_id: result for result in report.results}
+    assert by_id["repo-scope"].recalled_lesson_ids == ("L-api-scope",)
+    assert "L-old-timeout" not in by_id["temporal-update"].recalled_lesson_ids
+    assert by_id["temporal-update"].recalled_lesson_ids == ("L-new-timeout",)
+    assert "L-old-retry" not in by_id["contradiction"].recalled_lesson_ids
+    assert by_id["contradiction"].recalled_lesson_ids == ("L-new-retry",)
+    assert by_id["expired"].recalled_lesson_ids == ()
+    assert by_id["empty-miss"].recalled_lesson_ids == ()
+    assert report.metrics.false_injections == 0
+    assert report.metrics.empty_miss_rate == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------
 # End-to-end A/B with the stub solver (real recall/inject, mocked engine)
 # --------------------------------------------------------------------------
 
@@ -311,6 +733,7 @@ def test_benchmark_module_reexports_memory_ab():
     import benchmark
 
     assert benchmark.run_memory_ab is mb.run_memory_ab
+    assert benchmark.run_recall_quality is mb.run_recall_quality
     with pytest.raises(AttributeError):
         _ = benchmark.does_not_exist
 
@@ -359,6 +782,108 @@ def test_cli_memory_stub_json(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["memory_on"]["repeated_mistake_rate"] == 0.0
     assert payload["memory_off"]["repeated_mistake_rate"] == 1.0
+
+
+def test_cli_memory_recall_quality_table(capsys):
+    cli = _load_cli()
+    rc = cli.main(["memory-recall"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "memory recall quality" in out
+    assert "false injection rate" in out
+    assert "empty miss rate" in out
+    assert "temporal-update" in out
+    assert "memory: sqlite,fleet" in out
+
+
+def test_cli_memory_recall_quality_json(capsys):
+    cli = _load_cli()
+    rc = cli.main(["memory-recall", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["provider"] == "sqlite,fleet"
+    assert payload["fixture"] == "memory-recall-quality"
+    assert payload["fixture_schema_version"] == 1
+    assert len(payload["fixture_digest"]) == 64
+    assert payload["prompt_max_chars"] == 8000
+    assert payload["model"] == "none"
+    assert payload["network"] is False
+    assert payload["limitations"] == [
+        "fixed-fixture-provider-recall",
+        "no-model-reasoning",
+        "no-live-operator-data",
+    ]
+    assert payload["metrics"]["cases"] == 7
+    assert payload["metrics"]["false_injections"] == 0
+    assert len(payload["results"]) == 7
+
+
+def test_cli_memory_recall_quality_fails_when_a_case_has_infrastructure_error(monkeypatch, capsys):
+    cli = _load_cli()
+    original = cli.run_recall_quality
+
+    def failed_run(*args, **kwargs):
+        report = original(*args, **kwargs)
+        failed = dataclasses.replace(
+            report.results[0],
+            error="provider_member_failed:sqlite",
+        )
+        return dataclasses.replace(report, results=(failed, *report.results[1:]))
+
+    monkeypatch.setattr(cli, "run_recall_quality", failed_run)
+    rc = cli.main(["memory-recall", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["results"][0]["error"] == "provider_member_failed:sqlite"
+
+
+def test_cli_memory_recall_quality_rejects_nonpositive_limit(capsys):
+    cli = _load_cli()
+    rc = cli.main(["memory-recall", "--limit", "0"])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert "--limit must be greater than zero" in captured.err
+
+
+def test_cli_memory_recall_quality_reports_invalid_fixture(tmp_path, capsys):
+    (tmp_path / "cases.json").write_text("not-json")
+    (tmp_path / "lessons.json").write_text("[]")
+    cli = _load_cli()
+    rc = cli.main(["memory-recall", "--fixture", str(tmp_path)])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert "invalid recall fixture JSON" in captured.err
+
+
+def test_cli_memory_recall_quality_reports_missing_and_incomplete_fixtures(tmp_path, capsys):
+    cli = _load_cli()
+    missing = tmp_path / "missing"
+    assert cli.main(["memory-recall", "--fixture", str(missing)]) == 2
+    assert "fixture dir not found" in capsys.readouterr().err
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "cases.json").write_text("[]")
+    (empty / "lessons.json").write_text("[]")
+    assert cli.main(["memory-recall", "--fixture", str(empty)]) == 2
+    assert "incomplete recall fixture" in capsys.readouterr().err
+
+
+def test_cli_memory_recall_quality_uses_custom_fixture_name(tmp_path, capsys):
+    source = mb.default_recall_quality_fixture_dir()
+    fixture_dir = tmp_path / "custom-recall"
+    fixture_dir.mkdir()
+    for name in ("cases.json", "lessons.json"):
+        (fixture_dir / name).write_text((source / name).read_text())
+
+    cli = _load_cli()
+    assert cli.main(["memory-recall", "--fixture", str(fixture_dir), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["fixture"] == "custom-recall"
+    assert payload["metrics"]["cases"] == 7
 
 
 def test_cli_memory_show_suite(capsys):

@@ -828,7 +828,7 @@ def run_report(
 
 
 # --------------------------------------------------------------------------
-# Memory A/B eval (coding-fleet memory benchmark)
+# Memory benchmarks
 #
 # The repeated-mistake-rate A/B lives in the sibling ``memory_benchmark``
 # module (it can RUN a solver, so it is kept out of this pure telemetry
@@ -842,11 +842,17 @@ def run_report(
 # Names re-exported from ``memory_benchmark``. ``build_report`` is intentionally
 # omitted: it exists in both modules with different meanings, so callers reach
 # the memory one via ``memory_benchmark.build_report`` to avoid ambiguity.
-_MEMORY_AB_EXPORTS = frozenset(
+_MEMORY_BENCHMARK_EXPORTS = frozenset(
     {
         "MemoryABReport",
         "MemoryArmMetrics",
         "RetrievalMetrics",
+        "RecallQualityCase",
+        "RecallQualityFixture",
+        "RecallQualityMetrics",
+        "RecallQualityReport",
+        "RecallQualityResult",
+        "RecallQualitySeedLesson",
         "MemTask",
         "SeedLesson",
         "Fixture",
@@ -854,18 +860,23 @@ _MEMORY_AB_EXPORTS = frozenset(
         "SolveResult",
         "load_fixture",
         "run_memory_ab",
+        "run_recall_quality",
         "make_stub_solver",
         "make_cli_engine_solver",
         "judge_solution",
         "seed_fleet_provider",
+        "seed_recall_quality_provider",
         "default_fixture_dir",
+        "default_recall_quality_fixture_dir",
+        "load_recall_quality_fixture",
+        "recall_quality_fixture_digest",
     }
 )
 
 
 def __getattr__(name: str) -> Any:
-    """Lazily re-export the memory A/B surface from :mod:`memory_benchmark`."""
-    if name in _MEMORY_AB_EXPORTS:
+    """Lazily re-export the memory benchmark surface from :mod:`memory_benchmark`."""
+    if name in _MEMORY_BENCHMARK_EXPORTS:
         import memory_benchmark
 
         return getattr(memory_benchmark, name)

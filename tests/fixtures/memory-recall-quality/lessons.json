@@ -1,0 +1,84 @@
+[
+  {
+    "lesson_id": "L-schema",
+    "body": "Run GraphQL schema validation before deployment.",
+    "repo": "acme/api",
+    "tags": ["graphql", "validation"],
+    "kind": "convention",
+    "provenance": "fixture:exact"
+  },
+  {
+    "lesson_id": "L-batch",
+    "body": "Batch database lookups into one query.",
+    "repo": "acme/api",
+    "tags": ["database", "performance"],
+    "kind": "fix",
+    "provenance": "fixture:wording-variant"
+  },
+  {
+    "lesson_id": "L-api-scope",
+    "body": "The workspace tenancy boundary is defined by the API repository.",
+    "repo": "acme/api",
+    "tags": ["graphql", "scope"],
+    "kind": "convention",
+    "provenance": "fixture:api"
+  },
+  {
+    "lesson_id": "L-web-scope",
+    "body": "The workspace tenancy boundary is defined by the web repository.",
+    "repo": "acme/web",
+    "tags": ["graphql", "scope"],
+    "kind": "convention",
+    "provenance": "fixture:web"
+  },
+  {
+    "lesson_id": "L-old-timeout",
+    "body": "Set the engine timeout retry budget to 30 seconds.",
+    "repo": "acme/api",
+    "tags": ["engine", "timeout"],
+    "kind": "convention",
+    "created_at": "2025-01-01T00:00:00Z",
+    "valid_until": "2025-02-01T00:00:00Z",
+    "superseded_by": "L-new-timeout",
+    "provenance": "fixture:old-timeout"
+  },
+  {
+    "lesson_id": "L-new-timeout",
+    "body": "Set the engine timeout retry budget to 90 seconds.",
+    "repo": "acme/api",
+    "tags": ["engine", "timeout"],
+    "kind": "convention",
+    "created_at": "2026-01-02T00:00:00Z",
+    "provenance": "fixture:new-timeout"
+  },
+  {
+    "lesson_id": "L-old-retry",
+    "body": "The network retry policy allows five retries.",
+    "repo": "acme/api",
+    "tags": ["network", "retry"],
+    "kind": "convention",
+    "created_at": "2025-01-01T00:00:00Z",
+    "valid_until": "2025-02-01T00:00:00Z",
+    "superseded_by": "L-new-retry",
+    "provenance": "fixture:old-retry"
+  },
+  {
+    "lesson_id": "L-new-retry",
+    "body": "The network retry policy allows two retries.",
+    "repo": "acme/api",
+    "tags": ["network", "retry"],
+    "kind": "convention",
+    "created_at": "2026-01-02T00:00:00Z",
+    "provenance": "fixture:new-retry"
+  },
+  {
+    "lesson_id": "L-expired-cache",
+    "body": "Use the deprecated cache warmup command.",
+    "repo": "acme/api",
+    "tags": ["cache", "deprecated"],
+    "kind": "convention",
+    "created_at": "2025-01-01T00:00:00Z",
+    "valid_until": "2025-02-01T00:00:00Z",
+    "provenance": "fixture:expired"
+  }
+]

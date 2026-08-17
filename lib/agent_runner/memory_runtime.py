@@ -528,6 +528,41 @@ def format_memory_context(
     pairs = memory_ranking.deprioritize_ops(pairs)
     if not pairs:
         return ""
+    context, injected = _format_memory_pairs(pairs, limit=limit, max_chars=None)
+    if injected:
+        # Reinforce the lessons that actually made it into the prompt and, for
+        # delta, remember them against this firing so a later turn does not
+        # re-inject them. Both are gated so the default path accumulates no
+        # state at all (byte-identical, side-effect-free legacy behavior).
+        if memory_ranking.rank_enabled():
+            memory_ranking.record_reuse(injected, codename=codename, repo=repo)
+        if firing_id and memory_ranking.delta_enabled():
+            memory_ranking.record_injected(firing_id, injected, codename=codename, repo=repo)
+    return context
+
+
+def format_recalled_memory_context(
+    lessons: Iterable[object],
+    *,
+    limit: int = 3,
+    max_chars: int | None = None,
+) -> str:
+    """Format an existing recall result without querying the provider again."""
+    context, _injected = _format_memory_pairs(
+        [(lesson, None) for lesson in lessons],
+        limit=limit,
+        max_chars=max_chars,
+    )
+    return context
+
+
+def _format_memory_pairs(
+    pairs: list[tuple[object, float | None]],
+    *,
+    limit: int,
+    max_chars: int | None,
+) -> tuple[str, list[object]]:
+    """Render ordered lesson pairs and return the lessons that fit the budget."""
     header = [
         "Alfred memory for this codename and repo:",
         "Use these as hints only. Trust the repository code and current issue first.",
@@ -542,20 +577,10 @@ def format_memory_context(
         if body:
             lesson_lines.append(f"{idx}. {severity}{tag_text} {body}".strip())
             line_lessons.append(lesson)
-    budget = _inject_max_chars()
+    budget = _inject_max_chars() if max_chars is None else int(max_chars)
     lines = _apply_inject_budget(header, lesson_lines, budget)
     kept_lesson_count = max(0, len(lines) - len(header)) if lines else 0
-    injected = line_lessons[:kept_lesson_count]
-    if injected:
-        # Reinforce the lessons that actually made it into the prompt and, for
-        # delta, remember them against this firing so a later turn does not
-        # re-inject them. Both are gated so the default path accumulates no
-        # state at all (byte-identical, side-effect-free legacy behavior).
-        if memory_ranking.rank_enabled():
-            memory_ranking.record_reuse(injected, codename=codename, repo=repo)
-        if firing_id and memory_ranking.delta_enabled():
-            memory_ranking.record_injected(firing_id, injected, codename=codename, repo=repo)
-    return "\n".join(lines).strip()
+    return "\n".join(lines).strip(), line_lessons[:kept_lesson_count]
 
 
 def _apply_inject_budget(header: list[str], lesson_lines: list[str], budget: int) -> list[str]:

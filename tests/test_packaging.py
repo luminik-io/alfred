@@ -23,6 +23,12 @@ def test_desktop_bundle_contains_required_core_resources():
     resources = config["bundle"]["resources"]
 
     assert resources["../../../skills"] == "alfred-core/skills"
+    fixture_root = "../../../tests/fixtures"
+    assert resources[f"{fixture_root}/runtime-benchmarks.txt"] == (
+        "alfred-core/tests/fixtures/runtime-benchmarks.txt"
+    )
+    for fixture in ("mem-bench", "mem-bench-hard", "compression", "memory-recall-quality"):
+        assert resources[f"{fixture_root}/{fixture}"] == f"alfred-core/tests/fixtures/{fixture}"
     for required in ("bin", "lib", "prompts", "skills"):
         assert Path(required).exists(), f"desktop core resource is missing: {required}"
 

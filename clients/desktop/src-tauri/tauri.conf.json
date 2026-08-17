@@ -58,7 +58,12 @@
       "../../../skills": "alfred-core/skills",
       "../../../systemd/_template.service": "alfred-core/systemd/_template.service",
       "../../../systemd/_template.timer": "alfred-core/systemd/_template.timer",
-      "../../../systemd/render.sh": "alfred-core/systemd/render.sh"
+      "../../../systemd/render.sh": "alfred-core/systemd/render.sh",
+      "../../../tests/fixtures/compression": "alfred-core/tests/fixtures/compression",
+      "../../../tests/fixtures/mem-bench": "alfred-core/tests/fixtures/mem-bench",
+      "../../../tests/fixtures/mem-bench-hard": "alfred-core/tests/fixtures/mem-bench-hard",
+      "../../../tests/fixtures/memory-recall-quality": "alfred-core/tests/fixtures/memory-recall-quality",
+      "../../../tests/fixtures/runtime-benchmarks.txt": "alfred-core/tests/fixtures/runtime-benchmarks.txt"
     },
     "copyright": "Copyright (c) DataRavel Inc.",
     "publisher": "DataRavel Inc.",

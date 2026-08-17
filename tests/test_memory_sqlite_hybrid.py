@@ -2708,6 +2708,21 @@ def test_sync_lesson_round_trips(provider: SqliteHybridProvider) -> None:
     assert [L.id for L in other.list_lessons(limit=10)] == [lesson.id]
 
 
+def test_reflect_can_seed_standalone_expiry_for_offline_quality_fixtures(
+    provider: SqliteHybridProvider,
+) -> None:
+    provider.reflect(
+        codename="c",
+        repo="r",
+        body="Use the expired cache warmup command.",
+        memory_id="expired-fixture",
+        created_at="2025-01-01T00:00:00Z",
+        valid_until="2025-02-01T00:00:00Z",
+    )
+
+    assert provider.recall(query="expired cache warmup", codename="c", repo="r") == []
+
+
 def test_sync_lesson_roundtrip_with_string_created_at(provider: SqliteHybridProvider) -> None:
     # A lesson mirrored from the AMS write contract carries ``created_at`` as a
     # serialized ISO string, not a datetime. sync_lesson must persist it (not

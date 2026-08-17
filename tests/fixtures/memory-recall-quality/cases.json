@@ -1,0 +1,51 @@
+[
+  {
+    "case_id": "exact",
+    "category": "exact",
+    "query": "GraphQL schema validation",
+    "repo": "acme/api",
+    "relevant_lesson_ids": ["L-schema"]
+  },
+  {
+    "case_id": "wording-variant",
+    "category": "wording-variant",
+    "query": "group database lookups into one query",
+    "repo": "acme/api",
+    "relevant_lesson_ids": ["L-batch"]
+  },
+  {
+    "case_id": "repo-scope",
+    "category": "repo-scope",
+    "query": "workspace tenancy boundary",
+    "repo": "acme/api",
+    "relevant_lesson_ids": ["L-api-scope"]
+  },
+  {
+    "case_id": "temporal-update",
+    "category": "temporal-update",
+    "query": "engine timeout retry budget",
+    "repo": "acme/api",
+    "relevant_lesson_ids": ["L-new-timeout"]
+  },
+  {
+    "case_id": "contradiction",
+    "category": "contradiction",
+    "query": "network retry policy",
+    "repo": "acme/api",
+    "relevant_lesson_ids": ["L-new-retry"]
+  },
+  {
+    "case_id": "expired",
+    "category": "expired",
+    "query": "deprecated cache warmup",
+    "repo": "acme/api",
+    "relevant_lesson_ids": []
+  },
+  {
+    "case_id": "empty-miss",
+    "category": "empty-miss",
+    "query": "company logo typeface",
+    "repo": "acme/api",
+    "relevant_lesson_ids": []
+  }
+]

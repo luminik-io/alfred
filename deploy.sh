@@ -23,7 +23,7 @@ Usage: ./deploy.sh [--help]
 
 Deploy Alfred runtime files into ${ALFRED_HOME:-$HOME/.alfred}.
 
-Copies lib/, bin/, skills/, examples/, and prompts/ into the runtime root,
+Copies lib/, bin/, skills/, examples/, benchmark fixtures, and prompts/ into the runtime root,
 builds the bundled desktop UI when available, links CLI shims into
 $HOME/.local/bin, and renders/reloads launchd or systemd scheduler units when
 a runtime roster exists.
@@ -189,9 +189,10 @@ RUNTIME_SYSTEMD="$ALFRED_HOME/systemd"
 RUNTIME_PROMPTS="$ALFRED_HOME/prompts"
 RUNTIME_SKILLS="$ALFRED_HOME/skills"
 RUNTIME_EXAMPLES="$ALFRED_HOME/examples"
+RUNTIME_TEST_FIXTURES="$ALFRED_HOME/tests/fixtures"
 LOCAL_BIN="${HOME}/.local/bin"
 
-mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$RUNTIME_SKILLS" "$RUNTIME_EXAMPLES" "$LOCAL_BIN"
+mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$RUNTIME_SKILLS" "$RUNTIME_EXAMPLES" "$RUNTIME_TEST_FIXTURES" "$LOCAL_BIN"
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
@@ -300,6 +301,40 @@ if [ -d "$REPO_DIR/examples" ]; then
     echo "[alfred-os/deploy] ERROR: examples/demo-repo missing after copy" >&2
     exit 1
   fi
+fi
+
+# Offline benchmark commands resolve their fixed fixtures relative to lib/:
+# $ALFRED_HOME/lib -> $ALFRED_HOME/tests/fixtures. The manifest lists the only
+# fixture trees that ship; the complete test suite stays out of the runtime.
+BENCHMARK_FIXTURE_MANIFEST="$REPO_DIR/tests/fixtures/runtime-benchmarks.txt"
+if [ -d "$REPO_DIR/tests/fixtures" ]; then
+  [ -f "$BENCHMARK_FIXTURE_MANIFEST" ] || {
+    echo "[alfred-os/deploy] ERROR: benchmark fixture manifest is missing" >&2
+    exit 1
+  }
+  while IFS= read -r fixture || [ -n "$fixture" ]; do
+    case "$fixture" in ""|\#*) continue ;; esac
+    case "$fixture" in
+      .*|*[!A-Za-z0-9._-]*)
+        echo "[alfred-os/deploy] ERROR: invalid benchmark fixture name: $fixture" >&2
+        exit 1
+        ;;
+    esac
+    source_fixture="$REPO_DIR/tests/fixtures/$fixture"
+    if [ ! -d "$source_fixture" ]; then
+      echo "[alfred-os/deploy] ERROR: benchmark fixture $fixture is missing" >&2
+      exit 1
+    fi
+    runtime_fixture="$RUNTIME_TEST_FIXTURES/$fixture"
+    echo "[alfred-os/deploy] copying benchmark fixture $fixture"
+    if same_dir "$source_fixture" "$runtime_fixture"; then
+      echo "[alfred-os/deploy] benchmark fixture $fixture already in runtime root"
+      continue
+    fi
+    rm -rf -- "$runtime_fixture"
+    mkdir -p "$runtime_fixture"
+    cp -R "$source_fixture/." "$runtime_fixture/"
+  done < "$BENCHMARK_FIXTURE_MANIFEST"
 fi
 
 ensure_runtime_python_deps() {
