@@ -239,7 +239,7 @@ def test_autofetch_runs_once_when_enabled(monkeypatch: pytest.MonkeyPatch) -> No
     assert he.maybe_autofetch(env) is True
     # A second call in the same process does not re-install.
     assert he.maybe_autofetch(env) is False
-    assert called == [["pipx", "install", "headroom-ai"]]
+    assert called == [[sys.executable, "-m", "pip", "install", "headroom-ai==0.29.0"]]
 
 
 def test_autofetch_custom_command(monkeypatch: pytest.MonkeyPatch) -> None:

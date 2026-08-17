@@ -27,6 +27,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -72,6 +73,7 @@ DEFAULT_PROVIDER_CHAIN: tuple[str, ...] = ("sqlite", "fleet")
 # least one of these, so disabling a store never leaves a chain that cannot
 # recall (e.g. a bare "fleet" ledger).
 STORE_PROVIDERS = frozenset({"sqlite", "sqlite_hybrid", "redis", "pgvector"})
+HEADROOM_PACKAGE_SPEC = "headroom-ai==0.29.0"
 
 
 # --------------------------------------------------------------------------- #
@@ -209,10 +211,13 @@ BATTERIES: tuple[Battery, ...] = (
         id="headroom-compression",
         name="Headroom compression",
         category=CATEGORY_COMPRESSION,
-        what="An optional external compressor (headroom-ai) wired in behind the same tool-output seam.",
+        what=(
+            "An optional Headroom compressor that uses the same failure and size gates as the "
+            "built-in compactor."
+        ),
         how_it_helps=(
-            "Squeezes more out of verbose logs, JSON, and test output than the built-in compactor, "
-            "lowering the token cost of each run. Optional; if it is missing Alfred just uses the built-in."
+            "Lets you benchmark Headroom against the built-in compactor on recorded output before "
+            "you enable it. Alfred uses the built-in when Headroom returns no acceptable result."
         ),
         builtin=False,
         default_on=False,
@@ -222,10 +227,10 @@ BATTERIES: tuple[Battery, ...] = (
         requires_daemon=False,
         install_kind=INSTALL_PIP_EXTRA,
         install_hint=(
-            "pip install headroom-ai into Alfred's interpreter (the library path). Alfred can also run "
-            "pipx install headroom-ai for the CLI when ALFRED_HEADROOM_AUTOFETCH=1."
+            "Install headroom-ai into the Python interpreter that runs Alfred's hooks. "
+            "`alfred batteries enable headroom-compression` can run that exact install."
         ),
-        autofetch_cmd=("pipx", "install", "headroom-ai"),
+        autofetch_cmd=(sys.executable, "-m", "pip", "install", HEADROOM_PACKAGE_SPEC),
         detect="headroom",
         docs="docs/COMPRESSION.md",
     ),
@@ -596,9 +601,13 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
 def _headroom_available(env: Mapping[str, str]) -> bool:
     if _find_spec("headroom"):
         return True
+    if not str(env.get("ALFRED_HEADROOM_COMPRESS_CMD", "")).strip():
+        return False
     override = str(env.get("ALFRED_HEADROOM_BIN", "")).strip()
-    if override and Path(override).expanduser().exists():
-        return True
+    if override:
+        path = Path(override).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return True
     return bool(shutil.which("headroom"))
 
 

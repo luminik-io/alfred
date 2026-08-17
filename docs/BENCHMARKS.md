@@ -551,13 +551,13 @@ How to interpret this result:
 Reproduce exactly with `uv run python bin/alfred-benchmark.py memory --stub`
 (or `--json` for the machine-readable record these numbers were read from).
 
-## Compression: builtin #453 vs headroom
+## Compression quality: raw, built-in, and Headroom
 
-A third benchmark answers a different question: **on the verbose output a firing
-actually produces (grep dumps, JSON blobs, build logs), how much context does
-each compression engine save?** It runs the *same* real payloads through the
-built-in #453 compactor and through the optional headroom engine (see
-[COMPRESSION.md](COMPRESSION.md)) and reports the token-reduction ratio for each.
+A third benchmark answers two questions about recorded grep, JSON, build-log,
+and failed-test output: how much context does each engine remove, and which
+required facts remain? It runs the same payloads through a raw-output control,
+the built-in compactor, and the optional Headroom engine (see
+[COMPRESSION.md](COMPRESSION.md)).
 
 Run it:
 
@@ -574,23 +574,32 @@ alfred benchmark compression --fixture ./my-payloads
 
 ### What it measures and how it labels estimates
 
-- **Same payloads, both engines.** The built-in arm runs
-  `tool_compactor.compact_output` on each payload; the headroom arm runs the
-  headroom engine on the identical input. Byte reduction is exact; token
+- **Same payloads for every arm.** The built-in arm runs
+  `tool_compactor.compact_output` on each payload; the Headroom arm runs the
+  Headroom engine on the identical input. Byte reduction is exact; token
   reduction uses `tiktoken` (cl100k_base) when installed and otherwise a
   deterministic `chars/4` estimate - and the report **labels which estimator
   produced the number**, so an estimate is never presented as truth.
-- **headroom is optional, and absence is explicit.** When headroom is not
-  installed in the environment running the benchmark, its arm is marked
+- **Raw output is the control.** It always reports 0% reduction and must retain
+  every declared fact. Built-in and Headroom results are compared with that
+  same contract.
+- **Required facts are explicit.** The fixture manifest marks failures, file
+  paths, line numbers, test counts, and final command status. An engine passes
+  a case only when every declared fact remains in its final output. Failed
+  commands are measured through the same confirmed-failure valve used by real
+  firings, so neither compressor receives or hides them.
+- **Headroom is optional, and absence is explicit.** When Headroom cannot run
+  in the environment executing the benchmark, its arm is marked
   `not-run` - never zero, never a fabricated ratio. The built-in arm still
   reports its real numbers. Only an engine that actually ran is scored.
 - **Offline-testable.** The built-in arm and the token accounting are pure
   stdlib; the harness is unit-tested in `tests/test_compression_benchmark.py`
-  with headroom either absent (marked not-run) or mocked. No headroom install
-  and no network are required.
+  with Headroom either unavailable (marked not-run) or mocked. No Headroom
+  install and no network are required.
 
-The built-in fixtures live in `tests/fixtures/compression/` (`grep-symbols.txt`,
-`data.json`, `log-build.txt`) - representative grep, JSON, and log tool output.
+The built-in fixtures live in `tests/fixtures/compression/`. The
+`quality-manifest.json` file binds required facts and exit status to the
+recorded grep, JSON, build-log, and failed-test payloads.
 
 ### Reference numbers (built-in arm, this repo's fixtures)
 
@@ -606,8 +615,21 @@ roughly:
 
 These are the built-in engine's own numbers on high-redundancy fixtures; they
 are a floor a solo install already gets with **zero** extra dependencies. The
-headroom arm is left for you to fill by installing headroom-ai and re-running -
+Headroom arm is left for you to fill by installing headroom-ai and re-running -
 this doc does not quote a headroom number the harness has not measured here.
+
+On the current four-case quality manifest, the raw control and built-in engine
+both retain every declared fact. The built-in mean includes the failed command
+at 0% reduction because Alfred passes failed output through unchanged. Headroom
+remains `not-run` unless the benchmark process can call a real Headroom
+compression path. Token savings alone do not qualify an engine as the default.
+
+Measured with the pinned Headroom 0.29.0 package in an isolated environment, all three
+successful payloads used the built-in fallback and the failed payload used raw
+passthrough. The selected Headroom arm therefore matched the built-in 70.5%
+token reduction and 100% fact-retention result, but Headroom itself was the
+effective compressor for 0 payloads. This result does not support changing the
+default engine.
 
 ## Feeding a future desktop Metrics view
 

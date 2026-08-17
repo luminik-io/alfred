@@ -8,6 +8,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added a compression quality gate that compares raw output, the built-in
+  compactor, and Headroom against required failures, paths, line numbers, test
+  counts, and final command status before reporting token savings.
 - Added a plain reason to every lesson placed in an agent prompt. The CLI and
   Desktop also show the recall provider, source, repository scope, age, expiry,
   and current state for each active lesson.
@@ -30,6 +33,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Headroom setup now installs the pinned library into Alfred's Python
+  interpreter. A CLI-only install no longer appears ready without a configured
+  compression command.
 - The memory recall benchmark now records searchable-text bytes, final body
   bytes, avoided full-scan bytes, and index/body query counts. SQLite fetches
   all final lesson bodies in one query after ranking IDs and searchable text.

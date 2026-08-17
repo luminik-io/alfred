@@ -442,7 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     comp = sub.add_parser(
         "compression",
-        help="compression A/B: token reduction of builtin #453 vs headroom on real payloads",
+        help="compression: size and fact retention for raw, built-in, and Headroom output",
     )
     comp.add_argument(
         "--fixture",

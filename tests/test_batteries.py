@@ -89,6 +89,39 @@ def test_code_memory_is_the_only_default_on_configurable_battery() -> None:
     }
 
 
+def test_headroom_copy_does_not_claim_an_unmeasured_advantage() -> None:
+    battery = batteries.battery_by_id("headroom-compression")
+    assert battery is not None
+    copy = f"{battery.what} {battery.how_it_helps}".lower()
+    assert "more than" not in copy
+    assert "better than" not in copy
+    assert "benchmark" in copy
+    assert "built-in" in copy
+    assert battery.autofetch_cmd[-1] == "headroom-ai==0.29.0"
+
+
+def test_headroom_detection_requires_a_callable_compression_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(batteries, "_find_spec", lambda _name: False)
+    monkeypatch.setattr(batteries.shutil, "which", lambda _name: "/bin/headroom")
+
+    assert batteries._headroom_available({}) is False
+    assert (
+        batteries._headroom_available({"ALFRED_HEADROOM_COMPRESS_CMD": "{bin} compress-stdin"})
+        is True
+    )
+
+
+def test_headroom_detection_accepts_importable_library(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(batteries, "_find_spec", lambda name: name == "headroom")
+    monkeypatch.setattr(batteries.shutil, "which", lambda _name: None)
+
+    assert batteries._headroom_available({}) is True
+
+
 def test_daemon_batteries_are_flagged_with_a_service() -> None:
     for bid in ("redis-ams", "pgvector"):
         battery = batteries.battery_by_id(bid)

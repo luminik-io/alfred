@@ -11,7 +11,7 @@ There are two engines, and the built-in one is the zero-install default.
 | Engine | What it is | Install |
 |---|---|---|
 | **builtin** (default) | The pure-Python, stdlib-only #453 compactor (`lib/tool_compactor.py`): ANSI strip, de-dupe, head+tail budget, all-green test collapse. | Nothing. Ships with Alfred. |
-| **headroom** | The optional [`headroom-ai`](https://pypi.org/project/headroom-ai/) engine (Apache-2.0 upstream): a more capable compressor for tool output, logs, and JSON. | `pipx install headroom-ai` (or autofetch, opt-in). |
+| **headroom** | The optional [`headroom-ai`](https://pypi.org/project/headroom-ai/) engine (Apache-2.0 upstream). | `alfred batteries enable headroom-compression` installs the pinned `headroom-ai==0.29.0` package into Alfred's Python interpreter. |
 
 A fresh solo install needs **nothing extra**. The built-in compactor is both the
 default and the fallback, so headroom is never a hard dependency: when it is not
@@ -42,9 +42,10 @@ With the engine unset or set to `builtin`, Alfred uses the built-in compactor.
 
 When `ALFRED_COMPRESSION_ENGINE=headroom`:
 
-1. **Availability check.** Alfred detects headroom (an importable `headroom`
-   Python package, an `ALFRED_HEADROOM_BIN` override, or `headroom` on `PATH`).
-   If nothing resolves, the engine falls back to the built-in compactor.
+1. **Availability check.** Alfred detects an importable `headroom` Python
+   package, or a Headroom CLI paired with `ALFRED_HEADROOM_COMPRESS_CMD`. If no
+   callable compression path resolves, the engine falls back to the built-in
+   compactor.
 2. **Safety valve first.** Before headroom ever sees the text, the same
    confirmed-success valve the built-in compactor uses is applied
    (`tool_compactor.compaction_gate`). An errored, unknown-status, disabled,
@@ -77,7 +78,7 @@ work out of the box, and the headroom knobs are inert unless the engine is set t
 | `ALFRED_HEADROOM_MESSAGE_ROLE` | `user` | Role for the message carrying the tool output to headroom. headroom auto-detects compressible content, so no marker is required; override to `tool` if you want to signal it explicitly. |
 | `ALFRED_HEADROOM_COMPRESS_CMD` | (unset) | For a CLI-only install: the command that compresses stdin to stdout (`{bin}` is substituted; the template is `shlex`-split so quoted args survive). Unset means "library path only". |
 | `ALFRED_HEADROOM_AUTOFETCH` | `0` (off) | Opt-in install of headroom-ai, run **only out-of-band** (an explicit `alfred` setup step), never inline in the hook path. **Off by default for a strict no-network install** - Alfred never installs anything without this flag. |
-| `ALFRED_HEADROOM_AUTOFETCH_CMD` | `pipx install headroom-ai` | The install command autofetch runs when enabled (`shlex`-split, so quoted args like `"headroom-ai[all]"` survive). |
+| `ALFRED_HEADROOM_AUTOFETCH_CMD` | Alfred's Python interpreter plus `-m pip install headroom-ai==0.29.0` | The install command autofetch runs when enabled (`shlex`-split, so quoted arguments survive). |
 
 The built-in compactor's own knobs (`ALFRED_OUTPUT_COMPACTOR*`) still apply as
 the byte-budget and targeting gate for **both** engines - see
@@ -94,15 +95,12 @@ process.
 
 ### Autofetch and the importable-vs-CLI distinction
 
-`pipx install headroom-ai` puts the `headroom` **CLI** on your `PATH` in an
-isolated venv. To use headroom as Alfred's **library** compressor (the primary
-runtime path), install it so it is importable by the interpreter that runs the
-hook - for example `pip install headroom-ai` (or `uv pip install headroom-ai`)
-into Alfred's environment, or set `ALFRED_HEADROOM_AUTOFETCH_CMD` accordingly.
-A CLI-only install compresses only when you also set
-`ALFRED_HEADROOM_COMPRESS_CMD`, since `headroom-ai`'s CLI is oriented at
-wrapping/proxying an agent rather than a documented "compress this blob"
-subcommand, and Alfred does not invent one.
+The battery command installs the library into the same Python interpreter that
+runs Alfred's hooks. A separate `pipx install headroom-ai` exposes the Headroom
+CLI, but it does not make the library importable to Alfred. A CLI-only install
+compresses only when `ALFRED_HEADROOM_COMPRESS_CMD` names a working
+stdin-to-stdout command. The standard Headroom CLI does not document a
+"compress this blob" subcommand, so Alfred does not invent one.
 
 The library path returns headroom's `CompressResult` object (compressed
 `.messages` plus `.tokens_saved` / `.compression_ratio`); Alfred unwraps the
@@ -185,13 +183,15 @@ non-stdlib import.
 
 ## Measuring it
 
-The compression benchmark runs the same real tool-output payloads (grep, JSON,
-logs) through both engines and reports the token-reduction ratio for each:
+The compression benchmark runs the same recorded tool-output payloads through
+the raw control, built-in compactor, and optional Headroom engine. It reports
+size reduction and checks that declared failures, file paths, line numbers,
+test counts, and final command status remain present:
 
 ```sh
 alfred benchmark compression            # human-readable table
 alfred benchmark compression --json     # machine-readable
 ```
 
-See [BENCHMARKS.md](BENCHMARKS.md#compression-builtin-453-vs-headroom) for what
+See [BENCHMARKS.md](BENCHMARKS.md#compression-quality-raw-built-in-and-headroom) for what
 it measures and how it reports when Headroom is not installed.

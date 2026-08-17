@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Optional headroom compression engine: Alfred's glue around ``headroom-ai``.
 
-`headroom-ai <https://pypi.org/project/headroom-ai/>`_ (Apache-2.0) is a
-standalone, more capable compressor for tool output, logs, and JSON. Alfred
+`headroom-ai <https://pypi.org/project/headroom-ai/>`_ (Apache-2.0) is an
+optional compressor for tool output, logs, and JSON. Alfred
 bundles it as an **optional** engine behind the same "auto-fetched, no-op when
 absent" battery pattern the code-memory launcher uses: nothing here is a hard
 dependency, and with headroom not installed every function degrades to a clean
@@ -47,7 +47,8 @@ _LOG = logging.getLogger("headroom_engine")
 # The public PyPI distribution and its import name differ: install
 # ``headroom-ai`` (Apache-2.0), import ``headroom``.
 HEADROOM_IMPORT_NAME = "headroom"
-DEFAULT_AUTOFETCH_CMD = ("pipx", "install", "headroom-ai")
+HEADROOM_PACKAGE_SPEC = "headroom-ai==0.29.0"
+DEFAULT_AUTOFETCH_CMD = (sys.executable, "-m", "pip", "install", HEADROOM_PACKAGE_SPEC)
 
 # Autofetch is attempted at most once per process so a missing binary never
 # triggers a network install on every tool call.
@@ -148,8 +149,9 @@ def headroom_available(env: Mapping[str, str] | None = None) -> bool:
 def maybe_autofetch(env: Mapping[str, str] | None = None) -> bool:
     """Install headroom-ai when the operator opts in; else do nothing.
 
-    **Out-of-band only.** This shells out to an installer (``pipx install`` by
-    default), which can block for many seconds, so it must NEVER be called from
+    **Out-of-band only.** This shells out to the current Python interpreter's
+    package installer by default. It can block for many seconds, so it must
+    NEVER be called from
     the PostToolUse hook / compaction critical path - a synchronous install
     there would hang the agent's tool call. Call it only from an explicit
     ``alfred`` setup/init step. The compaction selector deliberately does not
@@ -159,9 +161,10 @@ def maybe_autofetch(env: Mapping[str, str] | None = None) -> bool:
     Gated by ``ALFRED_HEADROOM_AUTOFETCH`` (default off, so a strict no-network
     install never reaches the network). The install command is overridable via
     ``ALFRED_HEADROOM_AUTOFETCH_CMD`` (shlex-split) and defaults to
-    ``pipx install headroom-ai``. Best-effort: any failure is logged and
-    swallowed, and the attempt is made at most once per process. Returns True
-    when an install was actually run (not whether it succeeded).
+    Alfred's current Python interpreter with the pinned Headroom package.
+    Best-effort: any failure is logged and swallowed, and the attempt is made at
+    most once per process. Returns True when an install was actually run (not
+    whether it succeeded).
     """
     global _autofetch_attempted
     resolved = _resolve(env)
