@@ -779,7 +779,17 @@ def _fixer_comment(cid, *, severity="P1", body="fix it"):
     }
 
 
-def _drive_fixer(monkeypatch, tmp_path, comments, *, invoke, run_fn, workflow_ok=True, block=None):
+def _drive_fixer(
+    monkeypatch,
+    tmp_path,
+    comments,
+    *,
+    invoke,
+    run_fn,
+    workflow_ok=True,
+    block=None,
+    emitted=None,
+):
     monkeypatch.setenv("GH_ORG", "acme")
     monkeypatch.setenv("ALFRED_FIXER_REPOS", "service-web")
     nightwing = load_bin_module("fixer.py", monkeypatch)
@@ -802,7 +812,16 @@ def _drive_fixer(monkeypatch, tmp_path, comments, *, invoke, run_fn, workflow_ok
     monkeypatch.setattr(nightwing, "_refresh_pre_push_config", lambda: None)
     monkeypatch.setattr(nightwing, "doctor_mode", lambda: False)
     monkeypatch.setattr(nightwing, "is_globally_blocked", lambda: None)
-    monkeypatch.setattr(nightwing, "EventLog", _FakeEvents)
+    if emitted is None:
+        monkeypatch.setattr(nightwing, "EventLog", _FakeEvents)
+    else:
+
+        class CapturingEvents(_FakeEvents):
+            def emit(self, name, **kw):
+                emitted.append((name, kw))
+                super().emit(name, **kw)
+
+        monkeypatch.setattr(nightwing, "EventLog", CapturingEvents)
     monkeypatch.setattr(nightwing, "SpendState", FakeSpend)
     monkeypatch.setattr(nightwing, "load_fixed_ids", lambda: set())
     monkeypatch.setattr(nightwing, "save_fixed_ids", lambda _ids: None)
@@ -875,6 +894,42 @@ def test_fixer_landed_fix_resets_streak(monkeypatch, tmp_path):
     # A landed fix is healthy work: reset, no failure increment.
     assert {"consecutive_failures": 0} in sets
     assert {"failures_today": 1, "consecutive_failures": 1} not in increments
+
+
+def test_fixer_records_full_commit_and_pull_request_link(monkeypatch, tmp_path):
+    emitted: list[tuple[str, dict]] = []
+    full_sha = "b" * 40
+
+    def run_fn(cmd, **kw):
+        if len(cmd) >= 2 and cmd[1] == "push":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if len(cmd) >= 2 and cmd[1] == "log":
+            if "origin/" in cmd[-1]:
+                return SimpleNamespace(returncode=0, stdout=f"{'a' * 40}\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout=f"{full_sha}\n", stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    _drive_fixer(
+        monkeypatch,
+        tmp_path,
+        [_fixer_comment(1)],
+        invoke=lambda *a, **kw: (_healthy_result("done"), "codex"),
+        run_fn=run_fn,
+        emitted=emitted,
+    )
+    repo = next(fields["repo"] for name, fields in emitted if name == "pr_picked")
+
+    assert (
+        "fix_pushed",
+        {
+            "repo": repo,
+            "pull_request": 123,
+            "branch": "feature/fix",
+            "comment_id": 1,
+            "commit_sha": full_sha,
+            "reviewer": "rev",
+        },
+    ) in emitted
 
 
 def test_fixer_healthy_skip_noop_resets_streak(monkeypatch, tmp_path):

@@ -483,7 +483,7 @@ def test_file_approval_mode_consumes_rejection_marker_without_slack(tmp_path: Pa
 # ---------- scenario 3: operator rejects ----------
 
 
-def test_operator_rejection_returns_rejected_by_operator():
+def test_operator_rejection_returns_rejected_by_operator(tmp_path: Path):
     from architect_lifecycle import EXEC_REJECTED, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_surface.approval import APPROVAL_REJECTED
 
@@ -512,12 +512,16 @@ def test_operator_rejection_returns_rejected_by_operator():
     assert verdict.verdict == EXEC_REJECTED
     assert verdict.approved is False
     assert gh.issued == []
+    decision_record = tmp_path / "alfred" / "architect" / "approval-decisions" / "42.json"
+    payload = json.loads(decision_record.read_text(encoding="utf-8"))
+    assert payload["decision"] == "decline"
+    assert payload["source"] == "Architect Slack approval"
 
 
 # ---------- scenario 4: approval ok -> happy-path execute ----------
 
 
-def test_approval_granted_then_happy_path_files_all_children():
+def test_approval_granted_then_happy_path_files_all_children(tmp_path: Path):
     from architect_lifecycle import EXEC_OK, ArchitectLifecycle, ArchitectLifecycleConfig
     from slack_surface.approval import APPROVAL_GRANTED
 
@@ -545,6 +549,10 @@ def test_approval_granted_then_happy_path_files_all_children():
     verdict = lifecycle.await_approval(envelope)
     assert verdict.approved is True
     assert verdict.verdict == EXEC_OK
+    decision_record = tmp_path / "alfred" / "architect" / "approval-decisions" / "42.json"
+    payload = json.loads(decision_record.read_text(encoding="utf-8"))
+    assert payload["decision"] == "approve"
+    assert payload["source"] == "Architect Slack approval"
 
     result = lifecycle.execute(plan)
     assert result.executed is True

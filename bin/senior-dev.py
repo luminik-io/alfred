@@ -1663,10 +1663,17 @@ def _push_or_preserve(
         push_res = push_current_branch(wt, branch, remote=push_remote)
         if push_res.returncode == 0:
             if events is not None:
+                head = run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=str(wt),
+                    timeout=10,
+                )
+                commit_sha = head.stdout.strip() if head.returncode == 0 else ""
                 events.emit(
                     "branch_pushed",
                     repo=f"{GH_ORG}/{repo}",
                     branch=branch,
+                    commit_sha=commit_sha or None,
                     detail=f"{GH_ORG}/{repo} {branch}",
                 )
             return True, "", "", "ok"

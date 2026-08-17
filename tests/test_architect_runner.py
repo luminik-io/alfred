@@ -249,6 +249,97 @@ def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
     assert "timeout_s=60" in captured.out
 
 
+def test_lifecycle_records_approved_plan_in_run_evidence(monkeypatch):
+    runner = _load_runner()
+    emitted: list[tuple[str, dict]] = []
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                repo="myorg/backend",
+                title="Implement backend slice",
+                labels=("agent:implement",),
+            ),
+        ),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+    result = SimpleNamespace(
+        executed=False,
+        reason="partial",
+        created_issue_urls=(),
+        failed_repos=(),
+    )
+
+    class FakeEvents:
+        def emit(self, name, **fields):
+            emitted.append((name, fields))
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return runner.ApprovalEnvelope(channel="C123", message_ts="1700.0001", plan=plan)
+
+        def await_approval(self, _envelope):
+            return SimpleNamespace(
+                approved=True,
+                verdict=runner.EXEC_OK,
+                elapsed_s=3,
+                detail="approved",
+            )
+
+        def execute(self, _plan):
+            return result
+
+        def report(self, _plan, _result):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "slack_surface.approval",
+        SimpleNamespace(
+            SlackApproval=lambda *_args, **_kwargs: object(),
+            default_slack_client=lambda: object(),
+            operator_user_id_from_env=lambda: "U123",
+        ),
+    )
+    monkeypatch.setattr(runner, "ArchitectLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(runner, "_save_pending_envelope", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "_set_pending_approval_label", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "_clear_pending_envelope", lambda *a, **kw: None)
+    monkeypatch.setattr(runner, "_unset_pending_approval_label", lambda *a, **kw: None)
+
+    rc, outcome = runner._run_lifecycle_body(
+        config=runner.ArchitectLifecycleConfig(
+            parent_repo="myorg/parent",
+            auto_execute="approval-gate",
+        ),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-ready",
+        events=FakeEvents(),
+    )
+
+    assert (rc, outcome) == (0, "partial")
+    approved = [fields for name, fields in emitted if name == "plan_approved"]
+    assert approved == [
+        {
+            "repo": "myorg/parent",
+            "issue": 83,
+            "number": 83,
+            "decision": "approve",
+            "decision_record": str(
+                Path(runner.STATE_ROOT).parent / "architect" / "approval-decisions" / "83.json"
+            ),
+        }
+    ]
+
+
 def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys):
     runner = _load_runner()
     edits = []

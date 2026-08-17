@@ -62,16 +62,16 @@ _FACT_SPECS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "claude_invoke_done": (
         ("engine_session", ("engine", "session_id", "turns", "subtype", "success")),
     ),
-    "plan_approved": (("approval", ("number", "issue", "repo", "decision")),),
+    "plan_approved": (("approval", ("number", "issue", "repo", "decision", "decision_record")),),
     "pre_push_checks_passed": (("check", ("command", "repo", "success")),),
     "checks_done": (("check", ("command", "repo", "success", "checks")),),
     "branch_pushed": (
         ("branch", ("branch", "repo")),
-        ("commit", ("commit_sha", "sha", "repo")),
+        ("commit", ("commit_sha", "sha", "repo", "pull_request")),
     ),
     "fix_pushed": (
         ("branch", ("branch", "repo")),
-        ("commit", ("commit_sha", "sha", "repo")),
+        ("commit", ("commit_sha", "sha", "repo", "pull_request")),
     ),
     "pr_opened": (("pull_request", ("repo", "number", "url", "title")),),
     "review_posted": (("review", ("repo", "number", "url", "p0_count", "p1_count", "result")),),

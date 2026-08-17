@@ -90,6 +90,62 @@ def test_recovery_hook_heals_pre_push_failure_and_pushes(monkeypatch, tmp_path):
     assert holder and holder[0].ok is True
 
 
+def test_successful_push_records_full_commit_sha(monkeypatch, tmp_path):
+    lucius = load_bin_module("senior-dev.py", monkeypatch)
+    emitted: list[tuple[str, dict]] = []
+    full_sha = "a" * 40
+
+    class FakeEvents:
+        def emit(self, name, **fields):
+            emitted.append((name, fields))
+
+    monkeypatch.setattr(
+        lucius,
+        "run_pre_push_checks",
+        lambda _repo, _wt: lucius.PrePushResult(ok=True, command="uv run pytest"),
+    )
+    monkeypatch.setattr(
+        lucius,
+        "validate_changed_workflows",
+        lambda *_a, **_kw: SimpleNamespace(ok=True, stdout="", stderr="", reason="", files=[]),
+    )
+    monkeypatch.setattr(
+        lucius, "push_remote_and_pr_head", lambda wt, repo, branch: ("origin", branch)
+    )
+    monkeypatch.setattr(
+        lucius, "push_current_branch", lambda *a, **kw: SimpleNamespace(returncode=0)
+    )
+    monkeypatch.setattr(
+        lucius,
+        "run",
+        lambda cmd, **_kw: SimpleNamespace(
+            returncode=0,
+            stdout=f"{full_sha}\n" if cmd == ["git", "rev-parse", "HEAD"] else "",
+            stderr="",
+        ),
+    )
+
+    assert lucius._push_or_preserve(
+        "frontend",
+        7,
+        "fid-9",
+        tmp_path,
+        "senior-dev/7",
+        "push-failed",
+        events=FakeEvents(),
+    )
+
+    assert (
+        "branch_pushed",
+        {
+            "repo": f"{lucius.GH_ORG}/frontend",
+            "branch": "senior-dev/7",
+            "commit_sha": full_sha,
+            "detail": f"{lucius.GH_ORG}/frontend senior-dev/7",
+        },
+    ) in emitted
+
+
 def test_recovery_hook_that_cannot_heal_falls_through_to_preserve(monkeypatch, tmp_path):
     """A hook that returns False preserves + releases exactly as before."""
     lucius = load_bin_module("senior-dev.py", monkeypatch)

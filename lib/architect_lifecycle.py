@@ -911,11 +911,12 @@ def _result_with_elapsed(result: ApprovalResult, elapsed_s: float) -> ApprovalRe
     )
 
 
-def _record_consumed_file_decision(
+def _record_plan_decision(
     plan: BundlePlan,
     decision: str,
     *,
     detail: str = "",
+    source: str,
 ) -> None:
     try:
         record_plan_decision(
@@ -923,7 +924,7 @@ def _record_consumed_file_decision(
             plan.parent_issue_number,
             decision,
             reason=detail,
-            source="Architect file approval",
+            source=source,
         )
     except OSError as exc:
         logger.warning(
@@ -938,7 +939,11 @@ def _consume_file_approval(plan: BundlePlan) -> ApprovalResult | None:
 
     approved, rejected = _approval_marker_paths(plan.parent_issue_number)
     if approved.exists():
-        _record_consumed_file_decision(plan, DECISION_APPROVE)
+        _record_plan_decision(
+            plan,
+            DECISION_APPROVE,
+            source="Architect file approval",
+        )
         approved.unlink(missing_ok=True)
         rejected.unlink(missing_ok=True)
         return ApprovalResult(
@@ -951,7 +956,12 @@ def _consume_file_approval(plan: BundlePlan) -> ApprovalResult | None:
             detail = rejected.read_text(encoding="utf-8").strip()
         except OSError:
             detail = ""
-        _record_consumed_file_decision(plan, DECISION_DECLINE, detail=detail[:300])
+        _record_plan_decision(
+            plan,
+            DECISION_DECLINE,
+            detail=detail[:300],
+            source="Architect file approval",
+        )
         rejected.unlink(missing_ok=True)
         approved.unlink(missing_ok=True)
         return ApprovalResult(
@@ -2694,6 +2704,20 @@ class ArchitectLifecycle:
         else:
             verdict = str(verdict_raw)
             detail = str(getattr(raw, "detail", ""))
+        if verdict == EXEC_OK:
+            _record_plan_decision(
+                envelope.plan,
+                DECISION_APPROVE,
+                detail=detail,
+                source="Architect Slack approval",
+            )
+        elif verdict == EXEC_REJECTED:
+            _record_plan_decision(
+                envelope.plan,
+                DECISION_DECLINE,
+                detail=detail,
+                source="Architect Slack approval",
+            )
         return ApprovalResult(
             approved=approved,
             verdict=verdict,
