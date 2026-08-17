@@ -12,7 +12,7 @@ async function openPrimaryView(
   await page.getByRole("button", { name: label, exact: true }).click();
 }
 
-async function expectFramedHeader(header: Locator): Promise<void> {
+async function expectPlainHeader(header: Locator): Promise<void> {
   await expect(header).toBeVisible();
   await expect(header).toHaveClass(/\balfred-page-hero\b/);
   const style = await header.evaluate((element) => {
@@ -20,17 +20,19 @@ async function expectFramedHeader(header: Locator): Promise<void> {
     return {
       borderTopWidth: Number.parseFloat(computed.borderTopWidth),
       backgroundColor: computed.backgroundColor,
+      boxShadow: computed.boxShadow,
     };
   });
-  expect(style.borderTopWidth).toBeGreaterThanOrEqual(1);
-  expect(style.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+  expect(style.borderTopWidth).toBe(0);
+  expect(style.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(style.boxShadow).toBe("none");
 }
 
 test.afterEach(async ({ page }) => {
   assertAlfredApiComplete(page);
 });
 
-test("primary screens share the approved framed page hierarchy", async ({
+test("primary screens share the approved plain page hierarchy", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -41,21 +43,31 @@ test("primary screens share the approved framed page hierarchy", async ({
   await installAlfredApi(page);
   await page.goto("/");
 
-  await expectFramedHeader(page.locator('[aria-label="Inbox summary"]'));
+  await expectPlainHeader(page.locator('[aria-label="Inbox summary"]'));
 
   await openPrimaryView(page, "Work");
-  await expectFramedHeader(page.locator('[aria-label="Work summary"]'));
+  await expectPlainHeader(page.locator('[aria-label="Work summary"]'));
 
   await openPrimaryView(page, "Code");
-  await expectFramedHeader(
+  await expectPlainHeader(
     page.locator('[aria-label="Code intelligence summary"]'),
   );
 
   await openPrimaryView(page, "Agents");
-  await expectFramedHeader(page.locator('[aria-label="Agents summary"]'));
+  await expectPlainHeader(page.locator('[aria-label="Agents summary"]'));
+
+  const rosterRail = page.locator('.agents-deck__rail');
+  const rosterRow = page.locator('.agents-deck__row').first();
+  await expect(rosterRail).toBeVisible();
+  await expect(rosterRow).toBeVisible();
+  const rosterWidths = await Promise.all([
+    rosterRail.evaluate((element) => element.getBoundingClientRect().width),
+    rosterRow.evaluate((element) => element.getBoundingClientRect().width),
+  ]);
+  expect(rosterWidths[1]).toBeGreaterThan(rosterWidths[0] * 0.9);
 
   await openPrimaryView(page, "Settings");
-  await expectFramedHeader(
+  await expectPlainHeader(
     page.locator('[aria-label="Settings summary"]'),
   );
 });
