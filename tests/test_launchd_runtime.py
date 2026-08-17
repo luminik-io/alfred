@@ -670,7 +670,13 @@ def test_deploy_copies_skills_and_benchmark_fixtures_into_runtime(tmp_path):
     demo_repo = src / "examples" / "demo-repo"
     demo_repo.mkdir(parents=True)
     (demo_repo / "README.md").write_text("# Demo\n")
-    fixture_names = ("mem-bench", "mem-bench-hard", "compression", "memory-recall-quality")
+    fixture_names = (
+        "mem-bench",
+        "mem-bench-hard",
+        "compression",
+        "memory-recall-quality",
+        "skill-benchmark",
+    )
     fixture_manifest = src / "tests" / "fixtures" / "runtime-benchmarks.txt"
     fixture_manifest.parent.mkdir(parents=True)
     fixture_manifest.write_text("\n".join(fixture_names) + "\n")

@@ -1,15 +1,12 @@
 ---
-title: Claude Code skills
-description: Recommended skills for Alfred's engineering roles, with install commands and a role matrix.
+title: Agent skills
+description: Measured starter skills for Alfred roles, plus explicit optional packs.
 ---
 
-Skills are small bundles (markdown + optional scripts) that extend Claude Code's
-tool surface. Alfred ships a first-party starter set and a license-audited
-registry for optional local and fetched packs. The default desktop setup
-installs the first-party starter set locally so the fleet has planning, tests,
-security review, observability, migration, and release-note help from the first
-run. Curated third-party review, frontend, debugging, gstack, and headroom packs
-are explicit operator installs.
+Skills are local instruction bundles for a specific task. Alfred can pass them
+to Claude Code, Codex, or OpenCode through its role-scoped prompt injector. The
+default setup installs only the first-party skills that improved deterministic
+task results. Other first-party and third-party packs remain explicit installs.
 
 Full guide at [`docs/SKILLS.md`](https://github.com/luminik-io/alfred/blob/main/docs/SKILLS.md). Highlights:
 
@@ -23,27 +20,28 @@ explicit install commands.
 ```
 ~/.claude/skills/
 ├── spec-to-issues/SKILL.md
-├── write-tests/SKILL.md
 ├── review-security/SKILL.md
-├── add-observability/SKILL.md
-├── migrate-dependency/SKILL.md
-└── changelog-and-release-notes/SKILL.md
+└── add-observability/SKILL.md
 ```
 
 ## First-party starter set
 
-These are installed by Alfred Desktop during the full local setup and by
-`alfred skills install --starter` in the CLI-only path. They are all
-Alfred-authored local copies, so the install is offline and deterministic.
+These are installed by Alfred Desktop during full local setup and by `alfred
+skills install --starter` in the CLI-only path. Each passed two held-out paired
+tasks with no skill-arm failure, regression increase, or review-finding
+increase. The install is local, offline, and deterministic.
 
 | Skill | Source | Used by | Why |
 |---|---|---|---|
 | `spec-to-issues` | Alfred first-party | planner | Converts specs into issue queues |
-| `write-tests` | Alfred first-party | test-engineer, feature-dev | Focused coverage additions |
 | `review-security` | Alfred first-party | reviewer, feature-dev | Review checklist for risky code |
 | `add-observability` | Alfred first-party | feature-dev, ops-watch | Logging and metrics prompts |
-| `migrate-dependency` | Alfred first-party | feature-dev | Dependency upgrade workflow |
-| `changelog-and-release-notes` | Alfred first-party | feature-dev, ops-watch | Release notes and changelog drafts |
+
+`write-tests`, `migrate-dependency`, and `changelog-and-release-notes` remain
+available as explicit first-party installs. `write-tests` was neutral. The
+`migrate-dependency` and `changelog-and-release-notes` skills each improved one
+task but did not meet the two-task evidence floor. Alfred does not install or
+inject them by default.
 
 ## Curated optional packs
 

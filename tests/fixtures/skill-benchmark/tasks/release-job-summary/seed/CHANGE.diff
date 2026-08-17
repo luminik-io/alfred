@@ -1,0 +1,14 @@
+diff --git a/jobs.py b/jobs.py
+index 1111111..2222222 100644
+--- a/jobs.py
++++ b/jobs.py
+@@ -10,6 +10,11 @@ def run_job(job):
++    if job.cancelled:
++        return {"status": "cancelled"}
+     return worker.run(job)
+diff --git a/cli.py b/cli.py
+index 3333333..4444444 100644
+--- a/cli.py
++++ b/cli.py
+@@ -20,3 +20,4 @@ def build_parser():
++    parser.add_argument("--json", action="store_true")

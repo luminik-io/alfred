@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "task_id": "spec-health-endpoint",
+      "skill": "spec-to-issues",
+      "title": "Turn an approved endpoint spec into issues",
+      "prompt": "Read SPEC.md. Write issues.json with the implementation issues. Do not change SPEC.md or implement the feature.",
+      "seed": "tasks/spec-health-endpoint/seed",
+      "grader": "tasks/spec-health-endpoint/grader.py"
+    },
+    {
+      "task_id": "spec-cancel-job-endpoint",
+      "skill": "spec-to-issues",
+      "title": "Turn an approved cancellation spec into issues",
+      "prompt": "Read SPEC.md. Write issues.json with the implementation issues. Do not change SPEC.md or implement the feature.",
+      "seed": "tasks/spec-cancel-job-endpoint/seed",
+      "grader": "tasks/spec-cancel-job-endpoint/grader.py"
+    },
+    {
+      "task_id": "tests-limit-validation",
+      "skill": "write-tests",
+      "title": "Add tests for a limit validator",
+      "prompt": "Add unittest coverage for every behavior described in ACCEPTANCE.md. Do not change limits.py.",
+      "seed": "tasks/tests-limit-validation/seed",
+      "grader": "tasks/tests-limit-validation/grader.py"
+    },
+    {
+      "task_id": "review-request-boundaries",
+      "skill": "review-security",
+      "title": "Review four request trust boundaries",
+      "prompt": "Review server.py. Write security-review.json. Do not change server.py. Report concrete findings with file, line, lens, severity, risk, and fix.",
+      "seed": "tasks/review-request-boundaries/seed",
+      "grader": "tasks/review-request-boundaries/grader.py"
+    },
+    {
+      "task_id": "review-report-boundaries",
+      "skill": "review-security",
+      "title": "Review four report trust boundaries",
+      "prompt": "Review reports.py. Write security-review.json. Do not change reports.py. Report concrete findings with file, line, lens, severity, risk, and fix.",
+      "seed": "tasks/review-report-boundaries/seed",
+      "grader": "tasks/review-report-boundaries/grader.py"
+    },
+    {
+      "task_id": "observe-external-lookup",
+      "skill": "add-observability",
+      "title": "Instrument an external lookup",
+      "prompt": "Instrument lookup.py so operators can diagnose success, not-found, and client-error outcomes. Use the existing telemetry.py helpers. Keep the public lookup() return contract unchanged.",
+      "seed": "tasks/observe-external-lookup/seed",
+      "grader": "tasks/observe-external-lookup/grader.py"
+    },
+    {
+      "task_id": "observe-queue-publish",
+      "skill": "add-observability",
+      "title": "Instrument a queue publish",
+      "prompt": "Instrument publish.py so operators can diagnose sent, rejected, and queue-error outcomes. Use the existing telemetry.py helpers. Keep the public publish() return contract unchanged.",
+      "seed": "tasks/observe-queue-publish/seed",
+      "grader": "tasks/observe-queue-publish/grader.py"
+    },
+    {
+      "task_id": "migrate-widgetlib-v2",
+      "skill": "migrate-dependency",
+      "title": "Migrate a pinned dependency to version 2",
+      "prompt": "Migrate this project from widgetlib 1.4.0 to 2.0.0. Follow MIGRATION.md, update the manifest and lockfile, update every call site, keep tests green, and write MIGRATION_NOTES.md.",
+      "seed": "tasks/migrate-widgetlib-v2/seed",
+      "grader": "tasks/migrate-widgetlib-v2/grader.py"
+    },
+    {
+      "task_id": "release-job-summary",
+      "skill": "changelog-and-release-notes",
+      "title": "Write a changelog entry from a diff",
+      "prompt": "Read CHANGE.diff and the existing CHANGELOG.md. Update CHANGELOG.md for the user-visible changes. Do not change VERSION because no version bump was requested.",
+      "seed": "tasks/release-job-summary/seed",
+      "grader": "tasks/release-job-summary/grader.py"
+    }
+  ]
+}

@@ -34,7 +34,11 @@ P2 hardening), and a specific fix.
    THIS object, not merely that they are logged in? Look for missing
    object-level checks (IDOR): `GET /orgs/{id}/secrets` that never verifies the
    caller belongs to `{id}`. Fix: enforce the check server-side, close to the
-   data.
+   data. For each function that receives both a caller (`user`, `principal`, or
+   session) and a resource owner (`org_id`, `account_id`, or object id), trace
+   whether the caller affects an allow-or-deny decision before the read or
+   mutation. An unused caller argument is evidence of a missing authorization
+   check and must be reported.
 3. **Secret handling.** Secrets must come from the environment or a secret
    manager, never be hardcoded, logged, echoed in errors, or committed. Look for
    tokens in log lines, secrets in exception messages, and `.env` values written

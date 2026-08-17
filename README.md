@@ -273,6 +273,7 @@ run a model gateway or a long-running coordinator. See
 - [Identity and themes](docs/IDENTITY_AND_THEMES.md)
 - [Memory](docs/MEMORY_PROVIDERS.md), [MCP](docs/MCP.md), and
   [batteries](docs/BATTERIES.md)
+- [Agent skills](docs/SKILLS.md) and [benchmarks](docs/BENCHMARKS.md)
 - [Coding engines](docs/ENGINE_ROUTING.md), [Claude Code and Codex](docs/CLAUDE_CODE.md),
   [Codex provider](docs/CODEX_PROVIDER.md), and [OpenCode](docs/OPENCODE.md)
 - [Verification](docs/VERIFICATION.md), [security](SECURITY.md), and

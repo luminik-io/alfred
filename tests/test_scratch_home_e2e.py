@@ -294,7 +294,7 @@ esac
     alfred = runtime / "bin" / "alfred"
     _run([str(alfred), "skills", "install", "--starter"], env=env)
     starter_skills = list((home / ".claude" / "skills").glob("*/SKILL.md"))
-    assert len(starter_skills) == 6
+    assert len(starter_skills) == 3
 
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"

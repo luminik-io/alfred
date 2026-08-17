@@ -229,8 +229,11 @@ def test_starter_packs_are_the_default_first_party_set() -> None:
     for p in starter:
         assert p.default_install
         assert p.is_local_copy  # never pulls a network fetch implicitly
-    # All six first-party skills are in the starter set.
-    assert {p.name for p in starter} >= {"spec-to-issues", "write-tests", "review-security"}
+    assert {p.name for p in starter} == {
+        "spec-to-issues",
+        "review-security",
+        "add-observability",
+    }
 
 
 def test_parse_rejects_vendored_without_path() -> None:

@@ -53,3 +53,9 @@ criteria checklist, test line, and an out-of-scope block. End with a coverage
 line mapping each spec acceptance criterion to the issue that owns it, so a
 reviewer can confirm nothing was dropped or invented. Never auto-file the
 issues; present them for approval first.
+
+Follow the caller's local output contract exactly. If the caller requests a
+file, write that file. If the caller requests JSON, write valid JSON with the
+requested top-level shape and no Markdown wrapper. The approval gate blocks
+external API calls that create issues. It does not block writing the requested
+local draft.

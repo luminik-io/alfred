@@ -89,9 +89,11 @@ def test_skills_install_starter_lands_first_party_set(cli_module, capsys, tmp_pa
     assert rc == 0
     out = capsys.readouterr().out
     assert "starter set" in out
-    # Each first-party skill copied into the isolated skills dir.
-    for name in ("spec-to-issues", "write-tests", "review-security"):
+    # Only skills that passed the paired task benchmark are in the starter set.
+    for name in ("spec-to-issues", "review-security", "add-observability"):
         assert (tmp_path / "skills" / name / "SKILL.md").is_file()
+    for name in ("write-tests", "migrate-dependency", "changelog-and-release-notes"):
+        assert not (tmp_path / "skills" / name).exists()
 
 
 def test_skills_install_starter_dry_run_writes_nothing(cli_module, capsys, tmp_path: Path) -> None:

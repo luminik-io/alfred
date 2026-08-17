@@ -29,6 +29,8 @@ Subcommands:
   memory-recall Measure the shipped provider chain against exact, wording,
                 scope, validity, contradiction, and true-miss cases. No model
                 or network call is used.
+  skills        Run paired baseline and skill-assisted coding tasks with
+                deterministic graders in fresh local repositories.
 
 Exit codes:
   0 success
@@ -100,6 +102,17 @@ from memory_benchmark import (  # noqa: E402
     run_memory_ab,
     run_recall_quality,
     seed_recall_quality_provider,
+)
+from skill_benchmark import (  # noqa: E402
+    SkillBenchmarkReport,
+    codex_version,
+    load_skill_suite,
+    make_codex_runner,
+    run_skill_benchmark,
+    select_skill_suite,
+)
+from skill_benchmark import (  # noqa: E402
+    default_fixture_dir as skill_fixture_dir,
 )
 from transcripts import default_state_dir  # noqa: E402
 
@@ -201,6 +214,61 @@ def render_suite_table(suite: tuple[BenchmarkTask, ...]) -> str:
 
 def render_suite_json(suite: tuple[BenchmarkTask, ...]) -> str:
     return json.dumps([t.to_dict() for t in suite], indent=2)
+
+
+def render_skill_suite_json(suite) -> str:
+    return json.dumps(
+        {
+            "schema_version": suite.schema_version,
+            "tasks": [
+                {
+                    "task_id": task.task_id,
+                    "skill": task.skill_name,
+                    "title": task.title,
+                }
+                for task in suite.tasks
+            ],
+        },
+        indent=2,
+    )
+
+
+def render_skill_suite_table(suite) -> str:
+    lines = [f"alfred-benchmark starter skill suite ({len(suite.tasks)} tasks)", ""]
+    lines.append(f"{'task_id':<30} {'skill'}")
+    lines.append("-" * 72)
+    lines.extend(f"{task.task_id:<30} {task.skill_name}" for task in suite.tasks)
+    return "\n".join(lines)
+
+
+def render_skill_report_table(report: SkillBenchmarkReport) -> str:
+    lines = [
+        "alfred benchmark skills",
+        f"paired results: {len(report.results) // 2}   repetitions: {report.repetitions}",
+        "",
+        f"{'skill':<30} {'tasks':>5} {'pairs':>5} {'base pass':>9} {'skill pass':>10} "
+        f"{'reg delta':>10} {'findings delta':>15} {'starter':>9}",
+        "-" * 104,
+    ]
+    for decision in report.decisions:
+        lines.append(
+            f"{decision.skill_name:<30} "
+            f"{decision.evaluated_tasks:>5} "
+            f"{decision.evaluated_pairs:>5} "
+            f"{_fmt_pct(decision.baseline_pass_rate):>9} "
+            f"{_fmt_pct(decision.skill_pass_rate):>10} "
+            f"{decision.regression_rate_delta:>+10.2f} "
+            f"{decision.review_findings_delta:>+15.2f} "
+            f"{('yes' if decision.eligible else 'no'):>9}"
+        )
+    lines.extend(
+        [
+            "",
+            "A starter skill must pass at least two distinct tasks and improve a quality measure.",
+            "It must not reduce task pass rate or increase regressions or review findings.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 # --------------------------------------------------------------------------
@@ -454,6 +522,35 @@ def build_parser() -> argparse.ArgumentParser:
     comp.add_argument("--json", action="store_true", dest="json_out", help="machine-readable JSON")
     comp.add_argument("--verbose", "-v", action="store_true", help="debug logging")
 
+    skills = sub.add_parser(
+        "skills",
+        help="paired no-skill and starter-skill tasks with deterministic graders",
+    )
+    skills.add_argument(
+        "--fixture",
+        type=Path,
+        default=None,
+        help="skill benchmark fixture dir (default: built-in tests/fixtures/skill-benchmark)",
+    )
+    skills.add_argument("--engine", choices=("codex",), default="codex")
+    skills.add_argument("--model", default=None, help="engine model override")
+    skills.add_argument(
+        "--skill",
+        action="append",
+        default=[],
+        help="run only this skill (repeat for more than one)",
+    )
+    skills.add_argument("--repetitions", type=int, default=1, help="paired runs per task")
+    skills.add_argument("--timeout", type=int, default=900, help="seconds allowed per arm")
+    skills.add_argument("--show-suite", action="store_true", help="print tasks without model calls")
+    skills.add_argument(
+        "--output", type=Path, default=None, help="write the JSON report to this file"
+    )
+    skills.add_argument(
+        "--json", action="store_true", dest="json_out", help="machine-readable JSON"
+    )
+    skills.add_argument("--verbose", "-v", action="store_true", help="debug logging")
+
     # Top-level mirrors so `alfred-benchmark --json` (no subcommand) works as report.
     p.add_argument("--label", default="run", help=argparse.SUPPRESS)
     p.add_argument("--codename", action="append", help=argparse.SUPPRESS)
@@ -606,6 +703,45 @@ def _cmd_memory_recall(args: argparse.Namespace) -> int:
     return 2 if any(result.error for result in report.results) else 0
 
 
+def _cmd_skills(args: argparse.Namespace) -> int:
+    if args.repetitions <= 0:
+        print("alfred-benchmark: --repetitions must be greater than zero", file=sys.stderr)
+        return 2
+    if args.timeout <= 0:
+        print("alfred-benchmark: --timeout must be greater than zero", file=sys.stderr)
+        return 2
+    fixture_dir = args.fixture or skill_fixture_dir()
+    skills_root = Path(__file__).resolve().parents[1] / "skills" / "first_party"
+    try:
+        suite = load_skill_suite(fixture_dir, skills_root=skills_root)
+        suite = select_skill_suite(suite, args.skill)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"alfred-benchmark: {exc}", file=sys.stderr)
+        return 2
+    if args.show_suite:
+        print(render_skill_suite_json(suite) if args.json_out else render_skill_suite_table(suite))
+        return 0
+    try:
+        runner = make_codex_runner(model=args.model, timeout_s=args.timeout)
+    except FileNotFoundError as exc:
+        print(f"alfred-benchmark: {exc}", file=sys.stderr)
+        return 2
+    report = run_skill_benchmark(
+        suite,
+        runner=runner,
+        repetitions=args.repetitions,
+        engine=args.engine,
+        engine_version=codex_version(),
+        model=args.model,
+    )
+    rendered_json = json.dumps(report.to_dict(), indent=2)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(rendered_json + "\n", encoding="utf-8")
+    print(rendered_json if args.json_out else render_skill_report_table(report))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -623,6 +759,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_memory_recall(args)
     if command == "compression":
         return _cmd_compression(args)
+    if command == "skills":
+        return _cmd_skills(args)
     return _cmd_report(args)
 
 

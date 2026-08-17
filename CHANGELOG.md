@@ -13,6 +13,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added a paired starter-skill benchmark. It runs baseline and skill-assisted
+  tasks in fresh local repositories, grades them outside the agent workspace,
+  and records task quality, regressions, findings, turns, tokens, prompt bytes,
+  elapsed time, engine version, and fixture digest.
 - Added Alfred's read-only lesson memory and ready code graph to explicitly
   selected OpenCode firings. OpenCode checks each server before the firing and
   records attached and unavailable servers in local firing evidence.
@@ -43,6 +47,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Limited the default first-party starter set to `spec-to-issues`,
+  `review-security`, and `add-observability`. Each improved deterministic task
+  results and passed every skill-assisted fixture. The other first-party skills
+  remain available for explicit installation.
 - Headroom setup now installs the pinned library into Alfred's Python
   interpreter. A CLI-only install no longer appears ready without a configured
   compression command.

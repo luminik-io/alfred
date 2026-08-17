@@ -168,6 +168,83 @@ Efficiency
 Keep the before/after pair together so the delta is legible. Do not turn it
 into a "beats X" claim. The measured trend applies to your install.
 
+## Starter-skill A/B
+
+The starter-skill benchmark answers one narrow question: does a skill improve
+the task result enough to justify adding it to every matching role prompt?
+
+Run the built-in suite:
+
+```sh
+# List task names without a model call.
+alfred benchmark skills --show-suite
+
+# Run every paired task with the local Codex CLI.
+alfred benchmark skills --engine codex --output skill-results.json
+
+# Limit a diagnostic rerun to one or more skills.
+alfred benchmark skills --skill review-security --skill add-observability
+```
+
+Each fixture has a seed repository and a grader outside that repository. The
+harness copies the seed into a fresh temporary Git repository for each arm. The
+baseline arm receives only the task prompt. The skill arm receives the same
+prompt plus the named `SKILL.md`. The agent cannot read the grader. The grader
+checks behavior, regressions, and review findings with normal code and test
+commands. No model grades another model.
+
+The JSON report records:
+
+- the fixture digest, engine, engine version, and optional model override;
+- pass, regression, and review-finding results for each arm;
+- turns, prompt bytes, input, cached-input, and output tokens;
+- elapsed time and agent exit status.
+
+The report does not keep agent output, reasoning, source snapshots, or local
+paths. The v0.8.0 gate is deliberately strict. A starter skill must pass every
+skill-assisted task, must not reduce pass rate, and must not increase
+regressions or review findings. At least one deterministic quality measure must
+improve.
+
+This paired design follows the useful parts of
+[SkillsBench](https://arxiv.org/abs/2602.12670),
+[SWE-Skills-Bench](https://arxiv.org/abs/2603.15401), and
+[SkillLearnBench](https://arxiv.org/abs/2604.20087): compare against a no-skill
+arm, use task-level acceptance checks, record efficiency separately, and allow
+a skill to fail the gate. SWE-Skills-Bench is an important warning here: most
+skills in that study did not improve pass rate, and some made results worse.
+Alfred therefore does not treat a longer prompt or a plausible checklist as
+evidence.
+
+### v0.8.0 measured result
+
+The release run used Codex CLI 0.145.0 with its default model selection and one
+paired repetition per task. Each starter candidate ran on two held-out tasks.
+The three skills that passed are `spec-to-issues`, `review-security`, and
+`add-observability`. The full task rows and efficiency counters are in:
+
+- [`skill-ab-starters-v0.8.0.json`](benchmarks/skill-ab-starters-v0.8.0.json)
+- [`skill-ab-security-v0.8.0.json`](benchmarks/skill-ab-security-v0.8.0.json)
+- [`skill-ab-nonstarters-v0.8.0.json`](benchmarks/skill-ab-nonstarters-v0.8.0.json)
+
+| Skill | Distinct tasks | Baseline pass | Skill pass | Mean finding change | Starter |
+|---|---:|---:|---:|---:|---|
+| `spec-to-issues` | 2 | 0% | 100% | -3.50 | yes |
+| `review-security` | 2 | 0% | 100% | -2.00 | yes |
+| `add-observability` | 2 | 50% | 100% | -0.50 | yes |
+| `write-tests` | 1 | 100% | 100% | 0.00 | no |
+| `migrate-dependency` | 1 | 0% | 100% | -1.00 | no, one task only |
+| `changelog-and-release-notes` | 1 | 0% | 100% | -1.00 | no, one task only |
+
+`write-tests` passed its task in both arms with no deterministic quality gain.
+`migrate-dependency` and `changelog-and-release-notes` improved one task each,
+but did not meet the two-task evidence floor. All three remain available by
+name but are not part of `alfred skills install --starter` and are not offered
+to roles automatically.
+
+This is a small release gate, not a general claim about every repository or
+model. Re-run it when a skill, grader, coding CLI, or default model changes.
+
 ## Memory A/B: the repeated-mistake-rate
 
 The telemetry reader above answers "is the fleet getting better or worse". A

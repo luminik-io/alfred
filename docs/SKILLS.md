@@ -1,9 +1,10 @@
-# Claude Code skills
+# Agent skills
 
-Skills are small bundles (markdown plus optional scripts) that extend Claude
-Code for a specific purpose: code review, refactoring, browser QA, security
-checks. alfred-os ships a curated, license-audited set of skill packs and a
-CLI to install them. You can also skip the registry and install skills by hand.
+Skills are local instruction bundles for a specific task, such as security
+review, observability, or browser QA. Alfred can pass them to Claude Code,
+Codex, or OpenCode through its role-scoped prompt injector. Alfred ships a
+curated, license-audited registry and a CLI to install each pack. You can also
+install a listed pack by name.
 
 ## Curated skill packs
 
@@ -37,16 +38,34 @@ Two install shapes:
 | `debugging-and-error-recovery` | MIT | vendored | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) | bug-triage, deploy-monitor |
 | `vercel-react-best-practices` | MIT | vendored | [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) | feature-dev |
 | `spec-to-issues` | MIT | first_party | Alfred | planner |
-| `write-tests` | MIT | first_party | Alfred | test-coverage, feature-dev |
+| `write-tests` | MIT | first_party | Alfred | (explicit use only) |
 | `review-security` | MIT | first_party | Alfred | pr-review, feature-dev |
 | `add-observability` | MIT | first_party | Alfred | feature-dev, deploy-monitor |
-| `migrate-dependency` | MIT | first_party | Alfred | feature-dev |
-| `changelog-and-release-notes` | MIT | first_party | Alfred | feature-dev, deploy-monitor |
+| `migrate-dependency` | MIT | first_party | Alfred | (explicit use only) |
+| `changelog-and-release-notes` | MIT | first_party | Alfred | (explicit use only) |
 | `gstack` | MIT | fetch | [garrytan/gstack](https://github.com/garrytan/gstack) | e2e-smoke, pr-review, bug-triage |
 | `headroom` | Apache-2.0 | fetch (opt-in) | [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | (none) |
 
-The six `first_party` packs are Alfred-authored. They are the starter set:
-`alfred skills install --starter` lays all of them down in one offline copy.
+The six `first_party` packs are Alfred-authored and remain available by name.
+The measured starter set contains `spec-to-issues`, `review-security`, and
+`add-observability`. `alfred skills install --starter` installs those three in
+one offline copy. The other first-party packs are not installed or offered to a
+role automatically because they did not meet the full evidence gate.
+
+### Starter evidence gate
+
+`alfred benchmark skills` runs each task twice in a fresh local Git repository:
+once with the task prompt alone and once with the named skill instructions. A
+grader outside the agent workspace checks task behavior, regressions, and
+review findings. The report also records turns, prompt bytes, tokens, elapsed
+time, the fixture digest, and the Codex CLI version. It does not retain model
+output or reasoning.
+
+A skill enters the starter set only when every skill-assisted task passes, its
+pass rate does not fall, and neither regressions nor review findings increase.
+At least one deterministic quality measure must improve. The v0.8.0 run uses
+two held-out tasks for each starter skill. The commands and measured reports are
+in [BENCHMARKS.md](BENCHMARKS.md#starter-skill-ab).
 
 Licensing rationale: all bundled sources are permissive (MIT or Apache-2.0). No
 copyleft (GPL/AGPL) source is vendored -- copyleft would be reference-install
@@ -132,7 +151,7 @@ skill on its own.
 
 ### The runner skill-injector (metadata-only)
 
-`lib/agent_runner/skills_context.py` is the automatic, `--bare`-proof path. When
+`lib/agent_runner/skills_context.py` is the automatic, engine-neutral path. When
 a firing runs, `invoke_agent_engine` appends a compact block naming the skills
 recommended for that firing's **role**, with the path to each `SKILL.md` so the
 agent reads the body on demand (progressive disclosure). It parses **only** the
@@ -142,7 +161,7 @@ block looks like:
 
 ```
 Available skills (invoke by name when the trigger matches; read the SKILL.md ...):
-- write-tests: Derive tests from acceptance criteria ... [read: ~/.claude/skills/write-tests/SKILL.md]
+- add-observability: Instrument decision points and I/O ... [read: ~/.claude/skills/add-observability/SKILL.md]
 ```
 
 Role filtering uses the manifest `roles`: a firing only sees skills recommended

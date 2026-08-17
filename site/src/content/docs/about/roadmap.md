@@ -16,7 +16,7 @@ shipped work. The canonical source is
 
 ### Launch quality
 
-- Publish v0.7.5 with signed and notarized macOS packages, Linux packages,
+- Publish v0.8.0 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
 - Finish the [screen-by-screen Desktop quality pass](https://github.com/luminik-io/alfred/issues/652)
   across Prism, Graphite, and Ledger. Test light and dark mode at every supported
@@ -58,8 +58,9 @@ shipped work. The canonical source is
 ### Curated batteries
 
 - Keep built-in context controls available without a daemon.
-- [Benchmark skills and compression](https://github.com/luminik-io/alfred/issues/655)
-  on task outcomes before expanding the default set.
+- Keep the default skill set limited to skills that pass the paired task gate.
+  Re-run the skill and compression benchmarks when their fixtures, tools, or
+  engine versions change.
 - Pin external tools and record checksums, versions, licenses, and provenance.
 - Package small, opt-in skill and MCP sets by use case.
 - Preserve user-owned CLI configuration during setup and removal.

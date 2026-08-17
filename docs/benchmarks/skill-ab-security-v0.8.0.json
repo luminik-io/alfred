@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-17T15:59:25.076986+00:00",
+  "fixture_digest": "be179dbb1e913ef24d9a2c1d801a00d678bf7f6f8dab28da7feb45841a22b542",
+  "engine": "codex",
+  "engine_version": "codex-cli 0.145.0",
+  "model": null,
+  "gate": {
+    "minimum_distinct_tasks": 2,
+    "require_all_skill_tasks_passed": true,
+    "allow_pass_rate_loss": false,
+    "allow_regression_increase": false,
+    "allow_review_finding_increase": false,
+    "require_quality_gain": true
+  },
+  "repetitions": 1,
+  "results": [
+    {
+      "task_id": "review-request-boundaries",
+      "skill_name": "review-security",
+      "arm": "baseline",
+      "repetition": 0,
+      "task_passed": false,
+      "regression": false,
+      "review_findings": 3,
+      "review_finding_codes": [
+        "The review missed the injection boundary or its concrete fix.",
+        "The review missed the authorization boundary or its concrete fix.",
+        "The review missed the ssrf boundary or its concrete fix."
+      ],
+      "turns": 1,
+      "prompt_bytes": 143,
+      "tokens_in": 267282,
+      "cached_input_tokens": 226304,
+      "tokens_out": 2279,
+      "elapsed_ms": 63995.888000004925,
+      "agent_exit_code": 0,
+      "grader_error": ""
+    },
+    {
+      "task_id": "review-request-boundaries",
+      "skill_name": "review-security",
+      "arm": "skill",
+      "repetition": 0,
+      "task_passed": true,
+      "regression": false,
+      "review_findings": 0,
+      "review_finding_codes": [],
+      "turns": 1,
+      "prompt_bytes": 3651,
+      "tokens_in": 98298,
+      "cached_input_tokens": 82688,
+      "tokens_out": 1483,
+      "elapsed_ms": 45625.846957962494,
+      "agent_exit_code": 0,
+      "grader_error": ""
+    },
+    {
+      "task_id": "review-report-boundaries",
+      "skill_name": "review-security",
+      "arm": "baseline",
+      "repetition": 0,
+      "task_passed": false,
+      "regression": false,
+      "review_findings": 1,
+      "review_finding_codes": [
+        "The review missed the ssrf boundary or its concrete fix."
+      ],
+      "turns": 1,
+      "prompt_bytes": 145,
+      "tokens_in": 258027,
+      "cached_input_tokens": 220160,
+      "tokens_out": 2092,
+      "elapsed_ms": 56037.0982500026,
+      "agent_exit_code": 0,
+      "grader_error": ""
+    },
+    {
+      "task_id": "review-report-boundaries",
+      "skill_name": "review-security",
+      "arm": "skill",
+      "repetition": 0,
+      "task_passed": true,
+      "regression": false,
+      "review_findings": 0,
+      "review_finding_codes": [],
+      "turns": 1,
+      "prompt_bytes": 3653,
+      "tokens_in": 121057,
+      "cached_input_tokens": 107008,
+      "tokens_out": 1734,
+      "elapsed_ms": 51641.39912498649,
+      "agent_exit_code": 0,
+      "grader_error": ""
+    }
+  ],
+  "decisions": [
+    {
+      "skill_name": "review-security",
+      "evaluated_pairs": 2,
+      "evaluated_tasks": 2,
+      "baseline_pass_rate": 0.0,
+      "skill_pass_rate": 1.0,
+      "pass_rate_delta": 1.0,
+      "baseline_regression_rate": 0.0,
+      "skill_regression_rate": 0.0,
+      "regression_rate_delta": 0.0,
+      "baseline_review_findings": 2.0,
+      "skill_review_findings": 0.0,
+      "review_findings_delta": -2.0,
+      "eligible": true
+    }
+  ]
+}
