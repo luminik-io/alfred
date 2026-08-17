@@ -218,6 +218,27 @@ describe("SettingsView", () => {
     expect(onRunLocalAction).not.toHaveBeenCalled();
   });
 
+  it("explains browser-only diagnostics before the disabled controls", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home"),
+    );
+
+    render(renderSettings("http://127.0.0.1:7010"));
+
+    await user.click(screen.getByRole("tab", { name: "Diagnostics" }));
+    const note = await screen.findByText(
+      "Open Alfred Desktop to run these checks. Browser preview is read-only.",
+    );
+    const firstControl = screen.getByRole("button", { name: "Agent status" });
+
+    expect(note.compareDocumentPosition(firstControl)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(firstControl).toBeDisabled();
+  });
+
   it("clears displayed setup inventory while a new server URL is loading", async () => {
     const newRequest = deferred<SetupStatus>();
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);

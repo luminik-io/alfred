@@ -80,7 +80,6 @@
   transition:
     border-color 150ms ease,
     background 150ms ease,
-    transform 150ms ease,
     box-shadow 150ms ease;
 }
 
@@ -88,10 +87,6 @@
 .agents-deck__row[data-selected="true"] {
   border-color: color-mix(in oklch, var(--agent-accent), var(--border) 46%);
   background: color-mix(in oklch, var(--agent-accent), var(--card) 90%);
-}
-
-.agents-deck__row:hover {
-  transform: translateY(-2px);
 }
 
 .agents-deck__row[data-selected="true"] {
@@ -154,12 +149,11 @@
 
 .agents-deck__row-purpose {
   margin-top: 0.15rem;
-  overflow: hidden;
   color: var(--muted-foreground);
   font-size: 0.78rem;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 /* Roster theme picker: sits in the Agents header, aligned with the title row. */
