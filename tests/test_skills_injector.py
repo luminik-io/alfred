@@ -103,10 +103,10 @@ def test_skills_for_role_none_or_unknown_yields_empty() -> None:
 
 
 def test_skills_for_role_uses_shipped_manifest_by_default() -> None:
-    """Against the real manifest, write-tests is offered to feature-dev."""
-    metas = _metas("write-tests", "review-security")
+    """The real manifest offers only benchmarked defaults automatically."""
+    metas = _metas("write-tests", "review-security", "add-observability")
     selected = skills_context.skills_for_role("feature-dev", metas)
-    assert {m.name for m in selected} == {"write-tests", "review-security"}
+    assert {m.name for m in selected} == {"review-security", "add-observability"}
     planner = skills_context.skills_for_role("planner", _metas("spec-to-issues"))
     assert [m.name for m in planner] == ["spec-to-issues"]
 
@@ -142,9 +142,9 @@ def test_context_for_role_gated_off_returns_empty(tmp_path: Path) -> None:
 
 
 def test_context_for_role_default_on_appends_block(tmp_path: Path) -> None:
-    _write_skill(tmp_path, "write-tests", "Derive tests from criteria.")
+    _write_skill(tmp_path, "add-observability", "Instrument external calls.")
     out = skills_context.skills_context_for_role("feature-dev", dirs=[tmp_path], env={})
-    assert "write-tests" in out
+    assert "add-observability" in out
     assert "Available skills" in out
 
 

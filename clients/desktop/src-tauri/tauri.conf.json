@@ -63,6 +63,7 @@
       "../../../tests/fixtures/mem-bench": "alfred-core/tests/fixtures/mem-bench",
       "../../../tests/fixtures/mem-bench-hard": "alfred-core/tests/fixtures/mem-bench-hard",
       "../../../tests/fixtures/memory-recall-quality": "alfred-core/tests/fixtures/memory-recall-quality",
+      "../../../tests/fixtures/skill-benchmark": "alfred-core/tests/fixtures/skill-benchmark",
       "../../../tests/fixtures/runtime-benchmarks.txt": "alfred-core/tests/fixtures/runtime-benchmarks.txt"
     },
     "copyright": "Copyright (c) DataRavel Inc.",

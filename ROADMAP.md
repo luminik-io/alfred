@@ -18,7 +18,7 @@ The order can change when testing finds a reliability or safety problem.
 
 ### Launch quality
 
-- Publish v0.7.5 with signed and notarized macOS packages, Linux packages,
+- Publish v0.8.0 with signed and notarized macOS packages, Linux packages,
   concise release notes, and a verified clean-install path.
 - [Match every Desktop screen](https://github.com/luminik-io/alfred/issues/652)
   to the approved Prism, Graphite, and Ledger references. Verify light and dark
@@ -75,8 +75,9 @@ The order can change when testing finds a reliability or safety problem.
 ### Curated batteries
 
 - Keep built-in context controls enabled without a daemon.
-- [Benchmark skills and compression](https://github.com/luminik-io/alfred/issues/655)
-  on task outcomes before expanding the default set.
+- Keep the default skill set limited to skills that pass the paired task gate.
+  Re-run the skill and compression benchmarks when their fixtures, tools, or
+  engine versions change.
 - Pin external tools and record checksums, versions, licenses, and provenance.
 - Package small, opt-in skill and MCP sets by use case. Do not bundle an
   unreviewed marketplace.

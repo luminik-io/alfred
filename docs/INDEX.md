@@ -61,7 +61,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook, optional bot-token setup, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.
 - [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md): reaction approval gate, trusted feedback users, and Socket Mode listener boundary.
 - [`AWS_SETUP.md`](AWS_SETUP.md): per-agent IAM and Secrets Manager setup.
-- [`SKILLS.md`](SKILLS.md): recommended Claude Code skills.
+- [`SKILLS.md`](SKILLS.md): measured starter skills and explicit optional packs.
 - [`INTEGRATIONS.md`](INTEGRATIONS.md): what Alfred does and does not bundle.
 - [`LINUX.md`](LINUX.md): running the fleet on Debian/Ubuntu via `systemd --user` timers. Install, deploy, operate, `linger`.
 - [`PUBLISHING.md`](PUBLISHING.md): GitHub Pages, release-site, and custom-domain operations.

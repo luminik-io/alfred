@@ -2,3 +2,4 @@ mem-bench
 mem-bench-hard
 compression
 memory-recall-quality
+skill-benchmark

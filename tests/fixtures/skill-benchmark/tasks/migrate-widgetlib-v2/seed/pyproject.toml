@@ -1,0 +1,4 @@
+[project]
+name = "widget-app"
+version = "0.1.0"
+dependencies = ["widgetlib==1.4.0"]

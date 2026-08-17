@@ -16,8 +16,10 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-renames the Desktop appearances to Prism, Graphite, and Ledger. The new names
-describe the material and color of each theme.
+adds OpenCode memory and code-graph parity, groups batteries by operating cost,
+and limits the default skill set to three skills that passed paired task
+evaluation. It also renames the Desktop appearances to Prism, Graphite, and
+Ledger.
 
 ## 0.7.5 (2026-08-17)
 

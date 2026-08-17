@@ -110,8 +110,8 @@ license = "MIT"
 attribution = "Alfred first-party skill (MIT)"
 install = "first_party"
 first_party_path = "write-tests"
-default_install = true
-roles = ["test-coverage", "feature-dev"]
+default_install = false
+roles = []
 
 [[pack]]
 name = "review-security"
@@ -146,8 +146,8 @@ license = "MIT"
 attribution = "Alfred first-party skill (MIT)"
 install = "first_party"
 first_party_path = "migrate-dependency"
-default_install = true
-roles = ["feature-dev"]
+default_install = false
+roles = []
 
 [[pack]]
 name = "changelog-and-release-notes"
@@ -158,8 +158,8 @@ license = "MIT"
 attribution = "Alfred first-party skill (MIT)"
 install = "first_party"
 first_party_path = "changelog-and-release-notes"
-default_install = true
-roles = ["feature-dev", "deploy-monitor"]
+default_install = false
+roles = []
 
 # --------------------------------------------------------------------------
 # Reference-install packs (fetched from source at install time)

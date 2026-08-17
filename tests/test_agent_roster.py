@@ -3,7 +3,7 @@
 Beyond the basic lookup, this pins two invariants that would silently break skill
 injection if they drifted:
 
-1. Every pack role the roster maps to is a real role in ``skills/packs.toml``.
+1. Every role declared by a pack maps to at least one fleet codename.
 2. The roster stays consistent with the fleet's canonical
    ``CODENAME_TO_ROLE`` in ``bin/alfred-init.py`` (allowing for the
    underscore -> hyphen and a few renamed roles), so adding or renaming an
@@ -43,14 +43,11 @@ def test_lookup_unknown_or_empty_is_none() -> None:
     assert agent_roster.pack_role_for_codename(None) is None
 
 
-def test_every_mapped_role_exists_in_the_manifest() -> None:
-    manifest_roles = {r for p in skill_packs.load_manifest() for r in p.roles}
-    # Roster targets must be roles some pack actually declares, or injection for
-    # that codename would always be empty.
-    for codename, role in agent_roster.CODENAME_TO_PACK_ROLE.items():
-        assert role in manifest_roles, (
-            f"{codename} maps to {role!r}, which no pack declares in packs.toml"
-        )
+def test_every_manifest_role_maps_to_a_fleet_codename() -> None:
+    mapped_roles = set(agent_roster.CODENAME_TO_PACK_ROLE.values())
+    for pack in skill_packs.load_manifest():
+        for role in pack.roles:
+            assert role in mapped_roles, f"{pack.name} declares unmapped role {role!r}"
 
 
 def _catalog_codename_to_role() -> dict[str, str]:
