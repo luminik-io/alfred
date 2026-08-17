@@ -493,7 +493,10 @@ function App() {
 
       {tab === "fleet" ? (
         <section className="agents-page space-y-4" aria-label="Agents">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <header
+            className="alfred-page-hero flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-end sm:justify-between"
+            aria-label="Agents summary"
+          >
             <div className="space-y-1">
               <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
                 Agents
@@ -515,7 +518,7 @@ function App() {
                 saveError={rosterSaveError}
               />
             ) : null}
-          </div>
+          </header>
           <Tabs
             tabs={FLEET_SUBTABS.map<TabItem<OperatorKey>>((s) => ({
               key: s.key,

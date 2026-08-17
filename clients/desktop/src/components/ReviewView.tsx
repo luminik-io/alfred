@@ -358,7 +358,10 @@ export function ReviewView({
 
   return (
     <div className="command-center" aria-label="Inbox">
-      <header className="command-center__top" aria-label="Inbox summary">
+      <header
+        className="alfred-page-hero command-center__top"
+        aria-label="Inbox summary"
+      >
         <div className="command-center__title">
           <h1>{headline}</h1>
           <span>{summary}</span>

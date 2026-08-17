@@ -14,15 +14,6 @@
   font-weight: 620;
 }
 
-.alfred-page-hero {
-  overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 0.25rem 0 0.65rem;
-}
-
 .ask__head-title {
   margin: 0;
   font-size: 1rem;
@@ -69,14 +60,6 @@
   border-color: var(--hairline);
   background: color-mix(in oklch, var(--surface), var(--background) 12%);
   box-shadow: none;
-}
-
-:root[data-theme="signal-edge"] .command-center__top {
-  min-height: auto;
-  border-width: 0 0 1px;
-  border-radius: 0;
-  background: transparent;
-  padding: 0.35rem 0 0.9rem;
 }
 
 :root[data-theme="signal-edge"] .alfred-pipeline__assign {

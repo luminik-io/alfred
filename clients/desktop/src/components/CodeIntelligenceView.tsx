@@ -100,7 +100,10 @@ export function CodeIntelligenceView({ baseUrl }: { baseUrl: string }) {
 
   return (
     <section className="space-y-4 motion-fade" aria-label="Code intelligence">
-      <header className="alfred-page-hero px-4 py-4">
+      <header
+        className="alfred-page-hero px-4 py-4"
+        aria-label="Code intelligence summary"
+      >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 space-y-1">
             <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">

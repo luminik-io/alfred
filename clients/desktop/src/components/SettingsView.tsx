@@ -19,7 +19,7 @@ import type { ThemeMode, ThemeName } from "../lib/useTheme";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import type { SetupStatus, TrustedSlackUsersResponse } from "../types";
 import { AppearancePicker } from "./AppearancePicker";
-import { EmptyState, PanelHeader } from "./atoms";
+import { EmptyState } from "./atoms";
 import { FirstRunReadinessPanel } from "./onboarding/FirstRunReadinessPanel";
 import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
 import { Tabs, type TabItem } from "./Tabs";
@@ -194,7 +194,19 @@ export function SettingsView({
         !loading && !setupLoading && setupStatus !== null ? "true" : "false"
       }
     >
-      <PanelHeader title="Settings" />
+      <header
+        className="alfred-page-hero px-4 py-4"
+        aria-label="Settings summary"
+      >
+        <div className="space-y-1">
+          <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
+            Settings
+          </h1>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Configure the runtime, appearance, collaborators, and diagnostics.
+          </p>
+        </div>
+      </header>
       <Tabs
         tabs={tabs}
         active={section}
