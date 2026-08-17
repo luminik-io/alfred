@@ -836,3 +836,7 @@ def test_engine_router_dispatches_opencode_with_explicit_write_boundary(
     assert captured["model"] == "openai/gpt-5"
     assert captured["allow_writes"] is True
     assert captured["timeout"] == 30
+    assert result.raw["run_configuration"]["configured_engine"] == "opencode"
+    assert result.raw["run_configuration"]["engine"] == "opencode"
+    assert result.raw["run_configuration"]["model_source"] == "caller"
+    assert result.raw["run_configuration"]["write_access"] is True

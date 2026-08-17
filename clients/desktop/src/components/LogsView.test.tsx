@@ -183,6 +183,20 @@ describe("LogsView live tail (#41)", () => {
               event_seq: 4,
               data: { engine: "opencode", session_id: "ses_123", turns: 7 },
             },
+            {
+              kind: "run_configuration",
+              source: "engine",
+              event_type: "llm_invoke_done",
+              event_seq: 4,
+              data: {
+                configuration: {
+                  configured_engine: "hybrid",
+                  engine: "opencode",
+                  model: "openai/gpt-5",
+                  write_access: true,
+                },
+              },
+            },
           ],
           artifacts: [
             { kind: "events", status: "available", path: "/state/events/run.jsonl" },
@@ -198,6 +212,10 @@ describe("LogsView live tail (#41)", () => {
     expect(within(evidence).getByText(/example\/app · #42/i)).toBeInTheDocument();
     expect(within(evidence).getByText("GitHub")).toBeInTheDocument();
     expect(within(evidence).getByText(/opencode · ses_123 · 7 turns/i)).toBeInTheDocument();
+    expect(within(evidence).getByText("Run configuration")).toBeInTheDocument();
+    expect(
+      within(evidence).getByText(/hybrid → opencode · openai\/gpt-5 · write access/i),
+    ).toBeInTheDocument();
     expect(within(evidence).getByText(/event log ready/i)).toBeInTheDocument();
     expect(within(evidence).getByText(/transcript unavailable/i)).toBeInTheDocument();
     expect(within(evidence).getByText(/imported session ready/i)).toBeInTheDocument();

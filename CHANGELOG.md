@@ -51,6 +51,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Saved run evidence now records the selected engine route, actual provider,
+  model source, binary, capability contract, timeout, write boundary, and
+  memory attachment state without storing credentials or prompt text.
 - Run evidence now links an approved Architect plan to its durable decision
   record and records the full commit SHA after senior-dev or fixer pushes.
 - Limited the default first-party starter set to `spec-to-issues`,

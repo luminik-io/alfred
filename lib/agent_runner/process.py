@@ -51,6 +51,7 @@ from .config import (
     DISABLED_ENGINE,
     _truthy_env,
     agent_model,
+    agent_model_selection,
     dry_run_log,
     env_int,
     is_dry_run,
@@ -2156,12 +2157,18 @@ def invoke_agent_engine(
         mode = normalize_engine(engine)
     except ValueError:
         return _disabled_engine_result(), DISABLED_ENGINE
+    claude_selection = agent_model_selection(agent, "claude")
+    codex_selection = agent_model_selection(agent, "codex")
+    opencode_selection = agent_model_selection(agent, "opencode")
+    claude_model_source = "caller" if claude_model is not None else claude_selection.source
+    codex_model_source = "caller" if codex_model is not None else codex_selection.source
+    opencode_model_source = "caller" if opencode_model is not None else opencode_selection.source
     if claude_model is None:
-        claude_model = agent_model(agent, "claude")
+        claude_model = claude_selection.model
     if codex_model is None:
-        codex_model = agent_model(agent, "codex")
+        codex_model = codex_selection.model
     if opencode_model is None:
-        opencode_model = agent_model(agent, "opencode")
+        opencode_model = opencode_selection.model
     if opencode_allow_writes is None:
         # Existing runners already state their mutation boundary through the
         # Codex bypass flag. Reuse that explicit per-call decision so selecting
@@ -2377,6 +2384,68 @@ def invoke_agent_engine(
                 result.fallback_from_subtype = trigger_subtype
 
         result = _stamp_context_governance(result)
+        actual_engine = "codex" if engine_used == "codex-fallback" else engine_used
+        descriptor = DEFAULT_ENGINE_REGISTRY.descriptor(actual_engine)
+        models = {
+            "claude": (claude_model, claude_model_source),
+            "codex": (codex_model, codex_model_source),
+            "opencode": (opencode_model, opencode_model_source),
+        }
+        selected_model, selected_model_source = models[actual_engine]
+        actual_timeout = {
+            "claude": timeout,
+            "codex": codex_timeout or timeout,
+            "opencode": opencode_timeout or timeout,
+        }[actual_engine]
+        allowed_tools = (
+            [tool.strip() for tool in claude_allowed_tools.split(",") if tool.strip()]
+            if actual_engine == "claude"
+            else None
+        )
+        effective_codex_sandbox = (
+            "danger-full-access"
+            if codex_bypass_approvals_and_sandbox
+            else codex_sandbox or CODEX_DEFAULT_SANDBOX
+        )
+        effective_codex_approval_policy = (
+            None
+            if codex_bypass_approvals_and_sandbox
+            else codex_approval_policy or CODEX_APPROVAL_POLICY
+        )
+        write_access = {
+            "claude": bool(allowed_tools and {"Bash", "Edit", "Write"} & set(allowed_tools)),
+            "codex": effective_codex_sandbox != "read-only",
+            "opencode": bool(opencode_allow_writes),
+        }[actual_engine]
+        result.raw = dict(result.raw or {})
+        result.raw["run_configuration"] = {
+            "configured_engine": mode,
+            "engine": actual_engine,
+            "fallback_from": "claude" if engine_used == "codex-fallback" else None,
+            "binary": os.environ.get(descriptor.binary_env, "").strip()
+            or descriptor.default_binary,
+            "model": selected_model,
+            "model_source": selected_model_source,
+            "capabilities": sorted(capability.value for capability in descriptor.capabilities),
+            "timeout_seconds": actual_timeout,
+            "sandbox": effective_codex_sandbox if actual_engine == "codex" else None,
+            "approval_policy": (
+                effective_codex_approval_policy if actual_engine == "codex" else None
+            ),
+            "bypass_approvals_and_sandbox": (
+                codex_bypass_approvals_and_sandbox if actual_engine == "codex" else False
+            ),
+            "allowed_tools": allowed_tools,
+            "max_turns": claude_max_turns if actual_engine == "claude" else None,
+            "write_access": write_access,
+            "extra_directories": (
+                [str(path) for path in codex_add_dirs or []] if actual_engine == "codex" else []
+            ),
+            "memory_requested": bool(memory_repo),
+            "memory_attached": memory_provider is not None,
+            "memory_repo": memory_repo,
+            "memory_limit": memory_limit,
+        }
         if memory_provider is not None and memory_repo:
             result_text = result.result_text or ""
             reflections = parse_memory_reflections(result_text)

@@ -550,6 +550,27 @@ function RunEvidence({ firing }: { firing: FiringRecord }) {
 function evidenceFactSummary(fact: EvidenceFact): string {
   const data = fact.data;
   const parts: string[] = [];
+  const configuration = data.configuration;
+  if (
+    fact.kind === "run_configuration" &&
+    configuration !== null &&
+    typeof configuration === "object"
+  ) {
+    const values = configuration as Record<string, unknown>;
+    const configuredEngine =
+      typeof values.configured_engine === "string" ? values.configured_engine : null;
+    const actualEngine = typeof values.engine === "string" ? values.engine : null;
+    const route =
+      configuredEngine && actualEngine && configuredEngine !== actualEngine
+        ? `${configuredEngine} → ${actualEngine}`
+        : actualEngine ?? configuredEngine;
+    if (route) parts.push(route);
+    parts.push(typeof values.model === "string" ? values.model : "provider default");
+    if (typeof values.write_access === "boolean") {
+      parts.push(values.write_access ? "write access" : "read only");
+    }
+    return parts.join(" · ");
+  }
   if (typeof data.repo === "string") parts.push(data.repo);
   if (typeof data.number === "number") parts.push(`#${data.number}`);
   if (typeof data.path === "string") parts.push(data.path);

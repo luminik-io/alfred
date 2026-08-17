@@ -58,9 +58,11 @@ _FACT_SPECS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
     "worktree_created": (("worktree", ("path", "branch", "repo")),),
     "llm_invoke_done": (
         ("engine_session", ("engine", "session_id", "turns", "subtype", "success")),
+        ("run_configuration", ("configuration",)),
     ),
     "claude_invoke_done": (
         ("engine_session", ("engine", "session_id", "turns", "subtype", "success")),
+        ("run_configuration", ("configuration",)),
     ),
     "plan_approved": (("approval", ("number", "issue", "repo", "decision", "decision_record")),),
     "pre_push_checks_passed": (("check", ("command", "repo", "success")),),
