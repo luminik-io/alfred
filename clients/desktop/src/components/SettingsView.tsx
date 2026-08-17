@@ -23,6 +23,15 @@ import { EmptyState, PanelHeader } from "./atoms";
 import { FirstRunReadinessPanel } from "./onboarding/FirstRunReadinessPanel";
 import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
 import { Tabs, type TabItem } from "./Tabs";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 
 type SettingsSection =
   "appearance" | "runtime" | "collaborators" | "diagnostics";
@@ -68,11 +77,15 @@ export function SettingsView({
   const [consoleAgent, setConsoleAgent] = useState("senior-dev");
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
+  const [pendingTrustedRemoval, setPendingTrustedRemoval] = useState<
+    string | null
+  >(null);
   const [section, setSection] = useState<SettingsSection>("runtime");
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
   const setupRequestSeq = useRef(0);
+  const removeTrustedAffirmRef = useRef<HTMLButtonElement>(null);
   const baseUrlRef = useRef(baseUrl);
   const connectedRef = useRef(connected);
   const connectionGenerationRef = useRef(0);
@@ -406,7 +419,7 @@ export function SettingsView({
                         type="button"
                         aria-label={`Remove ${user.user_id}`}
                         disabled={busyTrustedUser === `remove:${user.user_id}`}
-                        onClick={() => onRemoveTrustedUser(user.user_id)}
+                        onClick={() => setPendingTrustedRemoval(user.user_id)}
                       >
                         <X size={15} aria-hidden="true" />
                       </button>
@@ -548,6 +561,52 @@ export function SettingsView({
           </div>
         ) : null}
       </div>
+      <Dialog
+        open={Boolean(pendingTrustedRemoval)}
+        onOpenChange={(open) => !open && setPendingTrustedRemoval(null)}
+      >
+        <DialogContent
+          role="alertdialog"
+          showCloseButton={false}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            removeTrustedAffirmRef.current?.focus();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {pendingTrustedRemoval
+                ? `Remove ${pendingTrustedRemoval}?`
+                : "Remove collaborator?"}
+            </DialogTitle>
+            <DialogDescription>
+              This Slack user will no longer be able to create drafts or amend
+              planning threads.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPendingTrustedRemoval(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              ref={removeTrustedAffirmRef}
+              onClick={() => {
+                if (!pendingTrustedRemoval) return;
+                onRemoveTrustedUser(pendingTrustedRemoval);
+                setPendingTrustedRemoval(null);
+              }}
+            >
+              Remove collaborator
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

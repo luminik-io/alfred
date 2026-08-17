@@ -266,14 +266,25 @@ for (const appearance of appearances) {
         ).toBeVisible();
         await capture(page, viewportName, "settings-runtime");
 
-        for (const tab of [
-          "Appearance",
-          "Collaborators",
-          "Diagnostics",
-        ] as const) {
-          await page.getByRole("tab", { name: tab }).click();
-          await capture(page, viewportName, `settings-${tab.toLowerCase()}`);
-        }
+        await page.getByRole("tab", { name: "Appearance" }).click();
+        await capture(page, viewportName, "settings-appearance");
+
+        await page.getByRole("tab", { name: "Collaborators" }).click();
+        await capture(page, viewportName, "settings-collaborators");
+        await page
+          .getByRole("button", { name: "Remove UTEAM12345" })
+          .click();
+        const removeCollaborator = page.getByRole("button", {
+          name: "Remove collaborator",
+        });
+        await expect(page.getByRole("alertdialog")).toBeVisible();
+        await expect(removeCollaborator).toBeFocused();
+        await capture(page, viewportName, "settings-collaborator-remove");
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("alertdialog")).toBeHidden();
+
+        await page.getByRole("tab", { name: "Diagnostics" }).click();
+        await capture(page, viewportName, "settings-diagnostics");
       });
     });
   }
