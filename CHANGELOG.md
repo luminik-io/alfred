@@ -8,6 +8,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Added a compression quality gate that compares raw output, the built-in
+  compactor, and Headroom against required failures, paths, line numbers, test
+  counts, and final command status before reporting token savings.
 - Added a plain reason to every lesson placed in an agent prompt. The CLI and
   Desktop also show the recall provider, source, repository scope, age, expiry,
   and current state for each active lesson.

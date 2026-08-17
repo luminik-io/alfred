@@ -1,0 +1,17 @@
+running 13 tests
+tests/test_accounts.py::test_create_account PASSED
+tests/test_accounts.py::test_update_account PASSED
+tests/test_accounts.py::test_delete_account PASSED
+tests/test_api.py::test_health PASSED
+tests/test_api.py::test_readiness PASSED
+tests/test_auth.py::test_login PASSED
+tests/test_auth.py::test_logout PASSED
+tests/test_orders.py::test_list_orders PASSED
+tests/test_orders.py::test_get_order PASSED
+tests/test_orders.py::test_update_order PASSED
+tests/test_orders.py::test_delete_order PASSED
+tests/test_orders.py::test_order_status PASSED
+FAILED tests/test_orders.py::test_create_order
+tests/test_orders.py:42: AssertionError: expected 200, got 500
+1 failed, 12 passed
+command exit code 1

@@ -185,13 +185,15 @@ non-stdlib import.
 
 ## Measuring it
 
-The compression benchmark runs the same real tool-output payloads (grep, JSON,
-logs) through both engines and reports the token-reduction ratio for each:
+The compression benchmark runs the same recorded tool-output payloads through
+the raw control, built-in compactor, and optional Headroom engine. It reports
+size reduction and checks that declared failures, file paths, line numbers,
+test counts, and final command status remain present:
 
 ```sh
 alfred benchmark compression            # human-readable table
 alfred benchmark compression --json     # machine-readable
 ```
 
-See [BENCHMARKS.md](BENCHMARKS.md#compression-builtin-453-vs-headroom) for what
+See [BENCHMARKS.md](BENCHMARKS.md#compression-quality-raw-built-in-and-headroom) for what
 it measures and how it reports when Headroom is not installed.

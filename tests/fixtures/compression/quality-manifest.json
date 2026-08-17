@@ -1,0 +1,35 @@
+{
+  "data.json": {
+    "exit_code": 0,
+    "required_facts": [
+      "\"id\": \"evt_00000\"",
+      "\"id\": \"evt_00299\""
+    ]
+  },
+  "grep-symbols.txt": {
+    "exit_code": 0,
+    "required_facts": [
+      "src/module_0/handler_0.py:100",
+      "src/module_3/handler_0.py:500"
+    ]
+  },
+  "log-build.txt": {
+    "exit_code": 0,
+    "required_facts": [
+      "resolved dependency graph node 0",
+      "resolved dependency graph node 499",
+      "BUILD SUCCESSFUL",
+      "in 42s"
+    ]
+  },
+  "quality-failure.txt": {
+    "exit_code": 1,
+    "required_facts": [
+      "FAILED",
+      "tests/test_orders.py:42",
+      "AssertionError: expected 200, got 500",
+      "1 failed, 12 passed",
+      "exit code 1"
+    ]
+  }
+}
