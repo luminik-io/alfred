@@ -8,6 +8,7 @@ timeouts, and the engine-neutral ``ClaudeResult`` return shape.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,7 +53,14 @@ def build_opencode_command(
     return command
 
 
-def _permission_policy(*, allow_writes: bool) -> dict[str, Any]:
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _permission_policy(
+    *,
+    allow_writes: bool,
+    mcp_tools: Mapping[str, tuple[str, ...]] | None = None,
+) -> dict[str, Any]:
     permissions: dict[str, Any] = {
         "*": "allow",
         "external_directory": "deny",
@@ -75,7 +83,38 @@ def _permission_policy(*, allow_writes: bool) -> dict[str, Any]:
     else:
         permissions["edit"] = "deny"
         permissions["bash"] = "deny"
+    for server, tools in (mcp_tools or {}).items():
+        permissions[f"{server}_*"] = "deny"
+        for tool in tools:
+            permissions[f"{server}_{tool}"] = "allow"
     return permissions
+
+
+def _local_mcp_config(
+    servers: Mapping[str, Mapping[str, Any]],
+    *,
+    workdir: Path | None,
+) -> dict[str, dict[str, Any]]:
+    """Translate Alfred's stdio server contract to OpenCode's local format."""
+
+    out: dict[str, dict[str, Any]] = {}
+    for name, server in servers.items():
+        command = server.get("command")
+        args = server.get("args", [])
+        if not isinstance(command, str) or not command.strip():
+            continue
+        if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+            continue
+        config: dict[str, Any] = {
+            "type": "local",
+            "command": [command, *args],
+            "enabled": True,
+            "timeout": 5000,
+        }
+        if workdir is not None:
+            config["cwd"] = str(workdir)
+        out[name] = config
+    return out
 
 
 def opencode_environment(
@@ -83,6 +122,9 @@ def opencode_environment(
     *,
     config_dir: Path,
     allow_writes: bool,
+    workdir: Path | None = None,
+    mcp_servers: Mapping[str, Mapping[str, Any]] | None = None,
+    mcp_tools: Mapping[str, tuple[str, ...]] | None = None,
 ) -> dict[str, str]:
     """Return an isolated, deterministic OpenCode subprocess environment.
 
@@ -92,7 +134,14 @@ def opencode_environment(
     external plugins. System-managed OpenCode settings retain final authority.
     """
 
-    permissions = _permission_policy(allow_writes=allow_writes)
+    local_mcp = _local_mcp_config(mcp_servers or {}, workdir=workdir)
+    allowed_mcp_tools = {
+        name: tuple(mcp_tools.get(name, ())) for name in local_mcp if mcp_tools is not None
+    }
+    permissions = _permission_policy(
+        allow_writes=allow_writes,
+        mcp_tools=allowed_mcp_tools,
+    )
     config = {
         "$schema": "https://opencode.ai/config.json",
         "share": "disabled",
@@ -105,6 +154,8 @@ def opencode_environment(
             }
         },
     }
+    if local_mcp:
+        config["mcp"] = local_mcp
     child = dict(environ)
     child.pop("OPENCODE_CONFIG", None)
     child.update(
@@ -116,11 +167,32 @@ def opencode_environment(
             "OPENCODE_DISABLE_AUTOUPDATE": "1",
             "OPENCODE_DISABLE_CLAUDE_CODE": "1",
             "OPENCODE_DISABLE_DEFAULT_PLUGINS": "1",
+            "OPENCODE_DISABLE_EXTERNAL_SKILLS": "1",
             "OPENCODE_DISABLE_LSP_DOWNLOAD": "1",
+            "OPENCODE_DISABLE_PROJECT_CONFIG": "1",
             "OPENCODE_DISABLE_TERMINAL_TITLE": "1",
+            "XDG_CONFIG_HOME": str(config_dir),
         }
     )
     return child
+
+
+def parse_opencode_mcp_status(
+    output: str,
+    expected_servers: tuple[str, ...],
+) -> dict[str, str]:
+    """Return scrubbed startup states for Alfred's expected MCP servers."""
+
+    clean = _ANSI_ESCAPE_RE.sub("", output or "")
+    states: dict[str, str] = {}
+    for server in expected_servers:
+        match = re.search(
+            rf"(?:^|\s){re.escape(server)}\s+(connected|failed|disabled)(?:\s|$)",
+            clean,
+            flags=re.MULTILINE,
+        )
+        states[server] = match.group(1) if match else "unreported"
+    return states
 
 
 def _message(error: object) -> str:
@@ -223,4 +295,5 @@ __all__ = [
     "build_opencode_command",
     "opencode_environment",
     "parse_opencode_events",
+    "parse_opencode_mcp_status",
 ]

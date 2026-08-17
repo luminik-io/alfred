@@ -1,12 +1,10 @@
 # MCP servers
 
-Alfred attaches Model Context Protocol (MCP) servers to **Claude-engine
-firings** so the fleet agents get *tools the model can call on demand* instead
-of guessing. MCP is a Claude Code feature: the servers and their tools are
-wired in `claude_invoke` and `claude_invoke_streaming` only. **Codex and
-OpenCode firings do not get Alfred-managed MCP servers.** Those adapters do not
-import the operator's CLI configuration. They read and grep the working
-tree through their own bounded tool contract.
+Alfred attaches Model Context Protocol (MCP) servers to **Claude Code and
+explicitly selected OpenCode firings** so fleet agents can query reviewed local
+memory and code structure when needed. Codex firings do not get Alfred-managed
+MCP servers. None of the adapters imports the operator's unrelated MCP
+configuration.
 See [ENGINE_ROUTING.md](ENGINE_ROUTING.md) for how a codename is routed to
 Claude, Codex, or OpenCode.
 
@@ -22,8 +20,9 @@ Two servers ship with Alfred:
   queries a graph.
 
 Both are **capabilities, on by default, read-only by construction**. Neither can
-edit a repo, write a lesson, or merge a PR. If either is unavailable, the firing
-degrades to a clean no-op and the rest of the run is unaffected.
+edit a repo, write a lesson, or merge a PR. Claude Code receives an available
+server directly. OpenCode first checks the server with its own bounded MCP
+startup command and removes any failed server from the firing config.
 
 ## Topology
 
@@ -45,9 +44,9 @@ flowchart LR
   runner -.->|not wired by default| yours
 ```
 
-On a Claude firing the runner resolves both servers once per invoke and passes
-them to the `claude` CLI in a single `--mcp-config` flag (a single `mcpServers`
-map). It resolves the `alfred_memory` server *script path* exactly once and
+On a Claude Code firing the runner resolves both servers once per invoke and
+passes them to the `claude` CLI in a single `--mcp-config` flag (a single
+`mcpServers` map). It resolves the `alfred_memory` server *script path* exactly once and
 shares that one resolved path between the `--mcp-config` attachment and the tool
 allowlist, so the two can never disagree about **whether** the server is present
 (no TOCTOU between two separate `Path.exists()` checks).
@@ -65,9 +64,17 @@ Both gates must pass. Exposure alone does not make a tool callable, so a tool a
 server newly returns is **not** automatically usable by the agent: it stays
 uncallable until its `mcp__<server>__<tool>` name is added to the allowlist
 constant. The two sets are therefore not identical: the `alfred_memory` server
-registers twelve tools, but the allowlist constant names eleven of them (see the
-note under the tool table). See [Per-role tool scoping](#per-role-tool-scoping)
-for exactly how the allowlist is assembled.
+registers fourteen tools, but the allowlist constant names thirteen of them
+(see the note under the tool table). See
+[Per-role tool scoping](#per-role-tool-scoping) for exactly how the allowlist is
+assembled.
+
+On an OpenCode firing the runner creates an isolated config root, disables user
+and project configuration, and translates each ready server to OpenCode's local
+stdio format. OpenCode names an MCP tool as `<server>_<tool>`. Alfred denies the
+server wildcard first and then allows each approved tool name. A new upstream
+tool therefore stays unavailable until Alfred adds it to the fixed allowlist.
+The config directory is removed after the firing.
 
 ## Servers Alfred provides: `alfred_memory`
 
@@ -225,13 +232,12 @@ silently widen agent capability without a code change to
 ## Configuration and disabling
 
 All knobs are environment variables. Set them in `$ALFRED_HOME/.env`. Defaults
-work out of the box; both servers are on by default (on Claude firings, the only
-firings that get MCP at all).
+work for Claude Code and explicitly selected OpenCode firings.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ALFRED_MEMORY_MCP` | `1` (on) | Attach the `alfred_memory` MCP to Claude firings. Any of `0`, `false`, `no`, `off`, or empty disables it. |
-| `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the `code_memory` MCP to Claude firings. Same disable values. |
+| `ALFRED_MEMORY_MCP` | `1` (on) | Attach the `alfred_memory` MCP to Claude Code and OpenCode firings. Any of `0`, `false`, `no`, `off`, or empty disables it. |
+| `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach ready `code_memory` MCP to Claude Code and OpenCode firings. Same disable values. |
 | `ALFRED_MCP_ALLOW_RAW_MEMORY` | (unset) | When `1` / `true` / `yes`, `alfred_memory_candidates` includes full bodies, evidence, and review notes instead of previews. Leave unset for preview-only. |
 | `ALFRED_FLEET_BRAIN_DB` | `$ALFRED_HOME/fleet-brain.db` (else `~/.alfred/fleet-brain.db`) | Explicit path to the SQLite brain the `alfred_memory` server reads. |
 | `ALFRED_HOME` | `~/.alfred` | Runtime home. Resolves the default brain path and the code-memory cache. |
@@ -243,22 +249,21 @@ firings that get MCP at all).
 The full code-memory knob set (scope lists, index directories, timeouts) lives
 in [CODE_MEMORY.md](CODE_MEMORY.md).
 
-To turn MCP off entirely for a Claude run, set both `ALFRED_MEMORY_MCP=0` and
+To turn MCP off entirely for a firing, set both `ALFRED_MEMORY_MCP=0` and
 `ALFRED_CODE_MEMORY_MCP=0`. Agents still run; they just fall back to reading and
 grepping the working tree directly, the same way a Codex-routed agent already
 does.
 
 ## Adding your own MCP server
 
-Today the runner wires exactly the two servers above, and only on the Claude
-path. It does not read an arbitrary user MCP registry, so a server you add would
+Today the runner wires exactly the two servers above. It does not read an
+arbitrary user MCP registry, so a server you add would
 need explicit wiring in `lib/agent_runner/process.py`: add it to the
 `mcpServers` map that `_memory_mcp_args` builds, and add its tool names to the
-allowlist the way `_code_memory_tool_names` does. Both of those run inside
-`claude_invoke` / `claude_invoke_streaming`, so a server wired there reaches
-Claude firings only; `codex_invoke` has no MCP attachment point. Nothing consumes
-a user-supplied MCP config automatically yet, so this is a code change, not a
-config toggle.
+allowlist the way `_code_memory_tool_names` does. OpenCode also needs an entry in
+`_opencode_mcp_contract`. `codex_invoke` has no MCP attachment point. Nothing
+consumes a user-supplied MCP config automatically, so this is a code change, not
+a config toggle.
 
 Before you attach anything, keep the same posture the built-in servers hold:
 read-only tools, a fixed tool allowlist (so an upstream update cannot silently

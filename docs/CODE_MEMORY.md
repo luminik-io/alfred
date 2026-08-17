@@ -16,9 +16,8 @@ This doc covers the third layer. The first two are in
 [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
 (DeusData, MIT) is a standalone binary that indexes your in-scope repositories
 into a code graph and answers read-only structure queries over MCP. Alfred
-attaches it as an MCP server on Claude-engine firings only (Codex-routed firings
-get no MCP), so the fleet agents get code-structure tools the model can call on
-demand:
+attaches it to Claude Code and explicitly selected OpenCode firings. Codex
+firings get no MCP. The agent can query code structure when needed:
 
 - **search** the graph and source for symbols, definitions, and references
 - **trace** callers and callees for a function
@@ -94,7 +93,7 @@ All knobs are environment variables. Set them in `$ALFRED_HOME/.env`.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the code-memory MCP to Claude firings. Set `0` to disable. |
+| `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach ready code-memory MCP to Claude Code and OpenCode firings. Set `0` to disable. |
 | `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`) | Required comma-separated repo directory names or slugs to index. An empty scope disables serving and blocks indexing. |
 | `ALFRED_REPO_LOCAL_MAP` | (unset) | Optional shell-tokenized `repo-slug=local-path` map for repos whose GitHub slug differs from the checkout directory, for example `ALFRED_REPO_LOCAL_MAP='acme-api=api acme-site=../marketing/site'`. Relative paths resolve under the configured workspace subdir. |
 | `ALFRED_WORKSPACE_SUBDIR` | (falls back to `WORKSPACE_SUBDIR`, then `product`) | Optional subdirectory under `WORKSPACE_ROOT` where configured relative repo paths resolve. Set an empty value to resolve them from `WORKSPACE_ROOT`. |
