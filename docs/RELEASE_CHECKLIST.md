@@ -47,7 +47,7 @@ Use this before tagging a public Alfred release.
 - Run the complete fresh-home path on the release source:
 
   ```sh
-  uv run --frozen --extra dev pytest -q tests/test_scratch_home_e2e.py
+  uv run --extra dev pytest -q tests/test_scratch_home_e2e.py
   ```
 
   This installs Alfred into temporary state, configures the fleet, starts the

@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -17,6 +18,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -106,13 +109,22 @@ def _wait_for_setup(
     raise AssertionError(f"alfred serve did not become ready: {last_error}")
 
 
-def test_desktop_equivalent_scratch_home_reaches_first_run_ready(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    runtime = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
+def test_desktop_equivalent_scratch_home_reaches_first_run_ready(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
+    scratch_root = tmp_path / "scratch-home"
+    scratch_root.mkdir()
+
+    def remove_scratch_state() -> None:
+        shutil.rmtree(scratch_root, ignore_errors=True)
+
+    request.addfinalizer(remove_scratch_state)
+    home = scratch_root / "home"
+    runtime = scratch_root / "runtime"
+    workspace = scratch_root / "workspace"
     repo = workspace / "demo"
-    fake_bin = tmp_path / "fake-bin"
-    scheduler_log = tmp_path / "scheduler.log"
+    fake_bin = scratch_root / "fake-bin"
+    scheduler_log = scratch_root / "scheduler.log"
     home.mkdir()
     repo.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
@@ -166,7 +178,7 @@ esac
         "ALFRED_HOME": str(runtime),
         "WORKSPACE_ROOT": str(workspace),
         "PATH": f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
-        "CLAUDE_BIN": str(tmp_path / "missing-claude"),
+        "CLAUDE_BIN": str(scratch_root / "missing-claude"),
         "ALFRED_DEPLOY_SKIP_UI": "1",
         "ALFRED_SYSTEMD_USER_DIR": str(home / ".config" / "systemd" / "user"),
         "ALFRED_TEST_SCHEDULER_LOG": str(scheduler_log),
@@ -377,3 +389,5 @@ esac
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+    remove_scratch_state()
+    assert not scratch_root.exists()
