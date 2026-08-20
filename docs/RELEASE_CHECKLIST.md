@@ -44,6 +44,16 @@ Use this before tagging a public Alfred release.
   ./bin/alfred doctor
   ```
 
+- Run the complete fresh-home path on the release source:
+
+  ```sh
+  uv run --extra dev pytest -q tests/test_scratch_home_e2e.py
+  ```
+
+  This installs Alfred into temporary state, configures the fleet, starts the
+  local API, verifies Desktop readiness and battery status, and removes the
+  temporary state when the test ends.
+
 - If shell scripts changed, run `shellcheck` on the changed files.
 - If docs site content changed, run `npm --prefix site run build`.
 

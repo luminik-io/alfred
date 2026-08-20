@@ -27,9 +27,6 @@ The order can change when testing finds a reliability or safety problem.
   captures in the internal visual audit.
 - Require clean Markdown, direct copy, and current verification evidence in
   every pull request description, including documentation-only changes.
-- Add a complete scratch-home test. It must install Alfred, configure a fleet,
-  start the local API, exercise the desktop-ready setup path, verify optional
-  battery status, and remove its temporary state.
 - Record a current end-to-end demo from request through reviewed PR. Show real
   failures, approval points, and verification evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the shipped
