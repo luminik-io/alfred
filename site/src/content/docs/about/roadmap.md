@@ -24,7 +24,6 @@ shipped work. The canonical source is
   captures in the internal visual audit.
 - Require clean Markdown, direct copy, and current verification evidence in
   every pull request description.
-- Add a complete scratch-home installation and setup test.
 - Record a current request-to-reviewed-PR demo with real approval and evidence.
 - Keep the README, site, CLI help, and setup copy aligned with the runtime.
 - Launch with a reproducible demo and direct links to the source, install
