@@ -56,9 +56,10 @@ themes change display names only.
 
 ## Run the demo
 
-The demo uses a throwaway repository and an authenticated `claude` CLI. It does
-not need GitHub or Slack. The run stops if an engine call, file change, or test
-fails.
+The demo uses a throwaway repository and one authenticated engine. The default
+hybrid route tries Claude Code first and falls back to Codex when Claude cannot
+run. Use `--engine opencode` to run the same loop with OpenCode. The demo does
+not need GitHub or Slack. It stops if an engine call, file change, or test fails.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/luminik-io/alfred/main/get.sh | sh

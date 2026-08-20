@@ -64,12 +64,15 @@ def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path)
 
     def fake_invoke(_prompt, **kwargs):
         seen.update(kwargs)
-        return types.SimpleNamespace(success=True, result_text="reviewed", error_message=None)
+        return (
+            types.SimpleNamespace(success=True, result_text="reviewed", error_message=None),
+            "opencode",
+        )
 
     monkeypatch.setitem(
-        sys.modules, "agent_runner", types.SimpleNamespace(claude_invoke=fake_invoke)
+        sys.modules, "agent_runner", types.SimpleNamespace(invoke_agent_engine=fake_invoke)
     )
-    engine = runner._build_real_engine(verbose=False)
+    engine = runner._build_real_engine(verbose=False, engine_mode="opencode")
     engine(
         EngineCall(
             step="review",
@@ -80,7 +83,42 @@ def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path)
         )
     )
 
-    assert seen["max_turns"] == 14
+    assert seen["engine"] == "opencode"
+    assert seen["claude_max_turns"] == 14
+    assert seen["opencode_allow_writes"] is False
+    assert seen["codex_sandbox"] == "read-only"
+    assert seen["firing_id"] == f"demo-{tmp_path.parent.name}-review"
+
+
+def test_real_demo_build_uses_bounded_write_controls(monkeypatch, tmp_path):
+    runner = load_demo_runner()
+    seen: dict[str, object] = {}
+
+    def fake_invoke(_prompt, **kwargs):
+        seen.update(kwargs)
+        return (
+            types.SimpleNamespace(success=True, result_text="built", error_message=None),
+            "codex",
+        )
+
+    monkeypatch.setitem(
+        sys.modules, "agent_runner", types.SimpleNamespace(invoke_agent_engine=fake_invoke)
+    )
+    engine = runner._build_real_engine(verbose=False, engine_mode="codex")
+    engine(
+        EngineCall(
+            step="build",
+            prompt="build",
+            allowed_tools="Read,Write,Edit,Bash",
+            workdir=tmp_path,
+            timeout=30,
+        )
+    )
+
+    assert seen["engine"] == "codex"
+    assert seen["opencode_allow_writes"] is True
+    assert seen["codex_sandbox"] == "workspace-write"
+    assert seen["codex_approval_policy"] == "never"
 
 
 # ---------------------------------------------------------------------------
@@ -487,9 +525,30 @@ def test_presenter_streams_events_without_color_when_not_tty(tmp_path):
 def test_runner_reports_missing_claude_cli(tmp_path, monkeypatch, capsys):
     runner = load_demo_runner()
     monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
-    code = runner.main([])
+    code = runner.main(["--engine", "claude"])
     assert code == 2
     assert "Claude Code CLI" in capsys.readouterr().out
+
+
+def test_runner_reports_missing_codex_cli(monkeypatch, capsys):
+    runner = load_demo_runner()
+    monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
+    code = runner.main(["--engine", "codex"])
+    assert code == 2
+    assert "Codex CLI" in capsys.readouterr().out
+
+
+def test_runner_hybrid_preflight_accepts_codex_without_claude(monkeypatch):
+    runner = load_demo_runner()
+    monkeypatch.setattr(
+        runner.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    assert runner._preflight_engine(
+        "hybrid", stream=types.SimpleNamespace(write=lambda _text: None)
+    )
 
 
 def test_cli_demo_forwards_flags_to_runner(monkeypatch):
@@ -506,13 +565,15 @@ def test_cli_demo_forwards_flags_to_runner(monkeypatch):
 
     monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
-    args = _demo_namespace(keep=True, yes=True, timeout=45)
+    args = _demo_namespace(keep=True, yes=True, timeout=45, engine="opencode")
     assert cli.cmd_demo(args) == 0
     forwarded, parent_timeout = calls[0]
-    assert forwarded[-1] == "45"
     assert "--keep" in forwarded
     assert "--yes" in forwarded
     assert "--timeout" in forwarded
+    timeout_index = forwarded.index("--timeout")
+    assert forwarded[timeout_index : timeout_index + 2] == ["--timeout", "45"]
+    assert forwarded[-2:] == ["--engine", "opencode"]
     assert str(ROOT / "bin/alfred-demo.py") in forwarded
     assert parent_timeout == cli._DELEGATED_COMMAND_TIMEOUT_S
 
@@ -579,7 +640,7 @@ class _CompletedStub:
     returncode = 0
 
 
-def _demo_namespace(*, keep: bool, yes: bool, timeout: int):
+def _demo_namespace(*, keep: bool, yes: bool, timeout: int, engine: str = "hybrid"):
     from types import SimpleNamespace
 
-    return SimpleNamespace(keep=keep, yes=yes, timeout=timeout)
+    return SimpleNamespace(keep=keep, yes=yes, timeout=timeout, engine=engine)

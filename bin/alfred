@@ -96,8 +96,8 @@ Subcommands today:
   alfred demo                 Watch the whole loop (plan, approve, build,
                               review that catches a planted bug, fix, ship)
                               on a throwaway sample repo in about a minute.
-                              Needs only an authenticated `claude` CLI: no
-                              GitHub, no Slack, no tokens.
+                              Uses Claude Code, Codex, OpenCode, or the default
+                              hybrid route. No GitHub or Slack is required.
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
@@ -3249,6 +3249,7 @@ def cmd_demo(args: argparse.Namespace) -> int:
         forwarded.append("--yes")
     if args.timeout is not None:
         forwarded.extend(["--timeout", str(args.timeout)])
+    forwarded.extend(["--engine", args.engine])
     step_timeout = args.timeout if args.timeout is not None else 90
     parent_timeout = (
         max(
@@ -4716,7 +4717,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
 
     p_demo = sub.add_parser(
         "demo",
-        help="watch the team plan, build, catch a bug, and ship in a minute (needs claude)",
+        help="watch the team plan, build, catch a bug, and ship with a supported engine",
     )
     p_demo.add_argument(
         "--keep", action="store_true", help="keep the throwaway demo repo and print its path"
@@ -4725,6 +4726,12 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         "--yes", action="store_true", help="auto-approve the plan gate without waiting for Enter"
     )
     p_demo.add_argument("--timeout", type=int, help="per-step engine wall-clock ceiling in seconds")
+    p_demo.add_argument(
+        "--engine",
+        choices=("claude", "codex", "opencode", "hybrid"),
+        default="hybrid",
+        help="engine route for all demo steps (default hybrid)",
+    )
     p_demo.set_defaults(func=cmd_demo)
 
     p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")

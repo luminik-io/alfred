@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """``alfred demo`` - the run-and-watch.
 
-Watch the whole Alfred loop on a throwaway repo in one short run, with zero
-configuration beyond an authenticated ``claude`` CLI:
+Watch the whole Alfred loop on a throwaway repo in one short run, using the
+same Claude Code, Codex, OpenCode, or hybrid engine route as the fleet:
 
     plan  ->  approve  ->  build  ->  review (catches a planted bug)  ->  fix  ->  ship
 
-No GitHub, no Slack, no tokens. The demo copies the bundled ``examples/demo-repo``
-sample project (the ``textkit`` string library) into a temp dir, makes it a real
-git repo, and runs a compressed pipeline of REAL ``claude`` calls against it. It
-streams progress to the terminal, holds one operator approval gate you press
-Enter on, and ends with a PR-style summary and the measured run time.
+No GitHub or Slack connection is required. The demo copies the bundled
+``examples/demo-repo`` sample project (the ``textkit`` string library) into a
+temp dir, makes it a real git repo, and runs a compressed pipeline of real
+engine calls against it. It streams progress to the terminal, holds one
+operator approval gate you press Enter on, and ends with a PR-style summary and
+the measured run time.
 
-It is honest by construction: if the ``claude`` CLI is missing it prints an
-install pointer and exits; if an engine call fails mid-run it stops and says so.
-It never prints a fake "shipped".
+If the selected engine CLI is missing, the demo prints an install pointer and
+exits. If an engine call fails mid-run, it stops. It prints "shipped" only after
+the local commit and verification pass.
 
 The heavy orchestration lives in ``lib/demo`` so it is unit-tested with a stubbed
 engine; this file is the thin runner that wires the real engine and the terminal
@@ -82,47 +83,69 @@ _INSTALL_POINTER = (
 )
 
 _STEP_TURNS = {"plan": 6, "review": 14, "build": 25, "fix": 20}
+_WRITE_STEPS = frozenset({"build", "fix"})
+_STEP_AGENTS = {
+    "plan": "drake",
+    "build": "lucius",
+    "review": "ras-al-ghul",
+    "fix": "lucius",
+}
+_ENGINE_BINARIES = {
+    "claude": ("Claude Code CLI", "CLAUDE_BIN", "claude"),
+    "codex": ("Codex CLI", "CODEX_BIN", "codex"),
+    "opencode": ("OpenCode CLI", "OPENCODE_BIN", "opencode"),
+}
 
 
-def _claude_bin() -> str:
-    """Resolve the Claude CLI binary name, honoring CLAUDE_BIN."""
-    return os.environ.get("CLAUDE_BIN", "claude")
+def _engine_binary(engine: str) -> str:
+    """Resolve one engine binary name, honoring its configured override."""
+    _label, env_name, default = _ENGINE_BINARIES[engine]
+    return os.environ.get(env_name, default)
 
 
-def _preflight_claude(stream) -> bool:
-    """Return True when the ``claude`` CLI is on PATH, else print a pointer."""
-    if shutil.which(_claude_bin()):
+def _preflight_engine(engine_mode: str, stream) -> bool:
+    """Return True when the selected route has at least one installed CLI."""
+    candidates = ("claude", "codex") if engine_mode == "hybrid" else (engine_mode,)
+    if any(shutil.which(_engine_binary(engine)) for engine in candidates):
         return True
+    labels = " or ".join(_ENGINE_BINARIES[engine][0] for engine in candidates)
     stream.write(
-        "\nalfred demo needs the Claude Code CLI, and it is not on your PATH.\n\n"
-        "Install it and authenticate once:\n"
-        "  1. Install Claude Code: https://docs.claude.com/en/docs/claude-code\n"
-        "  2. Run `claude` once and sign in with your Claude subscription.\n\n"
-        "Then re-run `alfred demo`. No API key or token is required.\n"
+        f"\nalfred demo needs {labels} for the selected {engine_mode} route, "
+        "and no matching CLI is on PATH.\n\n"
+        "Install and authenticate one supported engine, then re-run the demo.\n"
+        "See docs/ENGINE_ROUTING.md for the tested CLI contracts.\n"
     )
     return False
 
 
-def _build_real_engine(*, verbose: bool):
-    """Adapt the fleet's ``claude_invoke`` into the demo Engine protocol."""
+def _build_real_engine(*, verbose: bool, engine_mode: str):
+    """Adapt the fleet engine facade into the demo Engine protocol."""
     # Imported lazily so `--help` and the missing-CLI path stay light.
-    from agent_runner import claude_invoke
+    from agent_runner import invoke_agent_engine
 
-    # Keep each step snappy: the read-only reasoning steps need only a couple
-    # of turns; the code-editing steps a handful. This caps a step that would
-    # otherwise wander, which is the main tail-latency risk in the run.
+    # Limit each step. Read-only steps need fewer turns than editing steps.
     def engine(call: EngineCall) -> EngineOutcome:
-        result = claude_invoke(
+        allow_writes = call.step in _WRITE_STEPS
+        result, engine_used = invoke_agent_engine(
             call.prompt,
+            engine=engine_mode,
+            agent=_STEP_AGENTS[call.step],
+            firing_id=f"demo-{call.workdir.parent.name}-{call.step}",
             workdir=call.workdir,
-            allowed_tools=call.allowed_tools,
+            claude_allowed_tools=call.allowed_tools,
             timeout=call.timeout,
-            model=call.model,
-            max_turns=_STEP_TURNS.get(call.step),
+            claude_model=call.model,
+            claude_max_turns=_STEP_TURNS.get(call.step),
+            codex_sandbox="workspace-write" if allow_writes else "read-only",
+            codex_approval_policy="never",
+            opencode_allow_writes=allow_writes,
+            hybrid_fallback_on_provider_failure=True,
         )
         text = (result.result_text or "").strip()
-        if verbose and result.error_message:
-            sys.stderr.write(f"[demo:{call.step}] engine note: {result.error_message}\n")
+        if verbose:
+            sys.stderr.write(f"[demo:{call.step}] engine={engine_used}\n")
+            if result.error_message:
+                sys.stderr.write(f"[demo:{call.step}] engine note: {result.error_message}\n")
         return EngineOutcome(
             success=bool(result.success and text),
             text=text,
@@ -154,6 +177,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="auto-approve the plan gate without waiting for Enter (for scripted runs)",
     )
+    parser.add_argument(
+        "--engine",
+        choices=("claude", "codex", "opencode", "hybrid"),
+        default="hybrid",
+        help="engine route for all demo steps (default hybrid)",
+    )
     return parser
 
 
@@ -161,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     stream = sys.stdout
 
-    if not _preflight_claude(stream):
+    if not _preflight_engine(args.engine, stream):
         return 2
 
     presenter = Presenter.for_stream(stream)
@@ -176,7 +205,10 @@ def main(argv: list[str] | None = None) -> int:
         shutil.rmtree(tmp_root, ignore_errors=True)
         return 1
 
-    engine = _build_real_engine(verbose=bool(os.environ.get("ALFRED_DEMO_VERBOSE")))
+    engine = _build_real_engine(
+        verbose=bool(os.environ.get("ALFRED_DEMO_VERBOSE")),
+        engine_mode=args.engine,
+    )
 
     exit_code = 0
     try:
@@ -190,7 +222,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         stream.write("\n" + _INSTALL_POINTER + "\n")
         if not result.bug_caught:
-            # Honest note: the review step did not flag the planted bug this run.
+            # The review step did not flag the planted bug on this run.
             stream.write(
                 "\nNote: the review pass did not flag the planted bug this run. "
                 "The loop still shipped a reviewed change; re-run to see the catch.\n"
@@ -200,8 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         exit_code = 0
     except DemoEngineError as exc:
         stream.write(
-            f"\nalfred demo stopped honestly at the {exc.step} step: {exc.message}\n"
-            "No fake success. Check `claude` is authenticated and try again.\n"
+            f"\nalfred demo stopped at the {exc.step} step: {exc.message}\n"
+            f"The demo did not ship. Check the selected {args.engine} route and try again.\n"
         )
         exit_code = 1
     finally:

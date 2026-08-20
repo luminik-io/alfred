@@ -6,8 +6,9 @@ For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTR
 
 ## Try the demo first
 
-Before you install against your own repos, see the whole loop in one run. All
-you need is an authenticated `claude` CLI (no GitHub, no Slack, no tokens):
+Before you install against your own repos, see the whole loop in one run. You
+need one authenticated Claude Code, Codex, or OpenCode CLI. The default hybrid
+route tries Claude first and then Codex. GitHub and Slack are not required.
 
 ```sh
 git clone https://github.com/luminik-io/alfred.git ~/code/alfred
