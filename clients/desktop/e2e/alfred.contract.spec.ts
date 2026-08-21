@@ -87,6 +87,22 @@ test("compact Work windows open the inspector as a sheet", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "Work item inspector" })).toHaveCount(0);
 });
 
+test("intermediate Work windows keep the inspector in a sheet", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 1439, height: 900 });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Work", exact: true }).click();
+  await page
+    .getByRole("button", { name: /Record engine settings for every run/ })
+    .click();
+
+  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Work item inspector" }),
+  ).toHaveCount(0);
+});
+
 test("standard desktop Work windows dock the inspector beside readable lanes", async ({ page }) => {
   await installAlfredApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });

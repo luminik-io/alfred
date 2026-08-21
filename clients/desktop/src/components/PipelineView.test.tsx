@@ -894,10 +894,10 @@ describe("PipelineView", () => {
     }
   });
 
-  it("docks the inspector at the standard Desktop capture width", () => {
+  it("docks the inspector only when standard-width lanes stay readable", () => {
     renderPipeline();
 
-    expect(viewport.query).toBe("(min-width: 1360px)");
+    expect(viewport.query).toBe("(min-width: 1440px)");
   });
 
   it("routes an existing issue from the Work assignment strip", async () => {

@@ -89,7 +89,7 @@ export function PipelineView({
   const [showLowSignal, setShowLowSignal] = useState(false);
   const inspectorCloseRef = useRef<HTMLButtonElement>(null);
   const inspectorOpenerRef = useRef<HTMLElement>(null);
-  const dockInspector = useMediaQuery("(min-width: 1360px)");
+  const dockInspector = useMediaQuery("(min-width: 1440px)");
 
   const openInspector = (next: Selection) => {
     if (document.activeElement instanceof HTMLElement) {
