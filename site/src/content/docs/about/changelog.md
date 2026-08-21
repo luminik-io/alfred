@@ -16,8 +16,8 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-records the permanent Desktop Settings tool manager and complete OpenCode auth
-status and probe commands.
+lists the permanent Desktop Settings tool manager and the new OpenCode status
+and probe commands.
 
 ## 0.8.0 (2026-08-17)
 
