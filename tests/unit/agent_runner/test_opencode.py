@@ -340,6 +340,31 @@ def test_write_environment_allows_worktree_tools_but_denies_release_actions(
     assert permissions["external_directory"] == "deny"
 
 
+def test_read_only_shell_environment_denies_edits_and_allows_only_named_probes(
+    fresh_agent_runner, tmp_path: Path
+):
+    from agent_runner.opencode import opencode_environment
+
+    probe = "python3 -c 'import textkit; print(textkit.word_count(\"a b\"))'"
+    environment = opencode_environment(
+        {}, config_dir=tmp_path, allow_writes=False, shell_commands=(probe,)
+    )
+    permissions = json.loads(environment["OPENCODE_CONFIG_CONTENT"])["permission"]
+
+    assert permissions["edit"] == "deny"
+    assert permissions["bash"] == {"*": "deny", probe: "allow"}
+
+
+@pytest.mark.parametrize("command", ("*", "python3 *", "python3\nwhoami", ""))
+def test_read_only_shell_environment_rejects_non_exact_patterns(
+    fresh_agent_runner, tmp_path: Path, command: str
+):
+    from agent_runner.opencode import opencode_environment
+
+    with pytest.raises(ValueError, match="exact shell command"):
+        opencode_environment({}, config_dir=tmp_path, allow_writes=False, shell_commands=(command,))
+
+
 def test_parser_returns_only_completed_text_and_usage(fresh_agent_runner):
     from agent_runner.opencode import parse_opencode_events
 
@@ -828,6 +853,7 @@ def test_engine_router_dispatches_opencode_with_explicit_write_boundary(
         timeout=30,
         opencode_model="openai/gpt-5",
         opencode_allow_writes=True,
+        opencode_shell_commands=("python3 -c 'print(1)'",),
         opencode_fn=fake_opencode,
     )
 
@@ -835,8 +861,10 @@ def test_engine_router_dispatches_opencode_with_explicit_write_boundary(
     assert engine_used == "opencode"
     assert captured["model"] == "openai/gpt-5"
     assert captured["allow_writes"] is True
+    assert captured["shell_commands"] == ("python3 -c 'print(1)'",)
     assert captured["timeout"] == 30
     assert result.raw["run_configuration"]["configured_engine"] == "opencode"
     assert result.raw["run_configuration"]["engine"] == "opencode"
     assert result.raw["run_configuration"]["model_source"] == "caller"
     assert result.raw["run_configuration"]["write_access"] is True
+    assert result.raw["run_configuration"]["shell_access"] is True

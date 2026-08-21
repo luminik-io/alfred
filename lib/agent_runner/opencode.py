@@ -59,8 +59,18 @@ _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 def _permission_policy(
     *,
     allow_writes: bool,
+    shell_commands: tuple[str, ...] = (),
     mcp_tools: Mapping[str, tuple[str, ...]] | None = None,
 ) -> dict[str, Any]:
+    for command in shell_commands:
+        if (
+            not command
+            or command != command.strip()
+            or "*" in command
+            or "\n" in command
+            or "\r" in command
+        ):
+            raise ValueError("OpenCode probe permissions require one exact shell command per entry")
     permissions: dict[str, Any] = {
         "*": "allow",
         "external_directory": "deny",
@@ -71,8 +81,8 @@ def _permission_policy(
         "skill": "deny",
         "mcp_*": "deny",
     }
+    permissions["edit"] = "allow" if allow_writes else "deny"
     if allow_writes:
-        permissions["edit"] = "allow"
         permissions["bash"] = {
             "*": "allow",
             "git push*": "deny",
@@ -80,8 +90,10 @@ def _permission_policy(
             "git checkout main*": "deny",
             "git switch main*": "deny",
         }
+    elif shell_commands:
+        permissions["bash"] = {"*": "deny"}
+        permissions["bash"].update(dict.fromkeys(shell_commands, "allow"))
     else:
-        permissions["edit"] = "deny"
         permissions["bash"] = "deny"
     for server, tools in (mcp_tools or {}).items():
         permissions[f"{server}_*"] = "deny"
@@ -122,6 +134,7 @@ def opencode_environment(
     *,
     config_dir: Path,
     allow_writes: bool,
+    shell_commands: tuple[str, ...] = (),
     workdir: Path | None = None,
     mcp_servers: Mapping[str, Mapping[str, Any]] | None = None,
     mcp_tools: Mapping[str, tuple[str, ...]] | None = None,
@@ -140,6 +153,7 @@ def opencode_environment(
     }
     permissions = _permission_policy(
         allow_writes=allow_writes,
+        shell_commands=shell_commands,
         mcp_tools=allowed_mcp_tools,
     )
     config = {

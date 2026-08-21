@@ -57,6 +57,15 @@ DEMO_STEPS: tuple[str, ...] = (
 REVIEW_BLOCK_SENTINEL = "[DEMO-REVIEW-CHANGES-REQUESTED]"
 REVIEW_PASS_SENTINEL = "[DEMO-REVIEW-APPROVED]"
 _REVIEW_PYTHON = shlex.quote(sys.executable)
+_REVIEW_COMMANDS = (
+    f"{_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.word_count(\"a  b\")))'",
+    f"{_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.word_count(\"  a b  \")))'",
+    f"{_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.truncate(\"abcdef\", 4)))'",
+    f"{_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.truncate(\"abc\", 4)))'",
+    f"{_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.titlecase(\"a  b\")))'",
+    f"{_REVIEW_PYTHON} -c 'import textkit; print(repr(textkit.titlecase(\"  a b  \")))'",
+)
+_REVIEW_COMMAND_BLOCK = "\n".join(f"   {command}" for command in _REVIEW_COMMANDS)
 
 
 class DemoAborted(RuntimeError):
@@ -93,6 +102,9 @@ class EngineCall:
     # since the four steps are inherently sequential. ``None`` means the
     # engine's default. Test stubs ignore it.
     model: str | None = None
+    # OpenCode review receives only these exact shell commands. Other engines
+    # use their own read-only review sandbox or tool contract.
+    shell_commands: tuple[str, ...] = ()
 
 
 @dataclass
@@ -168,6 +180,35 @@ def _git_capture(args: list[str], *, cwd: Path) -> str:
     return (proc.stdout or "").strip()
 
 
+def _review_worktree_state(workdir: Path) -> bytes:
+    """Capture tracked changes and untracked files before a review call."""
+    diff = subprocess.run(
+        ["git", "diff", "--binary", "--no-ext-diff", "HEAD", "--"],
+        cwd=str(workdir),
+        capture_output=True,
+        timeout=30,
+    )
+    untracked = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        cwd=str(workdir),
+        capture_output=True,
+        timeout=30,
+    )
+    if diff.returncode != 0 or untracked.returncode != 0:
+        raise DemoEngineError("review", "could not capture the worktree before review")
+    state = bytearray(diff.stdout)
+    for raw_name in sorted(name for name in untracked.stdout.split(b"\0") if name):
+        path = workdir / raw_name.decode("utf-8", errors="surrogateescape")
+        state.extend(b"\0")
+        state.extend(raw_name)
+        state.extend(b"\0")
+        if path.is_symlink():
+            state.extend(path.readlink().as_posix().encode())
+        elif path.is_file():
+            state.extend(path.read_bytes())
+    return bytes(state)
+
+
 # ---------------------------------------------------------------------------
 # Prompts
 #
@@ -216,11 +257,10 @@ what you actually run.
 Work through this method in order, do not skip a step:
 1. Read `textkit.py`. For every existing function, write down the exact
    contract its docstring promises.
-2. For EACH function, choose concrete probe inputs that exercise that contract,
-   and deliberately include whitespace edge cases: inputs with a run of two or
-   more consecutive spaces, and inputs with leading or trailing whitespace.
-   Actually RUN each probe with `{_REVIEW_PYTHON} -c '...'` and read the real output.
-   Do not predict the output in your head; execute it.
+2. Run each command below exactly as written and read the real output. The
+   commands cover every existing function, repeated spaces, and leading and
+   trailing spaces. Do not change or combine the commands.
+{_REVIEW_COMMAND_BLOCK}
 3. Compare each observed output against the exact wording of that function's
    docstring. Any output that contradicts the documented contract is a bug,
    even if the output looks reasonable on its own.
@@ -351,6 +391,7 @@ def run_demo(
 
     # -- review ------------------------------------------------------------
     _emit(events, "review", "start", "Ra's al Ghul reviews the change, adversarially.")
+    review_state = _review_worktree_state(workdir)
     review_text = _invoke(
         engine,
         EngineCall(
@@ -360,9 +401,14 @@ def run_demo(
             workdir=workdir,
             timeout=timeout,
             model=models.get("review"),
+            shell_commands=_REVIEW_COMMANDS,
         ),
         events,
     )
+    if _review_worktree_state(workdir) != review_state:
+        raise DemoEngineError(
+            "review", "the review step changed the worktree; review must be read-only"
+        )
     bug_caught = REVIEW_BLOCK_SENTINEL in review_text
     approved = REVIEW_PASS_SENTINEL in review_text
     if not bug_caught and not approved:

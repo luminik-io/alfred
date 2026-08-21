@@ -1574,6 +1574,7 @@ def opencode_invoke(
     timeout: int = 1200,
     model: str | None = None,
     allow_writes: bool = False,
+    shell_commands: tuple[str, ...] = (),
 ) -> ClaudeResult:
     """Run one OpenCode prompt through its bounded NDJSON CLI contract."""
 
@@ -1610,6 +1611,7 @@ def opencode_invoke(
                 os.environ,
                 config_dir=Path(directory),
                 allow_writes=allow_writes,
+                shell_commands=shell_commands,
                 workdir=workdir,
                 mcp_servers=mcp_servers,
                 mcp_tools=mcp_tools,
@@ -1644,6 +1646,7 @@ def opencode_invoke(
                     os.environ,
                     config_dir=Path(directory),
                     allow_writes=allow_writes,
+                    shell_commands=shell_commands,
                     workdir=workdir,
                     mcp_servers=ready_servers,
                     mcp_tools=ready_tools,
@@ -2094,6 +2097,7 @@ def invoke_agent_engine(
     opencode_timeout: int | None = None,
     opencode_model: str | None = None,
     opencode_allow_writes: bool | None = None,
+    opencode_shell_commands: tuple[str, ...] = (),
     claude_fn: Callable[..., ClaudeResult] | None = None,
     codex_fn: Callable[..., ClaudeResult] | None = None,
     opencode_fn: Callable[..., ClaudeResult] | None = None,
@@ -2122,6 +2126,8 @@ def invoke_agent_engine(
     When a provider-specific model argument is omitted, Alfred resolves that
     provider's per-agent model configuration. An explicit caller argument
     always wins. With no configured model, the provider CLI keeps its default.
+    ``opencode_shell_commands`` adds exact command matches to an otherwise
+    shell-denied OpenCode firing. It does not enable edits or other commands.
 
     ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
     It is an OPTIONAL override: when omitted (as every production caller does
@@ -2271,6 +2277,7 @@ def invoke_agent_engine(
                 timeout=opencode_timeout or timeout,
                 model=opencode_model,
                 allow_writes=opencode_allow_writes,
+                shell_commands=opencode_shell_commands,
             )
 
         def _resilient_invoke(engine_name: str, invoke: Callable[[], ClaudeResult]) -> ClaudeResult:
@@ -2446,6 +2453,8 @@ def invoke_agent_engine(
             "memory_repo": memory_repo,
             "memory_limit": memory_limit,
         }
+        if actual_engine == "opencode":
+            result.raw["run_configuration"]["shell_access"] = bool(opencode_shell_commands)
         if memory_provider is not None and memory_repo:
             result_text = result.result_text or ""
             reflections = parse_memory_reflections(result_text)

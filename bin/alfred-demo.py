@@ -85,10 +85,10 @@ _INSTALL_POINTER = (
 _STEP_TURNS = {"plan": 6, "review": 14, "build": 25, "fix": 20}
 _WRITE_STEPS = frozenset({"build", "fix"})
 _STEP_AGENTS = {
-    "plan": "drake",
-    "build": "lucius",
-    "review": "ras-al-ghul",
-    "fix": "lucius",
+    "plan": "planner",
+    "build": "senior-dev",
+    "review": "reviewer",
+    "fix": "senior-dev",
 }
 _ENGINE_BINARIES = {
     "claude": ("Claude Code CLI", "CLAUDE_BIN", "claude"),
@@ -139,6 +139,7 @@ def _build_real_engine(*, verbose: bool, engine_mode: str):
             codex_sandbox="workspace-write" if allow_writes else "read-only",
             codex_approval_policy="never",
             opencode_allow_writes=allow_writes,
+            opencode_shell_commands=call.shell_commands,
             hybrid_fallback_on_provider_failure=True,
         )
         text = (result.result_text or "").strip()

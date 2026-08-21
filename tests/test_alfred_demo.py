@@ -80,12 +80,16 @@ def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path)
             allowed_tools="Read,Bash",
             workdir=tmp_path,
             timeout=30,
+            shell_commands=("python3 -c 'print(1)'",),
         )
     )
 
     assert seen["engine"] == "opencode"
+    assert seen["agent"] == "reviewer"
     assert seen["claude_max_turns"] == 14
     assert seen["opencode_allow_writes"] is False
+    assert seen["opencode_shell_commands"]
+    assert all(" -c " in command for command in seen["opencode_shell_commands"])
     assert seen["codex_sandbox"] == "read-only"
     assert seen["firing_id"] == f"demo-{tmp_path.parent.name}-review"
 
@@ -116,6 +120,7 @@ def test_real_demo_build_uses_bounded_write_controls(monkeypatch, tmp_path):
     )
 
     assert seen["engine"] == "codex"
+    assert seen["agent"] == "senior-dev"
     assert seen["opencode_allow_writes"] is True
     assert seen["codex_sandbox"] == "workspace-write"
     assert seen["codex_approval_policy"] == "never"
@@ -309,6 +314,8 @@ def test_full_loop_catches_bug_and_ships(tmp_path):
         assert step in steps_seen, f"missing step {step}"
     # The fix step must have actually run when the bug was caught.
     assert any(c.step == "fix" for c in engine.calls)
+    review_call = next(call for call in engine.calls if call.step == "review")
+    assert review_call.shell_commands
     # The ship summary is built from a real diff, not fabricated.
     assert "files changed" in result.diff_summary
     assert "textkit.py" in result.diff_summary
@@ -394,6 +401,24 @@ def test_review_without_verdict_token_is_a_failure(tmp_path):
     assert "verdict" in exc_info.value.message
     # The run stopped at review: no fix call, no ship.
     assert [c.step for c in engine.calls] == ["plan", "build", "review"]
+
+
+def test_review_step_cannot_change_the_worktree(tmp_path):
+    class MutatingReviewer(ScriptedEngine):
+        def __call__(self, call: EngineCall) -> EngineOutcome:
+            result = super().__call__(call)
+            if call.step == "review":
+                target = call.workdir / "textkit.py"
+                target.write_text(target.read_text() + "\n# review edit\n")
+            return result
+
+    engine = MutatingReviewer(catch_bug=False)
+
+    with pytest.raises(DemoEngineError) as exc_info:
+        _run(engine, tmp_path)
+
+    assert exc_info.value.step == "review"
+    assert "read-only" in exc_info.value.message
 
 
 def test_ship_fails_when_sample_tests_fail(tmp_path):
