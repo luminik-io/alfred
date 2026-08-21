@@ -157,7 +157,7 @@ test("narrow Settings keeps every section label readable", async ({ page }) => {
   const tablist = page.getByRole("tablist", { name: "Settings sections" });
   await expect(tablist).toBeVisible();
   const tabs = tablist.getByRole("tab");
-  await expect(tabs).toHaveCount(4);
+  await expect(tabs).toHaveCount(5);
 
   const metrics = await tabs.evaluateAll((items) =>
     items.map((item) => {
@@ -167,12 +167,14 @@ test("narrow Settings keeps every section label readable", async ({ page }) => {
         labelWidth: label?.clientWidth ?? 0,
         labelScrollWidth: label?.scrollWidth ?? 0,
         tabHeight: item.getBoundingClientRect().height,
+        tabWidth: item.getBoundingClientRect().width,
       };
     }),
   );
 
   expect(metrics.map(({ label }) => label)).toEqual([
     "Runtime",
+    "Tools",
     "Appearance",
     "Collaborators",
     "Diagnostics",
@@ -181,6 +183,11 @@ test("narrow Settings keeps every section label readable", async ({ page }) => {
     true,
   );
   expect(metrics.every(({ tabHeight }) => tabHeight >= 38)).toBe(true);
+  expect(metrics[metrics.length - 1]?.tabWidth).toBeGreaterThanOrEqual(300);
+
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await expect(page.getByRole("region", { name: "Included" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Optional local tools" })).toBeVisible();
 });
 
 test("primary navigation loads code, models, settings, and returns to Inbox", async ({ page }) => {

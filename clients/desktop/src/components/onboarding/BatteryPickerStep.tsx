@@ -206,8 +206,8 @@ export function BatteryPickerStep({
       <Card size="sm" className="rounded-lg border-border/70 bg-muted/25 shadow-none">
         <CardContent className="px-3 py-2 text-sm text-muted-foreground">
           Alfred includes memory, compact context, and code navigation. Optional local tools run
-          on this computer. External services need a separate process that you operate. Change
-          these later with <code>alfred batteries</code>.
+          on this computer. External services need a separate process that you operate. Return to
+          Desktop Settings or run <code>alfred batteries</code> to change them later.
         </CardContent>
       </Card>
 

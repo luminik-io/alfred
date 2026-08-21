@@ -1,5 +1,7 @@
 import { expect, type Page, type Request, type Route } from "playwright/test";
 
+import type { SetupBatteryManifest } from "../src/types";
+
 export const CONTRACT_TOKEN = "contract-token";
 
 type ApiMode = "empty" | "onboarding" | "ready" | "workflow";
@@ -198,7 +200,7 @@ const emptyBoard = {
   counts: { queued: 0, in_progress: 0, shipped: 0, awaiting_approval: 0 },
 };
 
-const sampleBatteries = {
+const sampleBatteries: SetupBatteryManifest = {
   version: 1,
   summary: { included: 2, enabled: 1, available: 0, not_installed: 1, total: 4 },
   batteries: [
@@ -210,6 +212,7 @@ const sampleBatteries = {
       how_it_helps: "Keeps useful lessons available for later runs.",
       builtin: true,
       default_on: true,
+      setup_group: "included",
       status: "included",
       configured: true,
       enabled: true,
@@ -221,6 +224,14 @@ const sampleBatteries = {
       pip_extra: "",
       env_keys: [],
       docs: "docs/MEMORY_PROVIDERS.md",
+      version: "bundled with Alfred",
+      license: "MIT",
+      source_url: "https://github.com/luminik-io/alfred",
+      integrity: "installed with the signed Alfred package",
+      install_command: "included with Alfred",
+      check_command: "alfred batteries list --json",
+      disable_command: "not disableable",
+      remove_command: "removed with Alfred",
     },
     {
       id: "tool-compactor",
@@ -230,6 +241,7 @@ const sampleBatteries = {
       how_it_helps: "Leaves more context for the work itself.",
       builtin: true,
       default_on: true,
+      setup_group: "included",
       status: "included",
       configured: true,
       enabled: true,
@@ -241,6 +253,14 @@ const sampleBatteries = {
       pip_extra: "",
       env_keys: [],
       docs: "docs/COMPRESSION.md",
+      version: "bundled with Alfred",
+      license: "MIT",
+      source_url: "https://github.com/luminik-io/alfred",
+      integrity: "installed with the signed Alfred package",
+      install_command: "included with Alfred",
+      check_command: "alfred batteries list --json",
+      disable_command: "not disableable",
+      remove_command: "removed with Alfred",
     },
     {
       id: "code-memory-mcp",
@@ -250,6 +270,7 @@ const sampleBatteries = {
       how_it_helps: "Helps agents find the right code before they edit it.",
       builtin: false,
       default_on: true,
+      setup_group: "optional-local",
       status: "enabled",
       configured: true,
       enabled: true,
@@ -261,15 +282,24 @@ const sampleBatteries = {
       pip_extra: "",
       env_keys: ["ALFRED_CODE_MEMORY_MCP"],
       docs: "docs/CODE_MEMORY.md",
+      version: "v0.8.1",
+      license: "MIT",
+      source_url: "https://github.com/DeusData/codebase-memory-mcp",
+      integrity: "release checksums.txt verified with SHA-256",
+      install_command: "alfred batteries install code-memory-mcp --yes",
+      check_command: "alfred code-memory doctor",
+      disable_command: "alfred batteries disable code-memory-mcp --yes",
+      remove_command: "alfred batteries remove code-memory-mcp --yes",
     },
     {
-      id: "pgvector-memory",
-      name: "Postgres memory",
+      id: "pgvector",
+      name: "Postgres + pgvector",
       category: "memory",
       what: "An optional Postgres-backed semantic lesson store.",
       how_it_helps: "Shares memory across a larger installation.",
       builtin: false,
       default_on: false,
+      setup_group: "external-service",
       status: "not_installed",
       configured: false,
       enabled: false,
@@ -279,8 +309,16 @@ const sampleBatteries = {
       install_kind: "daemon",
       install_hint: "Run Postgres with pgvector, then set the connection URL.",
       pip_extra: "pgvector",
-      env_keys: ["ALFRED_MEMORY_PGVECTOR_URL"],
+      env_keys: ["ALFRED_MEMORY_PG_DSN"],
       docs: "docs/MEMORY_PROVIDERS.md",
+      version: "psycopg>=3.1; pgvector>=0.2; Postgres operator-managed",
+      license: "psycopg LGPL-3.0; pgvector-python MIT; pgvector PostgreSQL",
+      source_url: "https://github.com/pgvector/pgvector",
+      integrity: "Python package index artifact hashes; database is operator-managed",
+      install_command: "follow docs/MEMORY_PROVIDERS.md; Alfred does not install databases",
+      check_command: "alfred batteries list --json",
+      disable_command: "alfred batteries disable pgvector --yes",
+      remove_command: "remove the operator-managed database after disabling it",
     },
   ],
 };

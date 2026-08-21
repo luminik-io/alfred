@@ -447,6 +447,10 @@
   .settings-view .alfred-tabs-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .settings-view .alfred-tabs-list [role="tab"]:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
 }
 
 .status-pill {
