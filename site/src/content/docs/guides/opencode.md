@@ -12,12 +12,14 @@ route.
 ```sh
 brew install anomalyco/tap/opencode
 opencode auth login
-opencode auth list
-alfred engine doctor
+alfred opencode status
+alfred opencode probe
 ```
 
 Alfred requires a provider stored by `opencode auth login`. If the scheduler
 cannot find the binary, set `OPENCODE_BIN` in `$ALFRED_HOME/.env`.
+`alfred auth probe` checks each distinct model selected by an enabled OpenCode
+agent.
 
 ## Select the engine
 
@@ -37,7 +39,8 @@ temporary config, disabled external plugins, disabled automatic sharing, and
 newline-delimited JSON events. Alfred does not pass `--auto`, so an unexpected
 permission request is rejected.
 
-Project subagents, skills, and MCP tools are denied for the firing.
+User and project subagents, skills, and MCP tools are denied for the firing.
+Alfred can attach its ready read-only memory servers.
 
 Read-only roles deny edits and shell commands. Approved write roles can edit
 and run shell commands in the worktree, while direct push, merge, and

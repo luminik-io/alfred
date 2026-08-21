@@ -11,6 +11,7 @@ import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -1036,6 +1037,7 @@ def test_auth_status_uses_scheduler_profile_claude_readiness(
     monkeypatch.setattr(cli_module, "_current_claude_dir", lambda: str(selected_profile))
     monkeypatch.setattr(cli_module, "_claude_status", lambda: 0)
     monkeypatch.setattr(cli_module, "_codex_status", lambda: 0)
+    monkeypatch.setattr(cli_module, "_opencode_status", lambda: 0)
 
     def probe(_descriptor, **kwargs):
         received_environments.append(dict(kwargs["environ"]))
@@ -1046,6 +1048,134 @@ def test_auth_status_uses_scheduler_profile_claude_readiness(
     assert cli_module.cmd_auth(argparse.Namespace(auth_command="status")) == 1
     assert received_environments[0]["CLAUDE_CONFIG_DIR"] == str(selected_profile)
     assert "claude readiness: auth_required" in capsys.readouterr().out
+
+
+def test_auth_status_propagates_opencode_readiness_failure(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(cli_module, "_claude_readiness_status", lambda: 0)
+    monkeypatch.setattr(cli_module, "_codex_status", lambda: 0)
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"opencode": ("reviewer",)},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_opencode_status",
+        lambda: calls.append("opencode") or 1,
+    )
+
+    assert cli_module.cmd_auth(argparse.Namespace(auth_command="status")) == 1
+    assert calls == ["opencode"]
+
+
+def test_auth_status_reports_optional_opencode_without_failing(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(cli_module, "_claude_readiness_status", lambda: 0)
+    monkeypatch.setattr(cli_module, "_codex_status", lambda: 0)
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"hybrid": ("reviewer",)},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_opencode_status",
+        lambda: calls.append("opencode") or 1,
+    )
+
+    assert cli_module.cmd_auth(argparse.Namespace(auth_command="status")) == 0
+    assert calls == ["opencode"]
+
+
+def test_opencode_probe_uses_read_only_adapter(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    received: dict[str, object] = {}
+
+    def invoke(prompt: str, **kwargs):
+        received["prompt"] = prompt
+        received.update(kwargs)
+        return SimpleNamespace(
+            success=True,
+            result_text="OPENCODE_PROBE_OK",
+            error_message=None,
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli_module.agent_runner, "opencode_invoke", invoke)
+
+    assert cli_module._probe_opencode() == 0
+    assert received == {
+        "prompt": "Reply with exactly: OPENCODE_PROBE_OK",
+        "workdir": REPO_ROOT,
+        "agent": "opencode-probe",
+        "timeout": 90,
+        "model": None,
+        "allow_writes": False,
+    }
+
+
+def test_auth_probe_skips_unselected_opencode(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setattr(cli_module, "_probe_claude_auth", lambda: 0)
+    monkeypatch.setattr(cli_module, "_probe_codex", lambda: 0)
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"hybrid": ("reviewer",)},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_probe_opencode",
+        lambda: pytest.fail("optional OpenCode probe must not run"),
+    )
+
+    assert cli_module.cmd_auth(argparse.Namespace(auth_command="probe")) == 0
+    assert "OpenCode probe: skipped" in capsys.readouterr().out
+
+
+def test_auth_probe_checks_distinct_selected_opencode_models(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probed: list[str | None] = []
+    selected_models = {
+        "reviewer": "anthropic/claude-sonnet-4-5",
+        "senior-dev": "openai/gpt-5.4",
+        "fixer": "anthropic/claude-sonnet-4-5",
+    }
+    monkeypatch.setattr(cli_module, "_probe_claude_auth", lambda: 0)
+    monkeypatch.setattr(cli_module, "_probe_codex", lambda: 0)
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"opencode": tuple(selected_models)},
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "agent_model",
+        lambda agent, engine: selected_models[agent] if engine == "opencode" else None,
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_probe_opencode",
+        lambda *, model=None: probed.append(model) or 0,
+    )
+
+    assert cli_module.cmd_auth(argparse.Namespace(auth_command="probe")) == 0
+    assert probed == ["anthropic/claude-sonnet-4-5", "openai/gpt-5.4"]
 
 
 def test_launchctl_timeout_returns_controlled_status(cli_module, monkeypatch):

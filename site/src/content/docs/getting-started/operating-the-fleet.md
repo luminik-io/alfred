@@ -33,8 +33,9 @@ alfred agents               # configured agents, schedule, enable state, host-un
 alfred shipped              # merged PRs, issues, LOC, and config changes
 alfred shipped --period weekly
 alfred engine status        # one line per codename, resolved coding engine
-alfred auth status          # Claude + Codex auth surface check
+alfred auth status          # Claude, Codex, and OpenCode readiness
 alfred codex probe          # one tiny Codex request end-to-end
+alfred opencode probe       # one tiny read-only OpenCode request
 alfred claude status        # show which Claude account scheduled firings use
 alfred enabled-agents       # print the runner-gate list
 alfred pause <codename>     # stop scheduled firings for one agent

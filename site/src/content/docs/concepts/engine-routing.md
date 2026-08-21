@@ -42,7 +42,9 @@ alfred model set release-check opencode anthropic/claude-sonnet-4-5
 alfred engine doctor release-check
 alfred codex status                  # check the Codex CLI is reachable
 alfred codex probe                   # run one tiny non-interactive request
-alfred auth status                   # auth-surface check across both engines
+alfred opencode status               # check OpenCode's version and stored login
+alfred opencode probe                # run one tiny read-only request
+alfred auth status                   # report Claude, Codex, and OpenCode readiness
 ```
 
 Set the env-var form in `$ALFRED_HOME/.env` when you want the override to follow your shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).

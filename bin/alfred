@@ -51,7 +51,10 @@ Subcommands today:
                               model source.
   alfred codex [status|probe] Show Codex CLI availability and run a tiny
                               non-interactive probe.
-  alfred auth [status|probe]  Check Claude Code and Codex CLI auth surfaces.
+  alfred opencode [status|probe]
+                              Show OpenCode CLI availability and run a tiny
+                              read-only probe.
+  alfred auth [status|probe]  Check Claude Code, Codex, and OpenCode auth.
   alfred claude [status|primary|secondary|swap|probe]
                               Show or change the Claude account used by
                               scheduled agents.
@@ -2192,6 +2195,80 @@ def cmd_codex(args: argparse.Namespace) -> int:
     return 2
 
 
+def _opencode_status() -> int:
+    descriptor = agent_runner.DEFAULT_ENGINE_REGISTRY.descriptor("opencode")
+    readiness = agent_runner.probe_engine(
+        descriptor,
+        environ=dict(os.environ),
+        use_cache=False,
+    )
+    configured_binary = os.environ.get(descriptor.binary_env, "").strip()
+    binary = configured_binary or descriptor.default_binary
+    if not readiness.installed:
+        print(f"opencode: not found on PATH ({binary})", file=sys.stderr)
+        print(
+            "Set OPENCODE_BIN in $ALFRED_HOME/.env or install and sign in to OpenCode.",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"opencode binary: {readiness.binary}")
+    print(f"opencode version: {readiness.version or 'unavailable'}")
+    print(f"opencode readiness: {readiness.state}")
+    if not readiness.ready:
+        print(f"opencode: {readiness.detail}", file=sys.stderr)
+    print("")
+    print("Probe with: alfred opencode probe")
+    return 0 if readiness.ready else 1
+
+
+def _probe_opencode(*, model: str | None = None) -> int:
+    probe_dir = Path.cwd()
+    if not (probe_dir / ".git").exists():
+        probe_dir = _HERE.parent
+    print(f"Probing OpenCode auth in {probe_dir}")
+    print("This sends one tiny read-only OpenCode request when auth is healthy.")
+    result = agent_runner.opencode_invoke(
+        "Reply with exactly: OPENCODE_PROBE_OK",
+        workdir=probe_dir,
+        agent="opencode-probe",
+        timeout=90,
+        model=model,
+        allow_writes=False,
+    )
+    if result.success and "OPENCODE_PROBE_OK" in result.result_text:
+        print("OpenCode probe: ok")
+        return 0
+    print("OpenCode probe: failed")
+    detail = (result.error_message or result.result_text or "OpenCode returned no marker").strip()
+    if detail:
+        print(detail[:500], file=sys.stderr)
+    return 1
+
+
+def cmd_opencode(args: argparse.Namespace) -> int:
+    command = args.opencode_command
+    if command in ("status", ""):
+        return _opencode_status()
+    if command == "probe":
+        return _probe_opencode()
+    print("Usage: alfred opencode {status|probe}", file=sys.stderr)
+    return 2
+
+
+def _opencode_is_selected() -> bool:
+    return bool(_configured_engine_selections().get("opencode"))
+
+
+def _selected_opencode_models() -> tuple[str | None, ...]:
+    models: list[str | None] = []
+    for agent in _configured_engine_selections().get("opencode", ()):
+        model = agent_runner.agent_model(agent, "opencode") or None
+        if model not in models:
+            models.append(model)
+    return tuple(models)
+
+
 def cmd_metrics(args: argparse.Namespace) -> int:
     script = _HERE / "alfred-metrics.py"
     cmd = [sys.executable, str(script)]
@@ -4043,15 +4120,34 @@ def cmd_architect_setup(args: argparse.Namespace) -> int:
 def cmd_auth(args: argparse.Namespace) -> int:
     command = args.auth_command
     if command in ("status", ""):
+        opencode_required = _opencode_is_selected()
         claude_rc = _claude_readiness_status()
         print("")
         codex_rc = _codex_status()
-        return 0 if claude_rc == 0 and codex_rc == 0 else 1
+        print("")
+        opencode_rc = _opencode_status()
+        if opencode_rc != 0 and not opencode_required:
+            print("opencode: optional until an enabled agent selects it")
+        required_ready = claude_rc == 0 and codex_rc == 0
+        if opencode_required:
+            required_ready = required_ready and opencode_rc == 0
+        return 0 if required_ready else 1
     if command == "probe":
         claude_rc = _probe_claude_auth()
         print("")
         codex_rc = _probe_codex()
-        return 0 if claude_rc == 0 and codex_rc == 0 else 1
+        print("")
+        opencode_models = _selected_opencode_models()
+        if opencode_models:
+            opencode_rc = 0
+            for model in opencode_models:
+                print(f"OpenCode model: {model or 'CLI default'}")
+                if _probe_opencode(model=model) != 0:
+                    opencode_rc = 1
+        else:
+            print("OpenCode probe: skipped; no enabled agent selects OpenCode.")
+            opencode_rc = 0
+        return 0 if claude_rc == 0 and codex_rc == 0 and opencode_rc == 0 else 1
     print("Usage: alfred auth {status|probe}", file=sys.stderr)
     return 2
 
@@ -4416,6 +4512,15 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     )
     p_codex.set_defaults(func=cmd_codex)
 
+    p_opencode = sub.add_parser("opencode", help="inspect OpenCode CLI availability/auth")
+    p_opencode.add_argument(
+        "opencode_command",
+        nargs="?",
+        default="status",
+        metavar="{status,probe}",
+    )
+    p_opencode.set_defaults(func=cmd_opencode)
+
     p_setup_token = sub.add_parser(
         "setup-token",
         help="mint a long-lived Claude OAuth token for scheduled firings",
@@ -4508,7 +4613,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     add_architect_setup_args(p_architect_setup)
     p_architect_setup.set_defaults(func=cmd_architect_setup)
 
-    p_auth = sub.add_parser("auth", help="inspect Claude Code and Codex auth surfaces")
+    p_auth = sub.add_parser("auth", help="inspect Claude Code, Codex, and OpenCode readiness")
     p_auth.add_argument(
         "auth_command",
         nargs="?",
