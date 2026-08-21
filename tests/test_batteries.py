@@ -182,6 +182,35 @@ def test_headroom_detection_accepts_importable_library(
     assert batteries._headroom_available({}) is True
 
 
+def test_graphify_override_requires_an_executable_working_mcp_entrypoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    override = tmp_path / "graphify-mcp"
+    override.write_text("not executable", encoding="utf-8")
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+
+    assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is False
+
+    override.chmod(0o755)
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+    assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is False
+
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+    assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is True
+
+
 def test_daemon_batteries_are_flagged_with_a_service() -> None:
     for bid in ("redis-ams", "pgvector"):
         battery = batteries.battery_by_id(bid)

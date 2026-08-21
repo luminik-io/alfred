@@ -685,28 +685,37 @@ def _code_memory_binary(env: Mapping[str, str]) -> bool:
 
 def _graphify_available(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
-    if override and Path(override).expanduser().exists():
-        return True
+    if override:
+        expanded = Path(override).expanduser()
+        command = shutil.which(override)
+        if command is None and _is_executable_file(expanded):
+            command = str(expanded)
+        return bool(command and _graphify_entrypoint_works(command))
     installed = shutil.which("graphify-mcp")
     cli = shutil.which("graphify")
-    if installed and cli:
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
-                graph.write('{"nodes": [], "links": []}')
-                graph.flush()
-                probe = subprocess.run(
-                    [installed, graph.name, "--transport", "stdio"],
+    return bool(installed and cli and _graphify_entrypoint_works(installed))
+
+
+def _graphify_entrypoint_works(command: str) -> bool:
+    """Verify that a candidate can start Graphify's read-only stdio server."""
+
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
+            graph.write('{"nodes": [], "links": []}')
+            graph.flush()
+            return (
+                subprocess.run(
+                    [command, graph.name, "--transport", "stdio"],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=5,
                     check=False,
-                )
-                if probe.returncode == 0:
-                    return True
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    return False
+                ).returncode
+                == 0
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _headroom_available(env: Mapping[str, str]) -> bool:

@@ -12,6 +12,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Graphify overrides now appear ready and attach to runs only when the file is
+  executable and its read-only MCP server starts successfully.
 - `alfred auth status` now reports OpenCode with Claude Code and Codex. OpenCode
   affects the exit status only when an enabled agent selects it. Dedicated
   `alfred opencode status` and `alfred opencode probe` commands check its CLI

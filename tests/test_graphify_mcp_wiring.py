@@ -156,6 +156,24 @@ def test_graphify_uses_a_verified_installed_entrypoint(monkeypatch) -> None:
     assert _proc._graphify_command() == ("/usr/local/bin/graphify-mcp", [])
 
 
+def test_graphify_override_requires_an_executable_working_entrypoint(
+    monkeypatch, tmp_path: Path
+) -> None:
+    override = tmp_path / "graphify-mcp"
+    override.write_text("not executable", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_BIN", str(override))
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda _command: True)
+
+    assert _proc._graphify_command() is None
+
+    override.chmod(0o755)
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda _command: False)
+    assert _proc._graphify_command() is None
+
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda _command: True)
+    assert _proc._graphify_command() == (str(override), [])
+
+
 def test_graphify_probe_reaches_mcp_server_startup(monkeypatch) -> None:
     calls: list[list[str]] = []
 

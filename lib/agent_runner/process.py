@@ -566,8 +566,11 @@ def _graphify_command() -> tuple[str, list[str]] | None:
     override = os.environ.get("ALFRED_GRAPHIFY_BIN", "").strip()
     if override:
         expanded = str(Path(override).expanduser())
-        if shutil.which(override) or Path(expanded).is_file():
-            return expanded, []
+        resolved = shutil.which(override)
+        if resolved is None and Path(expanded).is_file() and os.access(expanded, os.X_OK):
+            resolved = expanded
+        if resolved and _graphify_entrypoint_works(resolved):
+            return resolved, []
         return None
     installed = shutil.which("graphify-mcp")
     if installed and _graphify_entrypoint_works(installed):
