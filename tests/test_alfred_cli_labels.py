@@ -1119,7 +1119,7 @@ def test_opencode_probe_uses_read_only_adapter(
         "workdir": REPO_ROOT,
         "agent": "opencode-probe",
         "timeout": 90,
-        "model": "",
+        "model": None,
         "allow_writes": False,
     }
 
@@ -1144,6 +1144,38 @@ def test_auth_probe_skips_unselected_opencode(
 
     assert cli_module.cmd_auth(argparse.Namespace(auth_command="probe")) == 0
     assert "OpenCode probe: skipped" in capsys.readouterr().out
+
+
+def test_auth_probe_checks_distinct_selected_opencode_models(
+    cli_module,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probed: list[str | None] = []
+    selected_models = {
+        "reviewer": "anthropic/claude-sonnet-4-5",
+        "senior-dev": "openai/gpt-5.4",
+        "fixer": "anthropic/claude-sonnet-4-5",
+    }
+    monkeypatch.setattr(cli_module, "_probe_claude_auth", lambda: 0)
+    monkeypatch.setattr(cli_module, "_probe_codex", lambda: 0)
+    monkeypatch.setattr(
+        cli_module,
+        "_configured_engine_selections",
+        lambda: {"opencode": tuple(selected_models)},
+    )
+    monkeypatch.setattr(
+        cli_module.agent_runner,
+        "agent_model",
+        lambda agent, engine: selected_models[agent] if engine == "opencode" else None,
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_probe_opencode",
+        lambda *, model=None: probed.append(model) or 0,
+    )
+
+    assert cli_module.cmd_auth(argparse.Namespace(auth_command="probe")) == 0
+    assert probed == ["anthropic/claude-sonnet-4-5", "openai/gpt-5.4"]
 
 
 def test_launchctl_timeout_returns_controlled_status(cli_module, monkeypatch):

@@ -25,6 +25,9 @@ alfred opencode probe
 Alfred's readiness check requires a provider stored by `opencode auth login`.
 An environment-only provider key does not make the engine ready. This keeps
 scheduled runs tied to an account that the host can verify before dispatch.
+`alfred auth probe` checks each distinct model selected by an enabled OpenCode
+agent. `alfred opencode probe` checks the resolved fleet-wide model or the CLI
+default when no model is configured.
 
 If the scheduler cannot find the binary, add its absolute path to
 `$ALFRED_HOME/.env`:

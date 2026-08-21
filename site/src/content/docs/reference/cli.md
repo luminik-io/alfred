@@ -113,7 +113,8 @@ alfred claude probe
 ## `alfred codex`, `alfred opencode`, and `alfred auth`
 
 Check provider CLI readiness before scheduled work starts. The probe commands
-send one small request.
+send one small request. `alfred auth probe` checks each distinct model selected
+by enabled OpenCode agents.
 
 ```sh
 alfred codex status

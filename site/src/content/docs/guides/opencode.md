@@ -18,6 +18,8 @@ alfred opencode probe
 
 Alfred requires a provider stored by `opencode auth login`. If the scheduler
 cannot find the binary, set `OPENCODE_BIN` in `$ALFRED_HOME/.env`.
+`alfred auth probe` checks each distinct model selected by an enabled OpenCode
+agent.
 
 ## Select the engine
 

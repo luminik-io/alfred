@@ -2222,7 +2222,7 @@ def _opencode_status() -> int:
     return 0 if readiness.ready else 1
 
 
-def _probe_opencode() -> int:
+def _probe_opencode(*, model: str | None = None) -> int:
     probe_dir = Path.cwd()
     if not (probe_dir / ".git").exists():
         probe_dir = _HERE.parent
@@ -2233,7 +2233,7 @@ def _probe_opencode() -> int:
         workdir=probe_dir,
         agent="opencode-probe",
         timeout=90,
-        model="",
+        model=model,
         allow_writes=False,
     )
     if result.success and "OPENCODE_PROBE_OK" in result.result_text:
@@ -2258,6 +2258,15 @@ def cmd_opencode(args: argparse.Namespace) -> int:
 
 def _opencode_is_selected() -> bool:
     return bool(_configured_engine_selections().get("opencode"))
+
+
+def _selected_opencode_models() -> tuple[str | None, ...]:
+    models: list[str | None] = []
+    for agent in _configured_engine_selections().get("opencode", ()):
+        model = agent_runner.agent_model(agent, "opencode") or None
+        if model not in models:
+            models.append(model)
+    return tuple(models)
 
 
 def cmd_metrics(args: argparse.Namespace) -> int:
@@ -4128,9 +4137,13 @@ def cmd_auth(args: argparse.Namespace) -> int:
         print("")
         codex_rc = _probe_codex()
         print("")
-        opencode_required = _opencode_is_selected()
-        if opencode_required:
-            opencode_rc = _probe_opencode()
+        opencode_models = _selected_opencode_models()
+        if opencode_models:
+            opencode_rc = 0
+            for model in opencode_models:
+                print(f"OpenCode model: {model or 'CLI default'}")
+                if _probe_opencode(model=model) != 0:
+                    opencode_rc = 1
         else:
             print("OpenCode probe: skipped; no enabled agent selects OpenCode.")
             opencode_rc = 0
