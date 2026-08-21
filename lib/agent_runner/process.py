@@ -2103,6 +2103,7 @@ def invoke_agent_engine(
     opencode_fn: Callable[..., ClaudeResult] | None = None,
     on_fallback: Callable[[ClaudeResult], None] | None = None,
     hybrid_fallback_on_provider_failure: bool = False,
+    transient_max_retries: int | None = None,
     memory_repo: str | None = None,
     memory_query: str | None = None,
     memory_limit: int = 3,
@@ -2128,6 +2129,8 @@ def invoke_agent_engine(
     always wins. With no configured model, the provider CLI keeps its default.
     ``opencode_shell_commands`` adds exact command matches to an otherwise
     shell-denied OpenCode firing. It does not enable edits or other commands.
+    ``transient_max_retries`` overrides the fleet retry setting for callers
+    with a fixed outer deadline. ``None`` keeps the configured fleet value.
 
     ``role`` is the firing's agent role (feature-dev, pr-review, planner, ...).
     It is an OPTIONAL override: when omitted (as every production caller does
@@ -2344,6 +2347,7 @@ def invoke_agent_engine(
             result = retry_with_backoff(
                 invoke,
                 classify=classify_result,
+                max_retries=transient_max_retries,
                 retry_after_of=retry_after_seconds,
                 on_retry=_on_retry,
             )

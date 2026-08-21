@@ -141,6 +141,7 @@ def _build_real_engine(*, verbose: bool, engine_mode: str):
             opencode_allow_writes=allow_writes,
             opencode_shell_commands=call.shell_commands,
             hybrid_fallback_on_provider_failure=True,
+            transient_max_retries=0,
         )
         text = (result.result_text or "").strip()
         if verbose:

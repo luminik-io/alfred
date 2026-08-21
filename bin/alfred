@@ -266,11 +266,8 @@ _BENCHMARK_COMMAND_TIMEOUT_S = 8 * 60 * 60
 _CODE_MEMORY_INDEX_TIMEOUT_S = 8 * 60 * 60
 _INSTALL_COMMAND_TIMEOUT_S = 600
 _INTERACTIVE_COMMAND_TIMEOUT_S = 3600
-# Non-engine budget the demo child may legitimately spend after its four
-# engine calls: bounded test run (120s), planted-bug check (30s), and the
-# 30s-per-step git helpers in lib/demo/orchestrator.py, plus scaffolding
-# slack. The parent timeout must leave room for the child to reach its own
-# honest per-step timeout and error paths instead of being reaped first.
+# Non-engine budget after the demo's four steps: bounded test run (120s),
+# planted-bug check (30s), 30s-per-step git helpers, and setup time.
 _DEMO_VERIFICATION_BUDGET_S = 420
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
@@ -3251,10 +3248,11 @@ def cmd_demo(args: argparse.Namespace) -> int:
         forwarded.extend(["--timeout", str(args.timeout)])
     forwarded.extend(["--engine", args.engine])
     step_timeout = args.timeout if args.timeout is not None else 90
+    attempts_per_step = 2 if args.engine == "hybrid" else 1
     parent_timeout = (
         max(
             _DELEGATED_COMMAND_TIMEOUT_S,
-            (step_timeout * 4) + _DEMO_VERIFICATION_BUDGET_S,
+            (step_timeout * 4 * attempts_per_step) + _DEMO_VERIFICATION_BUDGET_S,
         )
         if args.yes
         else None

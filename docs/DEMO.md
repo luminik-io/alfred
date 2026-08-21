@@ -74,6 +74,11 @@ when needed, fixing. Run time depends on the selected engine, model, provider
 latency, and whether review requests a fix. The closing line reports the
 measured time.
 
+The demo does not retry a timed-out provider. Hybrid can try Codex once after a
+Claude provider or authentication failure. This keeps each step inside the
+documented timeout and gives the parent process enough time for the fallback
+and final verification.
+
 When Claude runs the plan step, it uses a small model by default. Other engines
 use their configured model. Build, review, and fix use the configured default
 model.

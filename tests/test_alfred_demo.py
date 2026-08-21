@@ -90,6 +90,7 @@ def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path)
     assert seen["opencode_allow_writes"] is False
     assert seen["opencode_shell_commands"]
     assert all(" -c " in command for command in seen["opencode_shell_commands"])
+    assert seen["transient_max_retries"] == 0
     assert seen["codex_sandbox"] == "read-only"
     assert seen["firing_id"] == f"demo-{tmp_path.parent.name}-review"
 
@@ -603,6 +604,25 @@ def test_cli_demo_forwards_flags_to_runner(monkeypatch):
     assert parent_timeout == cli._DELEGATED_COMMAND_TIMEOUT_S
 
 
+def test_cli_demo_parent_timeout_covers_one_hybrid_fallback_per_step(monkeypatch):
+    cli = load_cli_module()
+    calls: list[tuple[list[str], int]] = []
+
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            self.cmd = cmd
+
+        def wait(self, timeout):
+            calls.append((self.cmd, timeout))
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    args = _demo_namespace(keep=False, yes=True, timeout=45, engine="hybrid")
+    assert cli.cmd_demo(args) == 0
+    assert calls[0][1] == (45 * 4 * 2) + cli._DEMO_VERIFICATION_BUDGET_S
+
+
 def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
     cli = load_cli_module()
     timeouts: list[int] = []
@@ -618,7 +638,7 @@ def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
     monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=300)) == 0
-    assert timeouts == [(300 * 4) + cli._DEMO_VERIFICATION_BUDGET_S]
+    assert timeouts == [(300 * 4 * 2) + cli._DEMO_VERIFICATION_BUDGET_S]
 
 
 def test_cli_demo_parent_timeout_leaves_room_for_child_verification(monkeypatch):
