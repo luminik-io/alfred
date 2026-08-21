@@ -64,12 +64,15 @@ def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path)
 
     def fake_invoke(_prompt, **kwargs):
         seen.update(kwargs)
-        return types.SimpleNamespace(success=True, result_text="reviewed", error_message=None)
+        return (
+            types.SimpleNamespace(success=True, result_text="reviewed", error_message=None),
+            "opencode",
+        )
 
     monkeypatch.setitem(
-        sys.modules, "agent_runner", types.SimpleNamespace(claude_invoke=fake_invoke)
+        sys.modules, "agent_runner", types.SimpleNamespace(invoke_agent_engine=fake_invoke)
     )
-    engine = runner._build_real_engine(verbose=False)
+    engine = runner._build_real_engine(verbose=False, engine_mode="opencode")
     engine(
         EngineCall(
             step="review",
@@ -77,10 +80,51 @@ def test_real_demo_review_has_budget_for_mandatory_probes(monkeypatch, tmp_path)
             allowed_tools="Read,Bash",
             workdir=tmp_path,
             timeout=30,
+            shell_commands=("python3 -c 'print(1)'",),
         )
     )
 
-    assert seen["max_turns"] == 14
+    assert seen["engine"] == "opencode"
+    assert seen["agent"] == "reviewer"
+    assert seen["claude_max_turns"] == 14
+    assert seen["opencode_allow_writes"] is False
+    assert seen["opencode_shell_commands"]
+    assert all(" -c " in command for command in seen["opencode_shell_commands"])
+    assert seen["transient_max_retries"] == 0
+    assert seen["codex_sandbox"] == "read-only"
+    assert seen["firing_id"] == f"demo-{tmp_path.parent.name}-review"
+
+
+def test_real_demo_build_uses_bounded_write_controls(monkeypatch, tmp_path):
+    runner = load_demo_runner()
+    seen: dict[str, object] = {}
+
+    def fake_invoke(_prompt, **kwargs):
+        seen.update(kwargs)
+        return (
+            types.SimpleNamespace(success=True, result_text="built", error_message=None),
+            "codex",
+        )
+
+    monkeypatch.setitem(
+        sys.modules, "agent_runner", types.SimpleNamespace(invoke_agent_engine=fake_invoke)
+    )
+    engine = runner._build_real_engine(verbose=False, engine_mode="codex")
+    engine(
+        EngineCall(
+            step="build",
+            prompt="build",
+            allowed_tools="Read,Write,Edit,Bash",
+            workdir=tmp_path,
+            timeout=30,
+        )
+    )
+
+    assert seen["engine"] == "codex"
+    assert seen["agent"] == "senior-dev"
+    assert seen["opencode_allow_writes"] is True
+    assert seen["codex_sandbox"] == "workspace-write"
+    assert seen["codex_approval_policy"] == "never"
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +315,8 @@ def test_full_loop_catches_bug_and_ships(tmp_path):
         assert step in steps_seen, f"missing step {step}"
     # The fix step must have actually run when the bug was caught.
     assert any(c.step == "fix" for c in engine.calls)
+    review_call = next(call for call in engine.calls if call.step == "review")
+    assert review_call.shell_commands
     # The ship summary is built from a real diff, not fabricated.
     assert "files changed" in result.diff_summary
     assert "textkit.py" in result.diff_summary
@@ -356,6 +402,24 @@ def test_review_without_verdict_token_is_a_failure(tmp_path):
     assert "verdict" in exc_info.value.message
     # The run stopped at review: no fix call, no ship.
     assert [c.step for c in engine.calls] == ["plan", "build", "review"]
+
+
+def test_review_step_cannot_change_the_worktree(tmp_path):
+    class MutatingReviewer(ScriptedEngine):
+        def __call__(self, call: EngineCall) -> EngineOutcome:
+            result = super().__call__(call)
+            if call.step == "review":
+                target = call.workdir / "textkit.py"
+                target.write_text(target.read_text() + "\n# review edit\n")
+            return result
+
+    engine = MutatingReviewer(catch_bug=False)
+
+    with pytest.raises(DemoEngineError) as exc_info:
+        _run(engine, tmp_path)
+
+    assert exc_info.value.step == "review"
+    assert "read-only" in exc_info.value.message
 
 
 def test_ship_fails_when_sample_tests_fail(tmp_path):
@@ -487,9 +551,30 @@ def test_presenter_streams_events_without_color_when_not_tty(tmp_path):
 def test_runner_reports_missing_claude_cli(tmp_path, monkeypatch, capsys):
     runner = load_demo_runner()
     monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
-    code = runner.main([])
+    code = runner.main(["--engine", "claude"])
     assert code == 2
     assert "Claude Code CLI" in capsys.readouterr().out
+
+
+def test_runner_reports_missing_codex_cli(monkeypatch, capsys):
+    runner = load_demo_runner()
+    monkeypatch.setattr(runner.shutil, "which", lambda _name: None)
+    code = runner.main(["--engine", "codex"])
+    assert code == 2
+    assert "Codex CLI" in capsys.readouterr().out
+
+
+def test_runner_hybrid_preflight_accepts_codex_without_claude(monkeypatch):
+    runner = load_demo_runner()
+    monkeypatch.setattr(
+        runner.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    assert runner._preflight_engine(
+        "hybrid", stream=types.SimpleNamespace(write=lambda _text: None)
+    )
 
 
 def test_cli_demo_forwards_flags_to_runner(monkeypatch):
@@ -506,15 +591,36 @@ def test_cli_demo_forwards_flags_to_runner(monkeypatch):
 
     monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
-    args = _demo_namespace(keep=True, yes=True, timeout=45)
+    args = _demo_namespace(keep=True, yes=True, timeout=45, engine="opencode")
     assert cli.cmd_demo(args) == 0
     forwarded, parent_timeout = calls[0]
-    assert forwarded[-1] == "45"
     assert "--keep" in forwarded
     assert "--yes" in forwarded
     assert "--timeout" in forwarded
+    timeout_index = forwarded.index("--timeout")
+    assert forwarded[timeout_index : timeout_index + 2] == ["--timeout", "45"]
+    assert forwarded[-2:] == ["--engine", "opencode"]
     assert str(ROOT / "bin/alfred-demo.py") in forwarded
     assert parent_timeout == cli._DELEGATED_COMMAND_TIMEOUT_S
+
+
+def test_cli_demo_parent_timeout_covers_one_hybrid_fallback_per_step(monkeypatch):
+    cli = load_cli_module()
+    calls: list[tuple[list[str], int]] = []
+
+    class FakeProcess:
+        def __init__(self, cmd, **_kwargs):
+            self.cmd = cmd
+
+        def wait(self, timeout):
+            calls.append((self.cmd, timeout))
+            return 0
+
+    monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
+
+    args = _demo_namespace(keep=False, yes=True, timeout=45, engine="hybrid")
+    assert cli.cmd_demo(args) == 0
+    assert calls[0][1] == (45 * 4 * 2) + cli._DEMO_VERIFICATION_BUDGET_S
 
 
 def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
@@ -532,7 +638,7 @@ def test_cli_demo_parent_timeout_scales_with_forwarded_step_limit(monkeypatch):
     monkeypatch.setattr(cli.subprocess, "Popen", FakeProcess)
 
     assert cli.cmd_demo(_demo_namespace(keep=False, yes=True, timeout=300)) == 0
-    assert timeouts == [(300 * 4) + cli._DEMO_VERIFICATION_BUDGET_S]
+    assert timeouts == [(300 * 4 * 2) + cli._DEMO_VERIFICATION_BUDGET_S]
 
 
 def test_cli_demo_parent_timeout_leaves_room_for_child_verification(monkeypatch):
@@ -579,7 +685,7 @@ class _CompletedStub:
     returncode = 0
 
 
-def _demo_namespace(*, keep: bool, yes: bool, timeout: int):
+def _demo_namespace(*, keep: bool, yes: bool, timeout: int, engine: str = "hybrid"):
     from types import SimpleNamespace
 
-    return SimpleNamespace(keep=keep, yes=yes, timeout=timeout)
+    return SimpleNamespace(keep=keep, yes=yes, timeout=timeout, engine=engine)

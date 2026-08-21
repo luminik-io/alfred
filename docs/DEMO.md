@@ -1,8 +1,7 @@
 # The demo
 
-`alfred demo` is the fastest way to see what Alfred does. It runs the whole
-loop once, on a throwaway repo, and asks nothing of you except a working
-`claude` CLI.
+`alfred demo` runs the whole Alfred loop once on a throwaway repo. It uses the
+same Claude Code, Codex, OpenCode, or hybrid engine route as the fleet.
 
 ```sh
 alfred demo
@@ -19,23 +18,26 @@ From a source checkout:
 
 ## What you need
 
-One thing: the Claude Code CLI, signed in with the Claude subscription you
-already pay for.
+One authenticated engine CLI:
 
 ```sh
-claude   # run once and sign in
+claude      # Claude Code
+codex       # Codex
+opencode    # OpenCode
 ```
 
-No GitHub, no Slack, no API key, no token, no repo of your own. If the
-`claude` CLI is missing, the demo prints an install pointer and stops.
+The default hybrid route can use Claude Code or Codex. Select OpenCode with
+`--engine opencode`. The demo does not need GitHub, Slack, a provider API key,
+or a repo of your own. If the selected route has no installed CLI, the demo
+prints an install pointer and stops.
 
 ## What it does
 
 The demo copies the bundled sample project at
 [`examples/demo-repo`](../examples/demo-repo) (a tiny Python string library
 called `textkit`) into a temporary directory, makes it a real git repo, and
-runs a compressed version of the real fleet loop against it with real
-`claude` calls:
+runs a compressed version of the real fleet loop against it with real engine
+calls:
 
 1. **Plan.** Drake reads the sample project and drafts a short plan to add
    the missing `slugify` helper.
@@ -67,19 +69,26 @@ At the end it prints the measured run time and a pointer to
 
 ## How long it takes
 
-The demo makes sequential `claude` calls for planning, building, reviewing,
-and, when needed, fixing. Run time depends on the selected model, provider
+The demo makes sequential engine calls for planning, building, reviewing, and,
+when needed, fixing. Run time depends on the selected engine, model, provider
 latency, and whether review requests a fix. The closing line reports the
 measured time.
 
-The plan step is a one-shot summary with no tool use, so it uses a small model
-by default. Build, review, and fix use the configured default model.
+The demo does not retry a timed-out provider. Hybrid can try Codex once after a
+Claude provider or authentication failure. This keeps each step inside the
+documented timeout and gives the parent process enough time for the fallback
+and final verification.
+
+When Claude runs the plan step, it uses a small model by default. Other engines
+use their configured model. Build, review, and fix use the configured default
+model.
 
 ## Failure behavior
 
-- If the `claude` CLI is missing, it says so and points you at the installer.
+- If the selected route has no installed CLI, it says so and points you at the
+  engine guide.
 - If a model call fails mid-run, it stops at that step and tells you which
-  one, rather than pretending it shipped.
+  one. It does not print a ship result.
 - If the engine reports success but leaves the worktree unchanged, the ship
   step refuses to commit and the run fails. The same rule applies if the sample test
   suite fails after the change, or if the commit would produce an empty diff.
@@ -95,15 +104,18 @@ by default. Build, review, and fix use the configured default model.
 | `--keep` | Keep the throwaway demo repo instead of deleting it, and print its path so you can inspect the real diff. |
 | `--yes` | Auto-approve the plan gate without waiting for Enter. Useful for a scripted or recorded run. |
 | `--timeout N` | Per-step engine wall-clock ceiling in seconds (default 90). |
+| `--engine claude\|codex\|opencode\|hybrid` | Select the engine route for all steps. The default is `hybrid`. |
 
 ## Environment overrides
 
 | Variable | Effect |
 | --- | --- |
-| `ALFRED_DEMO_MODEL` | Force one model for every step. |
-| `ALFRED_DEMO_FAST_MODEL` | Override the fast model used for the plan step (default `haiku`). |
+| `ALFRED_DEMO_MODEL` | Force one Claude model for every step. |
+| `ALFRED_DEMO_FAST_MODEL` | Override the Claude model used for the plan step (default `haiku`). |
 | `ALFRED_DEMO_VERBOSE` | Print per-step engine notes to stderr. |
 | `CLAUDE_BIN` | Path to the `claude` binary if it is not on `PATH` as `claude`. |
+| `CODEX_BIN` | Path to the `codex` binary if it is not on `PATH` as `codex`. |
+| `OPENCODE_BIN` | Path to the `opencode` binary if it is not on `PATH` as `opencode`. |
 
 ## After the demo
 

@@ -96,8 +96,8 @@ Subcommands today:
   alfred demo                 Watch the whole loop (plan, approve, build,
                               review that catches a planted bug, fix, ship)
                               on a throwaway sample repo in about a minute.
-                              Needs only an authenticated `claude` CLI: no
-                              GitHub, no Slack, no tokens.
+                              Uses Claude Code, Codex, OpenCode, or the default
+                              hybrid route. No GitHub or Slack is required.
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
@@ -266,11 +266,8 @@ _BENCHMARK_COMMAND_TIMEOUT_S = 8 * 60 * 60
 _CODE_MEMORY_INDEX_TIMEOUT_S = 8 * 60 * 60
 _INSTALL_COMMAND_TIMEOUT_S = 600
 _INTERACTIVE_COMMAND_TIMEOUT_S = 3600
-# Non-engine budget the demo child may legitimately spend after its four
-# engine calls: bounded test run (120s), planted-bug check (30s), and the
-# 30s-per-step git helpers in lib/demo/orchestrator.py, plus scaffolding
-# slack. The parent timeout must leave room for the child to reach its own
-# honest per-step timeout and error paths instead of being reaped first.
+# Non-engine budget after the demo's four steps: bounded test run (120s),
+# planted-bug check (30s), 30s-per-step git helpers, and setup time.
 _DEMO_VERIFICATION_BUDGET_S = 420
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
@@ -3249,11 +3246,13 @@ def cmd_demo(args: argparse.Namespace) -> int:
         forwarded.append("--yes")
     if args.timeout is not None:
         forwarded.extend(["--timeout", str(args.timeout)])
+    forwarded.extend(["--engine", args.engine])
     step_timeout = args.timeout if args.timeout is not None else 90
+    attempts_per_step = 2 if args.engine == "hybrid" else 1
     parent_timeout = (
         max(
             _DELEGATED_COMMAND_TIMEOUT_S,
-            (step_timeout * 4) + _DEMO_VERIFICATION_BUDGET_S,
+            (step_timeout * 4 * attempts_per_step) + _DEMO_VERIFICATION_BUDGET_S,
         )
         if args.yes
         else None
@@ -4716,7 +4715,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
 
     p_demo = sub.add_parser(
         "demo",
-        help="watch the team plan, build, catch a bug, and ship in a minute (needs claude)",
+        help="watch the team plan, build, catch a bug, and ship with a supported engine",
     )
     p_demo.add_argument(
         "--keep", action="store_true", help="keep the throwaway demo repo and print its path"
@@ -4725,6 +4724,12 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         "--yes", action="store_true", help="auto-approve the plan gate without waiting for Enter"
     )
     p_demo.add_argument("--timeout", type=int, help="per-step engine wall-clock ceiling in seconds")
+    p_demo.add_argument(
+        "--engine",
+        choices=("claude", "codex", "opencode", "hybrid"),
+        default="hybrid",
+        help="engine route for all demo steps (default hybrid)",
+    )
     p_demo.set_defaults(func=cmd_demo)
 
     p_serve = sub.add_parser("serve", help="open the read-only localhost dashboard")

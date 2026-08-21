@@ -901,6 +901,59 @@ def test_invoke_agent_engine_hybrid_transient_retries_claude_no_fallback(monkeyp
     assert fallback_seen == []
 
 
+def test_invoke_agent_engine_can_disable_transient_retries_per_call(monkeypatch):
+    import agent_runner as ar
+
+    monkeypatch.setenv("ALFRED_TRANSIENT_MAX_RETRIES", "3")
+    calls: list[str] = []
+
+    def fake_claude(*args, **kwargs):
+        calls.append("claude")
+        return ar.ClaudeResult(
+            success=False,
+            subtype="error_timeout",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="",
+            raw={},
+            stop_reason="aborted",
+            error_message="timed out",
+        )
+
+    def fake_codex(*args, **kwargs):
+        calls.append("codex")
+        return ar.ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id="codex-session",
+            result_text="recovered",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    out, engine_used = ar.invoke_agent_engine(
+        "hi",
+        engine="hybrid",
+        agent="planner",
+        firing_id="no-retry",
+        workdir=Path("/tmp"),
+        claude_allowed_tools="Read",
+        timeout=30,
+        transient_max_retries=0,
+        claude_fn=fake_claude,
+        codex_fn=fake_codex,
+        hybrid_fallback_on_provider_failure=True,
+    )
+
+    assert out.success is True
+    assert engine_used == "codex-fallback"
+    assert calls == ["claude", "codex"]
+
+
 def test_interactive_hybrid_keeps_context_overflow_for_caller_recovery(monkeypatch):
     """Compose must see overflows so it can condense before another provider runs."""
     import agent_runner as ar

@@ -100,9 +100,11 @@ state file, so simultaneous updates cannot overwrite each other.
 OpenCode is always explicit. It is not part of `hybrid`, and installing it does
 not change an existing route. Each firing uses `--pure`, a temporary config,
 an exact worktree, and JSON events. Unexpected permission requests are rejected.
-Read-only roles deny edits and shell commands. Write roles use the same approved
-write decision already made by the calling role. See [OpenCode](OPENCODE.md) for
-the complete permission and failure contract.
+Read-only roles deny edits and shell commands by default. A caller can allow an
+exact set of probe commands for one firing while edits and every other shell
+command stay denied. Write roles use the same approved write decision already
+made by the calling role. See [OpenCode](OPENCODE.md) for the complete
+permission and failure contract.
 
 ## Hybrid fallback behavior
 

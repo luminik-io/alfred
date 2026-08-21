@@ -101,11 +101,14 @@ The normal test suite never sends this request.
 OpenCode runs with the local user's operating-system and network permissions.
 The adapter is a workflow boundary, not a host sandbox.
 
-For read-only roles, Alfred denies edits and shell commands. For roles that
-already have an approved write path, Alfred allows edits and shell commands in
-the worktree. Its command rules deny direct `git push`, `gh pr merge`, and
-checkout or switch to `main`. Unexpected permission requests are rejected
-because Alfred does not pass `--auto`.
+For read-only roles, Alfred denies edits and shell commands by default. A caller
+can allow named probe commands for one firing. Every other shell command stays
+denied. The demo uses this path for six fixed Python review probes and rejects
+the review if the worktree changes. For roles that already have an approved
+write path, Alfred allows edits and shell commands in the worktree. Its command
+rules deny direct `git push`, `gh pr merge`, and checkout or switch to `main`.
+Unexpected permission requests are rejected because Alfred does not pass
+`--auto`.
 
 External paths, interactive questions, plan-mode transitions, project
 subagents, and external skills are denied in both modes. Alfred does not import
