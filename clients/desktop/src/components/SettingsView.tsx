@@ -13,15 +13,17 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { errorDetail, supportsNativeActions } from "../api/client";
+import { errorDetail, supportsMutations, supportsNativeActions } from "../api/client";
 import { loadSetupStatus } from "../api/setup";
 import type { ThemeMode, ThemeName } from "../lib/useTheme";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
-import type { SetupStatus, TrustedSlackUsersResponse } from "../types";
+import type { NativeCommandResult, SetupStatus, TrustedSlackUsersResponse } from "../types";
 import { AppearancePicker } from "./AppearancePicker";
 import { EmptyState } from "./atoms";
+import { BatteryPickerStep } from "./onboarding/BatteryPickerStep";
 import { FirstRunReadinessPanel } from "./onboarding/FirstRunReadinessPanel";
 import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
+import type { OnboardingNotice } from "./onboarding/types";
 import { Tabs, type TabItem } from "./Tabs";
 import { Button } from "./ui/button";
 import {
@@ -34,7 +36,7 @@ import {
 } from "./ui/dialog";
 
 type SettingsSection =
-  "appearance" | "runtime" | "collaborators" | "diagnostics";
+  "appearance" | "runtime" | "tools" | "collaborators" | "diagnostics";
 
 export function SettingsView({
   baseUrl,
@@ -68,12 +70,13 @@ export function SettingsView({
   onSelectMode: (mode: ThemeMode) => void;
   onAddTrustedUser: (userId: string) => void;
   onRemoveTrustedUser: (userId: string) => void;
-  onRunLocalAction: (request: NativeActionRequest) => void | Promise<unknown>;
+  onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onInstallCore: () => void;
   onStartRuntime: () => void;
   onConnectServer: (url: string) => void;
 }) {
   const canRun = supportsNativeActions();
+  const canMutate = supportsMutations();
   const [consoleAgent, setConsoleAgent] = useState("senior-dev");
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
@@ -84,6 +87,7 @@ export function SettingsView({
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
+  const [batteryNotice, setBatteryNotice] = useState<OnboardingNotice>(null);
   const setupRequestSeq = useRef(0);
   const removeTrustedAffirmRef = useRef<HTMLButtonElement>(null);
   const baseUrlRef = useRef(baseUrl);
@@ -100,6 +104,7 @@ export function SettingsView({
       setSetupStatus(null);
       setSetupError(null);
       setSetupLoading(false);
+      setBatteryNotice(null);
     }
     baseUrlRef.current = baseUrl;
     setServerUrl(baseUrl);
@@ -116,6 +121,7 @@ export function SettingsView({
       setSetupStatus(null);
       setSetupError(null);
       setSetupLoading(false);
+      setBatteryNotice(null);
     }
   }, [connected]);
 
@@ -165,18 +171,16 @@ export function SettingsView({
 
   const runReadinessRepair = useCallback(
     (request: NativeActionRequest) => {
-      const result = onRunLocalAction({ ...request, refreshAfter: true });
-      if (result) {
-        void Promise.resolve(result).finally(refreshSetupStatus);
-        return;
-      }
-      refreshSetupStatus();
+      void Promise.resolve(onRunLocalAction({ ...request, refreshAfter: true })).finally(
+        refreshSetupStatus,
+      );
     },
     [onRunLocalAction, refreshSetupStatus],
   );
 
   const tabs: TabItem<SettingsSection>[] = [
     { key: "runtime", label: "Runtime" },
+    { key: "tools", label: "Tools" },
     { key: "appearance", label: "Appearance" },
     {
       key: "collaborators",
@@ -203,7 +207,7 @@ export function SettingsView({
             Settings
           </h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Configure the runtime, appearance, collaborators, and diagnostics.
+            Configure the runtime, tools, appearance, collaborators, and diagnostics.
           </p>
         </div>
       </header>
@@ -365,6 +369,31 @@ export function SettingsView({
                 ) : null}
               </section>
             </div>
+          </div>
+        ) : null}
+
+        {section === "tools" ? (
+          <div className="settings-section">
+            <p className="panel-intro">
+              Turn optional tools and external memory services on or off. The included memory and
+              code tools stay available without another install.
+            </p>
+            {batteryNotice ? (
+              <p className={`inline-notice inline-notice--${batteryNotice.tone}`} role="status">
+                {batteryNotice.message}
+              </p>
+            ) : null}
+            <BatteryPickerStep
+              baseUrl={baseUrl}
+              canMutate={connected && canMutate}
+              canRun={canRun}
+              connected={connected}
+              onRunLocalAction={onRunLocalAction}
+              onSaved={async () => {
+                refreshSetupStatus();
+              }}
+              setNotice={setBatteryNotice}
+            />
           </div>
         ) : null}
 

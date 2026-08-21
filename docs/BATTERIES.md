@@ -7,7 +7,8 @@ other included tools need no setup.
 
 Setup separates the remaining choices into optional local tools and external services. Optional
 local tools install on the Alfred host. External services need a separate process that you
-operate. Manage configurable tools in desktop onboarding or with `alfred batteries`. An explicit
+operate. Manage configurable tools in Desktop Settings, during onboarding, or with
+`alfred batteries`. An explicit
 disable is written to `$ALFRED_HOME/.env` and always wins. For memory back ends, see
 [`MEMORY_PROVIDERS.md`](MEMORY_PROVIDERS.md).
 

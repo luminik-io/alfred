@@ -7,7 +7,7 @@ import type { NativeAction } from "../types";
 //   code     -> Code: local dependency and change-impact intelligence
 //   fleet    -> Agents: roster, schedules, activity, lessons
 //   lessons  -> Lessons: what the fleet learned, rendered inside Agents
-//   settings -> Settings: runtime, collaborators, diagnostics, appearance
+//   settings -> Settings: runtime, tools, appearance, collaborators, diagnostics
 //   logs     -> the activity tail for one agent, rendered inside Fleet
 export type TabKey =
   | "home"

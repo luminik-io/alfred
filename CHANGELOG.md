@@ -6,7 +6,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No changes are pending.
+### Added
+
+- Added a permanent Tools section in Desktop Settings for the same curated battery choices used during onboarding.
 
 ## [0.8.0] - 2026-08-17
 

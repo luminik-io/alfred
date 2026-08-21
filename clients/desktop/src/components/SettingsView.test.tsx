@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as apiClient from "../api/client";
 import * as apiSetup from "../api/setup";
-import type { SetupStatus } from "../types";
+import type { SetupBattery, SetupBatteryManifest, SetupStatus } from "../types";
 import { SettingsView } from "./SettingsView";
 
 function setupStatus(home: string, overrides: Partial<SetupStatus> = {}): SetupStatus {
@@ -109,6 +109,47 @@ function setupStatus(home: string, overrides: Partial<SetupStatus> = {}): SetupS
   return { ...base, ...overrides };
 }
 
+function batteryManifest(batteries: SetupBattery[]): SetupBatteryManifest {
+  return {
+    version: 1,
+    summary: { total: batteries.length },
+    batteries,
+  };
+}
+
+function headroomBattery(overrides: Partial<SetupBattery> = {}): SetupBattery {
+  return {
+    id: "headroom-compression",
+    name: "Headroom compression",
+    category: "compression",
+    what: "An optional compressor for tool output.",
+    how_it_helps: "Tests whether shorter output keeps the required evidence.",
+    builtin: false,
+    default_on: false,
+    setup_group: "optional-local",
+    status: "available",
+    configured: false,
+    enabled: false,
+    installed: true,
+    requires_daemon: false,
+    service: "",
+    install_kind: "pip-extra",
+    install_hint: "Run alfred batteries install headroom-compression --yes.",
+    pip_extra: "headroom",
+    env_keys: ["ALFRED_HEADROOM_ENABLED"],
+    docs: "docs/COMPRESSION.md",
+    version: "headroom-ai==0.29.0",
+    license: "Apache-2.0",
+    source_url: "https://pypi.org/project/headroom-ai/0.29.0/",
+    integrity: "Python package index artifact hashes",
+    install_command: "alfred batteries install headroom-compression --yes",
+    check_command: "alfred batteries list --json",
+    disable_command: "alfred batteries disable headroom-compression --yes",
+    remove_command: "alfred batteries remove headroom-compression --yes",
+    ...overrides,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -150,6 +191,79 @@ afterEach(() => {
 });
 
 describe("SettingsView", () => {
+  it("keeps battery management available after onboarding", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiClient, "supportsMutations").mockReturnValue(true);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home"),
+    );
+    vi.spyOn(apiSetup, "loadSetupBatteries").mockResolvedValue(
+      batteryManifest([headroomBattery()]),
+    );
+    vi.spyOn(apiSetup, "saveSetupBattery").mockResolvedValue({
+      ok: true,
+      battery: "headroom-compression",
+      configured: true,
+      enabled: true,
+      env_path: "/tmp/alfred-home/.env",
+      keys: ["ALFRED_HEADROOM_ENABLED"],
+      manifest: batteryManifest([
+        headroomBattery({ configured: true, enabled: true, status: "enabled" }),
+      ]),
+    });
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["alfred", "batteries", "install", "headroom-compression", "--yes"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: 1,
+      message: "installed",
+    }));
+    const user = userEvent.setup();
+
+    render(renderSettings("http://127.0.0.1:7010", { onRunLocalAction }));
+
+    await user.click(screen.getByRole("tab", { name: "Tools" }));
+    await user.click(
+      await screen.findByRole("switch", { name: "Enable Headroom compression" }),
+    );
+
+    await waitFor(() =>
+      expect(apiSetup.saveSetupBattery).toHaveBeenCalledWith(
+        "http://127.0.0.1:7010",
+        "headroom-compression",
+        true,
+      ),
+    );
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "battery_install",
+      target: "headroom-compression",
+      refreshAfter: false,
+    });
+    expect(screen.getByText("Turned Headroom compression on.")).toBeInTheDocument();
+  });
+
+  it("keeps tool switches read-only without mutation support", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(apiClient, "supportsMutations").mockReturnValue(false);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home"),
+    );
+    vi.spyOn(apiSetup, "loadSetupBatteries").mockResolvedValue(
+      batteryManifest([headroomBattery()]),
+    );
+    const user = userEvent.setup();
+
+    render(renderSettings("http://127.0.0.1:7010"));
+
+    await user.click(screen.getByRole("tab", { name: "Tools" }));
+    expect(
+      await screen.findByRole("switch", { name: "Enable Headroom compression" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/read-only preview cannot change batteries/i)).toBeInTheDocument();
+  });
+
   it("marks the surface ready only after runtime inventory settles", async () => {
     const request = deferred<SetupStatus>();
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);

@@ -415,6 +415,10 @@ for (const appearance of appearances) {
         ).toBeVisible();
         await capture(page, viewportName, "settings-runtime");
 
+        await page.getByRole("tab", { name: "Tools" }).click();
+        await expect(page.getByRole("region", { name: "Included" })).toBeVisible();
+        await capture(page, viewportName, "settings-tools");
+
         await page.getByRole("tab", { name: "Appearance" }).click();
         await capture(page, viewportName, "settings-appearance");
 
