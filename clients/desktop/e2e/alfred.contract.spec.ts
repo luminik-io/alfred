@@ -186,8 +186,10 @@ test("narrow Settings keeps every section label readable", async ({ page }) => {
   expect(metrics[metrics.length - 1]?.tabWidth).toBeGreaterThanOrEqual(300);
 
   await page.getByRole("tab", { name: "Tools" }).click();
-  await expect(page.getByRole("region", { name: "Included" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Optional local tools" })).toBeVisible();
+  const included = page.getByRole("region", { name: "Included" });
+  const optionalLocal = page.getByRole("region", { name: "Optional local tools" });
+  await expect(included.getByText("Codebase memory")).toBeVisible();
+  await expect(optionalLocal.getByText("Headroom compression")).toBeVisible();
 });
 
 test("primary navigation loads code, models, settings, and returns to Inbox", async ({ page }) => {
