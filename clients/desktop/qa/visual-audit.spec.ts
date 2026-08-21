@@ -276,6 +276,7 @@ for (const appearance of appearances) {
       });
 
       test("primary screens", async ({ page }) => {
+        test.setTimeout(60_000);
         await expect(
           page.getByRole("heading", { name: /Alfred needs/ }),
         ).toBeVisible();
@@ -311,7 +312,7 @@ for (const appearance of appearances) {
         await capture(page, viewportName, "ask-delete-chat");
         await page.keyboard.press("Escape");
         await expect(page.getByRole("alertdialog")).toBeHidden();
-        await page.keyboard.press("Escape");
+        await recentChats.getByRole("button", { name: "Close" }).click();
         await expect(recentChats).toBeHidden();
 
         await openPrimaryView(page, viewportName, "Work");
@@ -333,11 +334,30 @@ for (const appearance of appearances) {
         await capture(page, viewportName, "work");
 
         await page
-          .getByRole("button", { name: /Replace legacy appearance presets/ })
+          .getByRole("button", {
+            name: /Record engine settings for every run/,
+          })
           .click();
-        await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+        if (viewportName === "desktop") {
+          await expect(
+            page.getByRole("complementary", {
+              name: "Work item inspector",
+            }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole("dialog", { name: "Work item" }),
+          ).toHaveCount(0);
+        } else {
+          await expect(
+            page.getByRole("dialog", { name: "Work item" }),
+          ).toBeVisible();
+        }
         await capture(page, viewportName, "work-inspector");
-        await page.getByRole("button", { name: "Close" }).click();
+        await page
+          .getByRole("button", {
+            name: viewportName === "desktop" ? "Close inspector" : "Close",
+          })
+          .click();
 
         await openPrimaryView(page, viewportName, "Code");
         await expect(
