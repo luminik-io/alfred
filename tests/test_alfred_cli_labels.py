@@ -1106,7 +1106,7 @@ def test_opencode_probe_uses_read_only_adapter(
         received.update(kwargs)
         return SimpleNamespace(
             success=True,
-            result_text="ALFRED_OPENCODE_OK",
+            result_text="OPENCODE_PROBE_OK",
             error_message=None,
         )
 
@@ -1115,7 +1115,7 @@ def test_opencode_probe_uses_read_only_adapter(
 
     assert cli_module._probe_opencode() == 0
     assert received == {
-        "prompt": "Reply with exactly: ALFRED_OPENCODE_OK",
+        "prompt": "Reply with exactly: OPENCODE_PROBE_OK",
         "workdir": REPO_ROOT,
         "agent": "opencode-probe",
         "timeout": 90,

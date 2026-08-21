@@ -2229,14 +2229,14 @@ def _probe_opencode() -> int:
     print(f"Probing OpenCode auth in {probe_dir}")
     print("This sends one tiny read-only OpenCode request when auth is healthy.")
     result = agent_runner.opencode_invoke(
-        "Reply with exactly: ALFRED_OPENCODE_OK",
+        "Reply with exactly: OPENCODE_PROBE_OK",
         workdir=probe_dir,
         agent="opencode-probe",
         timeout=90,
         model="",
         allow_writes=False,
     )
-    if result.success and "ALFRED_OPENCODE_OK" in result.result_text:
+    if result.success and "OPENCODE_PROBE_OK" in result.result_text:
         print("OpenCode probe: ok")
         return 0
     print("OpenCode probe: failed")
