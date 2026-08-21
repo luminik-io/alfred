@@ -10,6 +10,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Added a permanent Tools section in Desktop Settings for the same curated battery choices used during onboarding.
 
+### Changed
+
+- `alfred auth status` now reports OpenCode with Claude Code and Codex. OpenCode
+  affects the exit status only when an enabled agent selects it. Dedicated
+  `alfred opencode status` and `alfred opencode probe` commands check its CLI
+  contract and provider login.
+
 ## [0.8.0] - 2026-08-17
 
 ### Highlights

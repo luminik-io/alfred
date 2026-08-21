@@ -110,14 +110,16 @@ alfred claude swap
 alfred claude probe
 ```
 
-## `alfred codex` and `alfred auth`
+## `alfred codex`, `alfred opencode`, and `alfred auth`
 
-Check Codex CLI availability and run tiny provider-auth probes before scheduled
-work starts.
+Check provider CLI readiness before scheduled work starts. The probe commands
+send one small request.
 
 ```sh
 alfred codex status
 alfred codex probe
+alfred opencode status
+alfred opencode probe
 alfred auth status
 alfred auth probe
 ```
@@ -145,6 +147,8 @@ alfred claude swap
 alfred claude probe
 alfred codex status
 alfred codex probe
+alfred opencode status
+alfred opencode probe
 alfred auth status
 alfred telemetry status
 alfred telemetry on
@@ -176,9 +180,10 @@ agents to `$ALFRED_HOME/state/custom-agents/custom-agents.json`; run
 the new units. `enable` / `disable` update
 `$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
 such as the architect role. `engine` persists the per-agent coding engine under
-`$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`
-checks Claude and Codex auth surfaces. `engine doctor` also verifies OpenCode's
-version, command contract, and stored provider login. `brain` inspects and seeds the local
+`$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI.
+`opencode` checks OpenCode's version, command contract, and stored provider
+login. `auth status` reports all three engines. OpenCode affects its exit status
+only when an enabled agent selects it. `brain` inspects and seeds the local
 fleet-brain memory store. `memory doctor` checks the full memory plane:
 provider chain, Redis Agent Memory, FleetBrain, code-memory, code-map, and
 read-only MCP tools. `status` reports local locks, pauses, recent firings,

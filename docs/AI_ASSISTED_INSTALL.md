@@ -317,8 +317,9 @@ Expected:
 
 - `alfred agents` lists the full engineering fleet, including gated agents and
   the memory harvest / auto-promote jobs.
-- `alfred auth status` checks scheduler-selected Claude Code readiness and
-  Codex readiness.
+- `alfred auth status` reports scheduler-selected Claude Code, Codex, and
+  OpenCode readiness. OpenCode affects the exit status only when an enabled
+  agent selects it.
 - `alfred doctor` reports the configured agents as pass, or names the exact missing
   binary/auth/env var before any agent burns model turns.
 

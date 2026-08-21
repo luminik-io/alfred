@@ -203,6 +203,7 @@ def _run_cli(*argv: str, env_extra: dict[str, str] | None = None) -> subprocess.
             "WORKSPACE_ROOT",
             "CLAUDE_BIN",
             "CODEX_BIN",
+            "OPENCODE_BIN",
         }:
             full_env.pop(key, None)
     full_env.update(env_extra or {})
@@ -586,6 +587,56 @@ def test_cli_codex_status_fails_when_cli_is_signed_out(tmp_path):
     assert res.returncode == 1
     assert "codex readiness: auth_required" in res.stdout
     assert "not signed in" in res.stderr
+
+
+def _write_fake_opencode(path: Path, *, credentials: int) -> None:
+    path.write_text(
+        "#!/bin/sh\n"
+        'case "${1:-} ${2:-}" in\n'
+        '  "--version ") echo "1.18.18" ;;\n'
+        '  "--help ") echo "--pure" ;;\n'
+        '  "run --help") echo "--format --model --dir --agent" ;;\n'
+        f'  "auth list") echo "Credentials\\n{credentials} credential" ;;\n'
+        "  *) exit 1 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
+def test_cli_opencode_status_reports_binary_and_readiness(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_opencode(fake_bin / "opencode", credentials=1)
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+    }
+
+    result = _run_cli("opencode", "status", env_extra=env)
+
+    assert result.returncode == 0, result.stderr
+    assert "opencode version: 1.18.18" in result.stdout
+    assert "opencode readiness: ready" in result.stdout
+    assert "Probe with: alfred opencode probe" in result.stdout
+
+
+def test_cli_opencode_status_fails_when_cli_is_signed_out(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_fake_opencode(fake_bin / "opencode", credentials=0)
+    env = {
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "PATH": f"{fake_bin}:{os.environ.get('PATH', '')}",
+    }
+
+    result = _run_cli("opencode", "status", env_extra=env)
+
+    assert result.returncode == 1
+    assert "opencode readiness: auth_required" in result.stdout
+    assert "not signed in" in result.stderr
 
 
 def test_claude_routing_reads_systemd_environment(monkeypatch, tmp_path):

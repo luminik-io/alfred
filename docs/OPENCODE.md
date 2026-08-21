@@ -18,8 +18,8 @@ Connect at least one provider, then check the stored login:
 
 ```sh
 opencode auth login
-opencode auth list
-alfred engine doctor
+alfred opencode status
+alfred opencode probe
 ```
 
 Alfred's readiness check requires a provider stored by `opencode auth login`.
@@ -127,7 +127,7 @@ must not reach other files or network destinations.
 | `missing` | Alfred cannot find `opencode`. | Install it or set `OPENCODE_BIN`. |
 | `incompatible` | The CLI is older than 1.18.18 or lacks the required flags. | Upgrade OpenCode. |
 | `auth_required` | `opencode auth list` has no stored provider. | Run `opencode auth login`. |
-| `probe_failed` | A bounded readiness command failed. | Run `alfred engine doctor` and inspect the local CLI. |
+| `probe_failed` | A bounded readiness command failed. | Run `alfred opencode status` and inspect the local CLI. |
 | `error_permission` | A tool crossed the configured firing boundary. | Fix the role or command. Do not bypass the check. |
 | `error_cancelled` | OpenCode or the host cancelled the firing. | Inspect the local event and stderr files before retrying. |
 
