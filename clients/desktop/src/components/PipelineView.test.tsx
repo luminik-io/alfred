@@ -894,10 +894,10 @@ describe("PipelineView", () => {
     }
   });
 
-  it("keeps the inspector in a sheet until four lanes and the dock fit", () => {
+  it("docks the inspector only when standard-width lanes stay readable", () => {
     renderPipeline();
 
-    expect(viewport.query).toBe("(min-width: 1600px)");
+    expect(viewport.query).toBe("(min-width: 1440px)");
   });
 
   it("routes an existing issue from the Work assignment strip", async () => {

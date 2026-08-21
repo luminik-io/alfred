@@ -56,7 +56,10 @@ test("captures autonomous work and evidence", async ({ page }) => {
   await page
     .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
-  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Work item inspector" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Work item" })).toHaveCount(0);
   await capture(page, "alfred-gallery-work.png");
 });
 

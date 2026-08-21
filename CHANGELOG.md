@@ -97,6 +97,15 @@ No changes are pending.
   control. A build check now rejects an initial bundle above 550 kB raw or 170
   kB gzip.
 
+### Fixed
+
+- Docked Work evidence beside the lifecycle board at standard Desktop widths.
+  Public screenshots and video no longer blur the board behind a modal.
+- Applied the phone-width media query on the first render, so a quick sidebar
+  selection closes the menu and shows the selected screen.
+- Updated the visual audit to use the current fixture and complete every
+  theme, mode, viewport, workflow, empty-state, and onboarding check.
+
 ## [0.7.5] - 2026-08-17
 
 ### Highlights
