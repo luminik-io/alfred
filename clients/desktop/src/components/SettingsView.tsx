@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { errorDetail, supportsNativeActions } from "../api/client";
+import { errorDetail, supportsMutations, supportsNativeActions } from "../api/client";
 import { loadSetupStatus } from "../api/setup";
 import type { ThemeMode, ThemeName } from "../lib/useTheme";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
@@ -76,6 +76,7 @@ export function SettingsView({
   onConnectServer: (url: string) => void;
 }) {
   const canRun = supportsNativeActions();
+  const canMutate = supportsMutations();
   const [consoleAgent, setConsoleAgent] = useState("senior-dev");
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
@@ -384,7 +385,7 @@ export function SettingsView({
             ) : null}
             <BatteryPickerStep
               baseUrl={baseUrl}
-              canMutate={connected}
+              canMutate={connected && canMutate}
               canRun={canRun}
               connected={connected}
               onRunLocalAction={onRunLocalAction}

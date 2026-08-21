@@ -193,6 +193,7 @@ afterEach(() => {
 describe("SettingsView", () => {
   it("keeps battery management available after onboarding", async () => {
     vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(apiClient, "supportsMutations").mockReturnValue(true);
     vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
       setupStatus("/tmp/alfred-home"),
     );
@@ -241,6 +242,26 @@ describe("SettingsView", () => {
       refreshAfter: false,
     });
     expect(screen.getByText("Turned Headroom compression on.")).toBeInTheDocument();
+  });
+
+  it("keeps tool switches read-only without mutation support", async () => {
+    vi.spyOn(apiClient, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(apiClient, "supportsMutations").mockReturnValue(false);
+    vi.spyOn(apiSetup, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home"),
+    );
+    vi.spyOn(apiSetup, "loadSetupBatteries").mockResolvedValue(
+      batteryManifest([headroomBattery()]),
+    );
+    const user = userEvent.setup();
+
+    render(renderSettings("http://127.0.0.1:7010"));
+
+    await user.click(screen.getByRole("tab", { name: "Tools" }));
+    expect(
+      await screen.findByRole("switch", { name: "Enable Headroom compression" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/read-only preview cannot change batteries/i)).toBeInTheDocument();
   });
 
   it("marks the surface ready only after runtime inventory settles", async () => {
