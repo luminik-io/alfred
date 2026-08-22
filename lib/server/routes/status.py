@@ -20,34 +20,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/api/status", response_class=JSONResponse)
-async def api_status(request: Request) -> JSONResponse:
+def status_payload(request: Request) -> dict[str, Any]:
+    """Build the shared status payload for each API contract path."""
     reader = request.app.state.reader
     agents = reader.list_agents()
     reliability = reader.reliability_report()
-    return JSONResponse(
-        views._jsonable(
-            {
-                "agents": agents,
-                "total_today": sum(agent.firings_today for agent in agents),
-                "reliability": reliability,
-                # Today's aggregate spend + ok/fail counts, rolled up from
-                # the same per-agent spend-YYYY-MM-DD.json ledgers metrics
-                # reads. Lets the Review cost strip show real spend instead
-                # of "not surfaced". Stays an honest empty rollup (all
-                # zeros, spend_usd null) when no ledgers exist today.
-                "metrics": views._today_cost_rollup(reader),
-                # The active intake profile (server env only), so Compose can
-                # adapt its copy/behavior to plain mode. Defaults to
-                # "technical" when ALFRED_INTAKE_PROFILE is unset.
-                "intake_profile": views._active_intake_profile_name(),
-                # Planning context from guided setup. The client can seed
-                # plans from this instead of asking the operator to type an
-                # owner/repo slug Alfred already knows.
-                "setup_repos": views._selected_setup_repos_payload(),
-            }
-        )
+    return views._jsonable(
+        {
+            "agents": agents,
+            "total_today": sum(agent.firings_today for agent in agents),
+            "reliability": reliability,
+            # Today's aggregate spend + ok/fail counts, rolled up from
+            # the same per-agent spend-YYYY-MM-DD.json ledgers metrics
+            # reads. Lets the Review cost strip show real spend instead
+            # of "not surfaced". Stays an honest empty rollup (all
+            # zeros, spend_usd null) when no ledgers exist today.
+            "metrics": views._today_cost_rollup(reader),
+            # The active intake profile (server env only), so Compose can
+            # adapt its copy/behavior to plain mode. Defaults to
+            # "technical" when ALFRED_INTAKE_PROFILE is unset.
+            "intake_profile": views._active_intake_profile_name(),
+            # Planning context from guided setup. The client can seed
+            # plans from this instead of asking the operator to type an
+            # owner/repo slug Alfred already knows.
+            "setup_repos": views._selected_setup_repos_payload(),
+        }
     )
+
+
+@router.get("/api/status", response_class=JSONResponse)
+async def api_status(request: Request) -> JSONResponse:
+    return JSONResponse(status_payload(request))
 
 
 @router.get("/api/schedule", response_class=JSONResponse)

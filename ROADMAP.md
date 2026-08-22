@@ -68,8 +68,9 @@ The order can change when testing finds a reliability or safety problem.
 
 ## Next
 
-- Add a versioned `alfred serve` API contract with contract tests and
-  stable error payloads.
+- Extend the versioned `alfred serve` contract beyond metadata and fleet
+  status. Move each Desktop route only after its response and error shapes
+  have contract tests.
 - Extend engine diagnostics to report permissions, MCPs, skills, and config
   ownership alongside the shipped version, authentication, and scheduler
   profile checks.
