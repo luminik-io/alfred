@@ -138,6 +138,28 @@ def test_serialized_battery_exposes_operating_contract() -> None:
     assert row["remove_command"]
 
 
+def test_serialized_battery_reuses_one_installation_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graphify = batteries.battery_by_id("graphify")
+    assert graphify is not None
+    results = iter((True, False))
+    calls = 0
+
+    def transient_installation(_battery: batteries.Battery, _env: dict[str, str]) -> bool:
+        nonlocal calls
+        calls += 1
+        return next(results)
+
+    monkeypatch.setattr(batteries, "is_installed", transient_installation)
+
+    row = batteries.to_dict(graphify, {})
+
+    assert calls == 1
+    assert row["status"] == batteries.STATUS_AVAILABLE
+    assert row["installed"] is True
+
+
 def test_code_memory_is_the_only_default_on_configurable_battery() -> None:
     assert {b.id for b in batteries.default_batteries()} == {"code-memory-mcp"}
     assert {b.id for b in batteries.advanced_batteries()} == {

@@ -764,10 +764,16 @@ def is_installed(battery: Battery, env: Mapping[str, str]) -> bool:
     return False
 
 
-def battery_status(battery: Battery, env: Mapping[str, str]) -> str:
+def battery_status(
+    battery: Battery,
+    env: Mapping[str, str],
+    *,
+    installed: bool | None = None,
+) -> str:
     if battery.builtin:
         return STATUS_INCLUDED
-    installed = is_installed(battery, env)
+    if installed is None:
+        installed = is_installed(battery, env)
     if is_enabled(battery, env) and installed:
         return STATUS_ENABLED
     if installed:
@@ -819,7 +825,8 @@ def disable_values(battery: Battery, env: Mapping[str, str] | None = None) -> di
 # Serialization (one shape for the CLI --json and the GUI endpoint)
 # --------------------------------------------------------------------------- #
 def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
-    status = battery_status(battery, env)
+    installed = is_installed(battery, env)
+    status = battery_status(battery, env, installed=installed)
     configured = is_enabled(battery, env)
     return {
         "id": battery.id,
@@ -833,7 +840,7 @@ def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
         "status": status,
         "configured": configured,
         "enabled": status in {STATUS_INCLUDED, STATUS_ENABLED},
-        "installed": is_installed(battery, env),
+        "installed": installed,
         "requires_daemon": battery.requires_daemon,
         "service": battery.service,
         "install_kind": battery.install_kind,
