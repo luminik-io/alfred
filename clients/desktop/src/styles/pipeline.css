@@ -639,6 +639,13 @@
   }
 }
 
+@media (max-width: 480px) {
+  .card-hover-action {
+    width: 36px;
+    height: 36px;
+  }
+}
+
 .alfred-pipeline__column {
   --col-tone: var(--muted-foreground);
   position: relative;

@@ -840,6 +840,15 @@
   }
 }
 
+@media (max-width: 480px) {
+  .ask-bubble__copy,
+  .ask-bubble__action,
+  .ask-code__copy {
+    width: 36px;
+    min-height: 36px;
+  }
+}
+
 .request-thread {
   padding: 0.8rem;
 }
