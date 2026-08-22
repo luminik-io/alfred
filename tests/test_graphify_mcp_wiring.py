@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -32,6 +33,7 @@ def _capture(
     *,
     graphify_present: bool = True,
     graph_present: bool = True,
+    graphify_probe: Callable[[str], bool] | None = None,
 ) -> list[str]:
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.setattr(_proc, "_memory_mcp_script", lambda: Path("/repo/bin/alfred-mcp.py"))
@@ -50,7 +52,7 @@ def _capture(
     monkeypatch.setattr(
         _proc,
         "_graphify_entrypoint_works",
-        lambda command: graphify_present,
+        graphify_probe or (lambda _command: graphify_present),
     )
     if graph_present:
         graph = tmp_path / "graphify-out" / "graph.json"
@@ -111,6 +113,23 @@ def test_graphify_enabled_takes_code_graph_slot(monkeypatch, tmp_path: Path) -> 
         assert name not in allowed
 
 
+def test_claude_command_resolves_graphify_once_for_server_and_allowlist(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls: list[str] = []
+
+    def probe(command: str) -> bool:
+        calls.append(command)
+        return True
+
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    cmd = _capture(monkeypatch, tmp_path, graphify_probe=probe)
+
+    assert calls == ["/usr/local/bin/graphify-mcp"]
+    assert "graphify" in _mcp_config(cmd)["mcpServers"]
+    assert all(name in _allowed(cmd) for name in _proc._graphify_tool_names())
+
+
 def test_graphify_enabled_but_missing_binary_falls_back(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
@@ -154,6 +173,24 @@ def test_graphify_uses_a_verified_installed_entrypoint(monkeypatch) -> None:
     monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
 
     assert _proc._graphify_command() == ("/usr/local/bin/graphify-mcp", [])
+
+
+def test_graphify_override_requires_an_executable_working_entrypoint(
+    monkeypatch, tmp_path: Path
+) -> None:
+    override = tmp_path / "graphify-mcp"
+    override.write_text("not executable", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_BIN", str(override))
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda _command: True)
+
+    assert _proc._graphify_command() is None
+
+    override.chmod(0o755)
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda _command: False)
+    assert _proc._graphify_command() is None
+
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda _command: True)
+    assert _proc._graphify_command() == (str(override), [])
 
 
 def test_graphify_probe_reaches_mcp_server_startup(monkeypatch) -> None:

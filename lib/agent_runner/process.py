@@ -399,7 +399,9 @@ def _memory_mcp_server(script: Path | _Unresolved | None = _UNRESOLVED) -> dict[
 
 
 def _memory_mcp_args(
-    script: Path | _Unresolved | None = _UNRESOLVED, workdir: Path | None = None
+    script: Path | _Unresolved | None = _UNRESOLVED,
+    workdir: Path | None = None,
+    code_graph: dict[str, Any] | _Unresolved | None = _UNRESOLVED,
 ) -> list[str]:
     """``--mcp-config`` args attaching the read-only memory + code-memory
     servers, or ``[]``.
@@ -410,17 +412,17 @@ def _memory_mcp_args(
     likewise read-only: it answers code-structure queries (search, call graph,
     blast radius, who-owns) and never mutates the repo.
 
-    ``script`` lets the caller resolve ``_memory_mcp_script()`` once per invoke
-    and share it with ``_with_memory_mcp_tools`` so the allowlist augmentation
-    and the ``--mcp-config`` attachment can never disagree (no TOCTOU between two
-    separate ``Path.exists()`` checks). A resolved ``None`` is honored as-is;
-    only the ``_UNRESOLVED`` sentinel triggers a fresh lookup here.
+    ``script`` and ``code_graph`` let the caller resolve both servers once per
+    invoke and share the result with ``_with_memory_mcp_tools``. The allowlist
+    and ``--mcp-config`` attachment therefore cannot disagree after a transient
+    probe result. A resolved ``None`` is honored as-is; only the ``_UNRESOLVED``
+    sentinel triggers a fresh lookup here.
     """
     servers: dict[str, Any] = {}
     memory = _memory_mcp_server(script)
     if memory:
         servers.update(memory)
-    code = _active_code_graph_server(workdir)
+    code = _active_code_graph_server(workdir) if isinstance(code_graph, _Unresolved) else code_graph
     if code:
         servers.update(code)
     if not servers:
@@ -436,13 +438,15 @@ def _with_memory_mcp_tools(
     allowed_tools: str,
     script: Path | _Unresolved | None = _UNRESOLVED,
     workdir: Path | None = None,
+    code_graph: dict[str, Any] | _Unresolved | None = _UNRESOLVED,
 ) -> str:
     """Append the read-only memory recall tools to an allowlist when enabled.
 
     Preserves the caller's separator style (comma vs space). No-op when the MCP
-    is disabled or the server script is missing. ``script`` shares one resolved
-    ``_memory_mcp_script()`` with ``_memory_mcp_args`` (see its docstring); a
-    resolved ``None`` is honored, only ``_UNRESOLVED`` triggers a fresh lookup.
+    is disabled or the server script is missing. ``script`` and ``code_graph``
+    share one resolved server snapshot with ``_memory_mcp_args`` (see its
+    docstring). A resolved ``None`` is honored; only ``_UNRESOLVED`` triggers a
+    fresh lookup.
     """
     base = (allowed_tools or "").strip()
     wanted: list[str] = []
@@ -450,7 +454,10 @@ def _with_memory_mcp_tools(
         resolved = _memory_mcp_script() if isinstance(script, _Unresolved) else script
         if resolved is not None:
             wanted.extend(_memory_tool_names())
-    wanted.extend(_active_code_graph_tool_names(workdir))
+    resolved_code_graph = (
+        _active_code_graph_server(workdir) if isinstance(code_graph, _Unresolved) else code_graph
+    )
+    wanted.extend(_code_graph_tool_names(resolved_code_graph))
     if not wanted:
         return base
     existing = set(base.replace(",", " ").split())
@@ -566,8 +573,11 @@ def _graphify_command() -> tuple[str, list[str]] | None:
     override = os.environ.get("ALFRED_GRAPHIFY_BIN", "").strip()
     if override:
         expanded = str(Path(override).expanduser())
-        if shutil.which(override) or Path(expanded).is_file():
-            return expanded, []
+        resolved = shutil.which(override)
+        if resolved is None and Path(expanded).is_file() and os.access(expanded, os.X_OK):
+            resolved = expanded
+        if resolved and _graphify_entrypoint_works(resolved):
+            return resolved, []
         return None
     installed = shutil.which("graphify-mcp")
     if installed and _graphify_entrypoint_works(installed):
@@ -648,7 +658,12 @@ def _active_code_graph_server(workdir: Path | None = None) -> dict[str, Any] | N
 
 
 def _active_code_graph_tool_names(workdir: Path | None = None) -> list[str]:
-    server = _active_code_graph_server(workdir)
+    return _code_graph_tool_names(_active_code_graph_server(workdir))
+
+
+def _code_graph_tool_names(server: dict[str, Any] | None) -> list[str]:
+    """Return the allowlist names for one already-resolved code-graph server."""
+
     if server is None:
         return []
     if GRAPHIFY_MCP_SERVER in server:
@@ -929,12 +944,13 @@ def claude_invoke(
     # the --mcp-config attachment below always agree (no TOCTOU between two
     # independent Path.exists() checks).
     memory_script = _memory_mcp_script()
+    code_graph = _active_code_graph_server(workdir)
     cmd = [
         readiness.binary,
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
+        _with_memory_mcp_tools(allowed_tools, memory_script, workdir, code_graph),
         "--max-turns",
         str(effective_max_turns),
         "--output-format",
@@ -950,7 +966,7 @@ def claude_invoke(
     # Attach the read-only memory MCP server so agents can recall lessons as a
     # tool (capability, on by default; ALFRED_MEMORY_MCP=0 to disable). Reuses
     # the single resolved memory_script from above.
-    cmd.extend(_memory_mcp_args(memory_script, workdir))
+    cmd.extend(_memory_mcp_args(memory_script, workdir, code_graph))
     if model:
         cmd.extend(["--model", model])
     if resume_session:
@@ -1069,12 +1085,13 @@ def claude_invoke_streaming(
         max_turns = _CLAUDE_UNLIMITED_TURNS
 
     memory_script = _memory_mcp_script()
+    code_graph = _active_code_graph_server(workdir)
     cmd = [
         readiness.binary,
         "-p",
         prompt,
         "--allowedTools",
-        _with_memory_mcp_tools(allowed_tools, memory_script, workdir),
+        _with_memory_mcp_tools(allowed_tools, memory_script, workdir, code_graph),
         "--max-turns",
         str(max_turns),
         "--output-format",
@@ -1084,7 +1101,7 @@ def claude_invoke_streaming(
         "bypassPermissions",
     ]
     cmd.extend(_agent_settings_args())
-    cmd.extend(_memory_mcp_args(memory_script, workdir))
+    cmd.extend(_memory_mcp_args(memory_script, workdir, code_graph))
     if model:
         cmd.extend(["--model", model])
     if resume_session:

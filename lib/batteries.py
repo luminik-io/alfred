@@ -685,28 +685,37 @@ def _code_memory_binary(env: Mapping[str, str]) -> bool:
 
 def _graphify_available(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
-    if override and Path(override).expanduser().exists():
-        return True
+    if override:
+        expanded = Path(override).expanduser()
+        command = shutil.which(override)
+        if command is None and _is_executable_file(expanded):
+            command = str(expanded)
+        return bool(command and _graphify_entrypoint_works(command))
     installed = shutil.which("graphify-mcp")
     cli = shutil.which("graphify")
-    if installed and cli:
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
-                graph.write('{"nodes": [], "links": []}')
-                graph.flush()
-                probe = subprocess.run(
-                    [installed, graph.name, "--transport", "stdio"],
+    return bool(installed and cli and _graphify_entrypoint_works(installed))
+
+
+def _graphify_entrypoint_works(command: str) -> bool:
+    """Verify that a candidate can start Graphify's read-only stdio server."""
+
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8") as graph:
+            graph.write('{"nodes": [], "links": []}')
+            graph.flush()
+            return (
+                subprocess.run(
+                    [command, graph.name, "--transport", "stdio"],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     timeout=5,
                     check=False,
-                )
-                if probe.returncode == 0:
-                    return True
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    return False
+                ).returncode
+                == 0
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def _headroom_available(env: Mapping[str, str]) -> bool:
@@ -755,10 +764,16 @@ def is_installed(battery: Battery, env: Mapping[str, str]) -> bool:
     return False
 
 
-def battery_status(battery: Battery, env: Mapping[str, str]) -> str:
+def battery_status(
+    battery: Battery,
+    env: Mapping[str, str],
+    *,
+    installed: bool | None = None,
+) -> str:
     if battery.builtin:
         return STATUS_INCLUDED
-    installed = is_installed(battery, env)
+    if installed is None:
+        installed = is_installed(battery, env)
     if is_enabled(battery, env) and installed:
         return STATUS_ENABLED
     if installed:
@@ -810,7 +825,8 @@ def disable_values(battery: Battery, env: Mapping[str, str] | None = None) -> di
 # Serialization (one shape for the CLI --json and the GUI endpoint)
 # --------------------------------------------------------------------------- #
 def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
-    status = battery_status(battery, env)
+    installed = is_installed(battery, env)
+    status = battery_status(battery, env, installed=installed)
     configured = is_enabled(battery, env)
     return {
         "id": battery.id,
@@ -824,7 +840,7 @@ def to_dict(battery: Battery, env: Mapping[str, str]) -> dict[str, object]:
         "status": status,
         "configured": configured,
         "enabled": status in {STATUS_INCLUDED, STATUS_ENABLED},
-        "installed": is_installed(battery, env),
+        "installed": installed,
         "requires_daemon": battery.requires_daemon,
         "service": battery.service,
         "install_kind": battery.install_kind,

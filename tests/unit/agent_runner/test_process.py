@@ -361,6 +361,18 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
         return FakeProc()
 
     monkeypatch.setattr(proc.subprocess, "Popen", fake_popen)
+    code_graph_calls: list[Path] = []
+
+    def active_code_graph(workdir: Path):
+        code_graph_calls.append(workdir)
+        return {
+            proc.GRAPHIFY_MCP_SERVER: {
+                "command": "/usr/local/bin/graphify-mcp",
+                "args": ["graph.json", "--transport", "stdio"],
+            }
+        }
+
+    monkeypatch.setattr(proc, "_active_code_graph_server", active_code_graph)
 
     res = ar.claude_invoke_streaming(
         prompt="hello",
@@ -381,6 +393,10 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
     assert cmd[cmd.index("--output-format") + 1] == "stream-json"
     assert "--allowedTools" in cmd
     assert cmd[cmd.index("--allowedTools") + 1].startswith("Read,Bash")
+    assert code_graph_calls == [Path("/tmp")]
+    assert "mcp__graphify__query_graph" in cmd[cmd.index("--allowedTools") + 1]
+    mcp_config = json.loads(cmd[cmd.index("--mcp-config") + 1])
+    assert mcp_config["mcpServers"]["graphify"]["command"] == "/usr/local/bin/graphify-mcp"
     assert captured["timeout"] == 42
     assert captured["kwargs"]["cwd"] == "/tmp"
     assert captured["kwargs"]["env"]["CLAUDE_CONFIG_DIR"]

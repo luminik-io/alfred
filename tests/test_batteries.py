@@ -138,6 +138,28 @@ def test_serialized_battery_exposes_operating_contract() -> None:
     assert row["remove_command"]
 
 
+def test_serialized_battery_reuses_one_installation_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graphify = batteries.battery_by_id("graphify")
+    assert graphify is not None
+    results = iter((True, False))
+    calls = 0
+
+    def transient_installation(_battery: batteries.Battery, _env: dict[str, str]) -> bool:
+        nonlocal calls
+        calls += 1
+        return next(results)
+
+    monkeypatch.setattr(batteries, "is_installed", transient_installation)
+
+    row = batteries.to_dict(graphify, {})
+
+    assert calls == 1
+    assert row["status"] == batteries.STATUS_AVAILABLE
+    assert row["installed"] is True
+
+
 def test_code_memory_is_the_only_default_on_configurable_battery() -> None:
     assert {b.id for b in batteries.default_batteries()} == {"code-memory-mcp"}
     assert {b.id for b in batteries.advanced_batteries()} == {
@@ -180,6 +202,35 @@ def test_headroom_detection_accepts_importable_library(
     monkeypatch.setattr(batteries.shutil, "which", lambda _name: None)
 
     assert batteries._headroom_available({}) is True
+
+
+def test_graphify_override_requires_an_executable_working_mcp_entrypoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    override = tmp_path / "graphify-mcp"
+    override.write_text("not executable", encoding="utf-8")
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+
+    assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is False
+
+    override.chmod(0o755)
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+    assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is False
+
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+    assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is True
 
 
 def test_daemon_batteries_are_flagged_with_a_service() -> None:
