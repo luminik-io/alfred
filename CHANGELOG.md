@@ -15,6 +15,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Graphify binary and graph paths, Headroom overrides, setup status, and agent
   firings now expand `~` from `HOME`, then `ALFRED_HOME`, so all surfaces use
   the same configured file when a service starts without `HOME`.
+- The optional gbrain memory provider now expands `~` from `HOME`, then
+  `ALFRED_HOME`. Its configured binary works when `HOME` is unset.
 - Graphify overrides now appear ready and attach to runs only when the file is
   executable and its read-only MCP server starts successfully.
 - `alfred auth status` now reports OpenCode with Claude Code and Codex. OpenCode

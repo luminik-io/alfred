@@ -352,6 +352,25 @@ def test_gbrain_provider_invokes_binary_and_parses(tmp_path: Path) -> None:
     assert out[0].codename == "lucius"
 
 
+def test_gbrain_provider_uses_alfred_home_when_home_is_unset(tmp_path: Path) -> None:
+    alfred_home = tmp_path / "alfred"
+    binary = alfred_home / "bin" / "gbrain"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s' '[{\"body\":\"fallback hit\"}]'\n",
+    )
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+    provider = GBrainProvider.from_env(
+        env={
+            "ALFRED_HOME": str(alfred_home),
+            "ALFRED_GBRAIN_BIN": "~/bin/gbrain",
+        }
+    )
+
+    assert [lesson.body for lesson in provider.recall(query="fallback")] == ["fallback hit"]
+
+
 def test_gbrain_provider_from_env_handles_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ALFRED_GBRAIN_BIN", raising=False)
     provider = GBrainProvider.from_env(env={})
