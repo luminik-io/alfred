@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from envflags import truthy
+from runtime_home import expand_user_path
 
 # --------------------------------------------------------------------------- #
 # Vocabulary
@@ -652,33 +653,10 @@ def _is_executable_file(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
-def _expand_user_path(env: Mapping[str, str], raw: str) -> Path:
-    """Expand ``~`` with the code-memory launcher's home precedence."""
-
-    path = Path(raw)
-    if raw != "~" and not raw.startswith("~/"):
-        return path
-    home = next(
-        (
-            Path(value)
-            for key in ("HOME", "ALFRED_HOME")
-            if (value := str(env.get(key, "")).strip())
-        ),
-        None,
-    )
-    if home is None:
-        try:
-            home = Path.home()
-        except RuntimeError:
-            return path
-    suffix = raw.removeprefix("~/") if raw != "~" else ""
-    return home / suffix
-
-
 def _code_memory_binary(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
     if override:
-        return _is_executable_file(_expand_user_path(env, override))
+        return _is_executable_file(expand_user_path(env, override))
     fetched = _alfred_home(env) / "bin" / "codebase-memory-mcp"
     return _is_executable_file(fetched)
 
@@ -686,7 +664,7 @@ def _code_memory_binary(env: Mapping[str, str]) -> bool:
 def _graphify_available(env: Mapping[str, str]) -> bool:
     override = str(env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
     if override:
-        expanded = Path(override).expanduser()
+        expanded = expand_user_path(env, override)
         command = shutil.which(override)
         if command is None and _is_executable_file(expanded):
             command = str(expanded)
@@ -725,7 +703,7 @@ def _headroom_available(env: Mapping[str, str]) -> bool:
         return False
     override = str(env.get("ALFRED_HEADROOM_BIN", "")).strip()
     if override:
-        path = Path(override).expanduser()
+        path = expand_user_path(env, override)
         if path.is_file() and os.access(path, os.X_OK):
             return True
     return bool(shutil.which("headroom"))

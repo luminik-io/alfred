@@ -81,6 +81,29 @@ def test_explicit_bin_override_resolves(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert det.source == "cli"
 
 
+def test_explicit_bin_override_expands_tilde_from_alfred_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delitem(sys.modules, "headroom", raising=False)
+    monkeypatch.setattr(he, "_importable", lambda: False)
+    monkeypatch.setattr(he.shutil, "which", lambda _n: None)
+    alfred_home = tmp_path / "alfred-home"
+    fake_bin = alfred_home / "bin" / "headroom"
+    fake_bin.parent.mkdir(parents=True)
+    fake_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    fake_bin.chmod(0o755)
+
+    det = he.detect(
+        {
+            "ALFRED_HOME": str(alfred_home),
+            "ALFRED_HEADROOM_BIN": "~/bin/headroom",
+        }
+    )
+
+    assert det.bin_path == str(fake_bin)
+    assert det.source == "cli"
+
+
 # --------------------------------------------------------------------------
 # Library compression + defensive extraction
 # --------------------------------------------------------------------------

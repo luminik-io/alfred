@@ -41,6 +41,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from envflags import truthy
+from runtime_home import expand_user_path
 
 _LOG = logging.getLogger("headroom_engine")
 
@@ -90,9 +91,9 @@ def _resolve_bin(env: Mapping[str, str]) -> str | None:
     """Resolve a headroom CLI binary: explicit override first, then PATH."""
     override = (env.get("ALFRED_HEADROOM_BIN") or "").strip()
     if override:
-        expanded = os.path.expanduser(override)
+        expanded = expand_user_path(env, override)
         if os.path.isfile(expanded) and os.access(expanded, os.X_OK):
-            return expanded
+            return str(expanded)
         # An override that does not resolve is ignored (fall through to PATH),
         # matching the code-memory launcher's forgiving resolution.
     found = shutil.which("headroom")

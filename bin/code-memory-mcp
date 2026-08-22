@@ -186,7 +186,7 @@ load_env_file() {
 }
 
 expand_user_path() {
-  local value="$1" user_home="${HOME:-}"
+  local value="$1" user_home="${HOME:-}" expanded=""
   if [ -z "$user_home" ]; then
     case "${ALFRED_HOME:-}" in
       /*) user_home="$ALFRED_HOME" ;;
@@ -198,6 +198,16 @@ expand_user_path() {
       ;;
     \~/*)
       [ -n "$user_home" ] && printf '%s/%s' "$user_home" "${value#\~/}" || printf '%s' "$value"
+      ;;
+    \~*)
+      expanded="$(python3 - "$value" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+print(os.path.expanduser(sys.argv[1]))
+PY
+)"
+      [ -n "$expanded" ] && printf '%s' "$expanded" || printf '%s' "$value"
       ;;
     *) printf '%s' "$value" ;;
   esac

@@ -246,6 +246,33 @@ def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) 
     assert server["graphify"]["args"][0] == str(graph)
 
 
+def test_graphify_expands_binary_and_graph_from_alfred_home_without_home(
+    monkeypatch, tmp_path: Path
+) -> None:
+    alfred_home = tmp_path / "alfred-home"
+    binary = alfred_home / "bin" / "graphify-mcp"
+    graph = alfred_home / "graphs" / "repo.json"
+    binary.parent.mkdir(parents=True)
+    graph.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+    graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_BIN", "~/bin/graphify-mcp")
+    monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "~/graphs/repo.json")
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
+
+    server = _proc._graphify_mcp_server(tmp_path)
+
+    assert server is not None
+    assert server["graphify"] == {
+        "command": str(binary),
+        "args": [str(graph), "--transport", "stdio"],
+    }
+
+
 def test_graphify_tool_names_use_server_prefix() -> None:
     names = _proc._graphify_tool_names()
     assert "mcp__graphify__query_graph" in names

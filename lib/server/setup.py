@@ -50,6 +50,7 @@ from typing import Any, Literal
 import batteries
 import skill_packs
 from envflags import FALSY_VALUES
+from runtime_home import expand_user_path
 
 from server import runtime_facade
 
@@ -968,9 +969,10 @@ def capability_status(
     )
     if graphify is not None:
         graphify = dict(graphify)
-        graph_path = Path(
-            runtime_env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json"
-        ).expanduser()
+        graph_path = expand_user_path(
+            runtime_env,
+            runtime_env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json",
+        )
         # Relative graphs are resolved per firing worktree by agent_runner.
         # The setup server has no single target repo, so it cannot prove them ready.
         graphify["graph_present"] = graph_path.is_absolute() and graph_path.is_file()
@@ -1684,19 +1686,7 @@ def _code_memory_configured_repo_path(
 def _code_memory_expand_user_path(env: Mapping[str, str], raw: str) -> Path:
     """Expand ``~`` with the same precedence as the code-memory launcher."""
 
-    path = Path(raw)
-    if raw != "~" and not raw.startswith("~/"):
-        return path
-    home = next(
-        (Path(value) for key in ("HOME", "ALFRED_HOME") if (value := env.get(key, "").strip())),
-        None,
-    )
-    if home is None:
-        home = _safe_home({})
-    if home is None:
-        return path
-    suffix = raw.removeprefix("~/") if raw != "~" else ""
-    return home / suffix
+    return expand_user_path(env, raw)
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:
