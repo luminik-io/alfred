@@ -204,6 +204,29 @@ def test_headroom_detection_accepts_importable_library(
     assert batteries._headroom_available({}) is True
 
 
+def test_headroom_override_expands_tilde_from_alfred_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    alfred_home = tmp_path / "alfred-home"
+    override = alfred_home / "bin" / "headroom"
+    override.parent.mkdir(parents=True)
+    override.write_text("#!/bin/sh\n", encoding="utf-8")
+    override.chmod(0o755)
+    monkeypatch.setattr(batteries, "_find_spec", lambda _name: False)
+    monkeypatch.setattr(batteries.shutil, "which", lambda _name: None)
+
+    assert (
+        batteries._headroom_available(
+            {
+                "ALFRED_HOME": str(alfred_home),
+                "ALFRED_HEADROOM_BIN": "~/bin/headroom",
+                "ALFRED_HEADROOM_COMPRESS_CMD": "{bin} compress-stdin",
+            }
+        )
+        is True
+    )
+
+
 def test_graphify_override_requires_an_executable_working_mcp_entrypoint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -231,6 +254,31 @@ def test_graphify_override_requires_an_executable_working_mcp_entrypoint(
         lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
     )
     assert batteries._graphify_available({"ALFRED_GRAPHIFY_BIN": str(override)}) is True
+
+
+def test_graphify_override_expands_tilde_from_alfred_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    alfred_home = tmp_path / "alfred-home"
+    override = alfred_home / "bin" / "graphify-mcp"
+    override.parent.mkdir(parents=True)
+    override.write_text("#!/bin/sh\n", encoding="utf-8")
+    override.chmod(0o755)
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+
+    assert (
+        batteries._graphify_available(
+            {
+                "ALFRED_HOME": str(alfred_home),
+                "ALFRED_GRAPHIFY_BIN": "~/bin/graphify-mcp",
+            }
+        )
+        is True
+    )
 
 
 def test_daemon_batteries_are_flagged_with_a_service() -> None:

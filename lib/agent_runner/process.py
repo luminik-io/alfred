@@ -43,6 +43,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from batteries import expand_user_path
 from conversation_condenser import looks_like_context_overflow
 from envflags import FALSY_VALUES, truthy
 
@@ -572,7 +573,7 @@ def _graphify_command() -> tuple[str, list[str]] | None:
     """Resolve a supported graphify MCP entrypoint and its bootstrap arguments."""
     override = os.environ.get("ALFRED_GRAPHIFY_BIN", "").strip()
     if override:
-        expanded = str(Path(override).expanduser())
+        expanded = str(expand_user_path(os.environ, override))
         resolved = shutil.which(override)
         if resolved is None and Path(expanded).is_file() and os.access(expanded, os.X_OK):
             resolved = expanded
@@ -621,7 +622,7 @@ def _graphify_mcp_server(workdir: Path | None = None) -> dict[str, Any] | None:
         return None
     cmd, prefix = invocation
     graph = os.environ.get("ALFRED_GRAPHIFY_GRAPH", "").strip() or "graphify-out/graph.json"
-    graph_path = Path(graph).expanduser()
+    graph_path = expand_user_path(os.environ, graph)
     resolved_graph = (
         graph_path if graph_path.is_absolute() else (workdir / graph_path if workdir else None)
     )

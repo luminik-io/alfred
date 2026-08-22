@@ -2206,6 +2206,38 @@ def test_relative_graph_is_not_probed_against_setup_server_cwd(
     assert code_graph["detected"]["graph_present"] is False
 
 
+def test_capability_plane_expands_graphify_graph_from_alfred_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    alfred_home = tmp_path / "alfred-home"
+    graph = alfred_home / "graphs" / "repo.json"
+    graph.parent.mkdir(parents=True)
+    graph.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        setup_mod.batteries,
+        "manifest",
+        lambda _env: {
+            "batteries": [
+                {"id": "graphify", "configured": True, "enabled": True, "installed": True}
+            ]
+        },
+    )
+
+    payload = setup_mod.capability_status(
+        {"enabled": False, "binary": {"resolved": False}, "index_present": False},
+        launcher_env={
+            "ALFRED_HOME": str(alfred_home),
+            "ALFRED_GRAPHIFY_MCP": "1",
+            "ALFRED_GRAPHIFY_GRAPH": "~/graphs/repo.json",
+        },
+    )
+    code_graph = next(item for item in payload["capabilities"] if item["key"] == "code_graph")
+
+    assert code_graph["state"] == "ready"
+    assert code_graph["detected"]["graph_present"] is True
+    assert code_graph["detected"]["graph_path"] == str(graph)
+
+
 def test_capability_plane_reports_builtin_context_governor_with_headroom_detected(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
