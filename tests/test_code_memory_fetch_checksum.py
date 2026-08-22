@@ -1203,14 +1203,12 @@ def test_launcher_uses_default_runtime_env_when_home_is_unset(tmp_path: Path) ->
 
 
 def test_launcher_expands_named_user_workspace_path(tmp_path: Path) -> None:
-    repo_root = SCRIPT.parent.parent.resolve()
     home = Path.home().resolve()
-    relative_repo = repo_root.relative_to(home)
     username = pwd.getpwuid(os.getuid()).pw_name
     env = _launcher_env(
         tmp_path,
         ALFRED_CODE_MEMORY_AUTOFETCH="0",
-        WORKSPACE_ROOT=f"~{username}/{relative_repo}",
+        WORKSPACE_ROOT=f"~{username}",
         WORKSPACE_SUBDIR="",
     )
 
@@ -1222,7 +1220,7 @@ def test_launcher_expands_named_user_workspace_path(tmp_path: Path) -> None:
     )
 
     assert res.returncode == 0, res.stderr
-    assert f"workspace:   {repo_root}" in res.stderr
+    assert f"workspace:   {home}" in res.stderr
 
 
 def test_launcher_keeps_process_home_when_rc_points_elsewhere(tmp_path: Path) -> None:
