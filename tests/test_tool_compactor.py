@@ -237,6 +237,7 @@ def test_compactor_and_hook_are_stdlib_only() -> None:
         "envflags",
         "headroom_engine",
         "model_context",
+        "runtime_home",
         "tool_offload",
     }
     for name in (
@@ -246,6 +247,7 @@ def test_compactor_and_hook_are_stdlib_only() -> None:
         "envflags.py",
         "headroom_engine.py",
         "model_context.py",
+        "runtime_home.py",
         "tool_offload.py",
     ):
         source = (_LIB / name).read_text(encoding="utf-8")

@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from envflags import truthy
+from runtime_home import expand_user_path
 
 # --------------------------------------------------------------------------- #
 # Vocabulary
@@ -650,29 +651,6 @@ def _find_spec(name: str) -> bool:
 
 def _is_executable_file(path: Path) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
-
-
-def expand_user_path(env: Mapping[str, str], raw: str) -> Path:
-    """Expand ``~`` with Alfred's runtime home precedence."""
-
-    path = Path(raw)
-    if raw != "~" and not raw.startswith("~/"):
-        return path
-    home = next(
-        (
-            Path(value)
-            for key in ("HOME", "ALFRED_HOME")
-            if (value := str(env.get(key, "")).strip())
-        ),
-        None,
-    )
-    if home is None:
-        try:
-            home = Path.home()
-        except RuntimeError:
-            return path
-    suffix = raw.removeprefix("~/") if raw != "~" else ""
-    return home / suffix
 
 
 def _code_memory_binary(env: Mapping[str, str]) -> bool:

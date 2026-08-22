@@ -50,6 +50,7 @@ from typing import Any, Literal
 import batteries
 import skill_packs
 from envflags import FALSY_VALUES
+from runtime_home import expand_user_path
 
 from server import runtime_facade
 
@@ -968,7 +969,7 @@ def capability_status(
     )
     if graphify is not None:
         graphify = dict(graphify)
-        graph_path = batteries.expand_user_path(
+        graph_path = expand_user_path(
             runtime_env,
             runtime_env.get("ALFRED_GRAPHIFY_GRAPH") or "graphify-out/graph.json",
         )
@@ -1685,7 +1686,7 @@ def _code_memory_configured_repo_path(
 def _code_memory_expand_user_path(env: Mapping[str, str], raw: str) -> Path:
     """Expand ``~`` with the same precedence as the code-memory launcher."""
 
-    return batteries.expand_user_path(env, raw)
+    return expand_user_path(env, raw)
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:

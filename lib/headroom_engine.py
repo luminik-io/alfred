@@ -40,8 +40,8 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from batteries import expand_user_path
 from envflags import truthy
+from runtime_home import expand_user_path
 
 _LOG = logging.getLogger("headroom_engine")
 

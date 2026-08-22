@@ -43,9 +43,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from batteries import expand_user_path
 from conversation_condenser import looks_like_context_overflow
 from envflags import FALSY_VALUES, truthy
+from runtime_home import expand_user_path
 
 from . import memory_ranking
 from .config import (
