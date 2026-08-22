@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import pwd
 import re
 import shlex
 import subprocess
@@ -1199,6 +1200,29 @@ def test_launcher_uses_default_runtime_env_when_home_is_unset(tmp_path: Path) ->
     assert res.returncode == 0, res.stderr
     assert f"index-dir:   {runtime_a}/state/code-memory" in res.stderr
     assert f"{runtime_b}/state/code-memory" not in res.stderr
+
+
+def test_launcher_expands_named_user_workspace_path(tmp_path: Path) -> None:
+    repo_root = SCRIPT.parent.parent.resolve()
+    home = Path.home().resolve()
+    relative_repo = repo_root.relative_to(home)
+    username = pwd.getpwuid(os.getuid()).pw_name
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        WORKSPACE_ROOT=f"~{username}/{relative_repo}",
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"workspace:   {repo_root}" in res.stderr
 
 
 def test_launcher_keeps_process_home_when_rc_points_elsewhere(tmp_path: Path) -> None:
