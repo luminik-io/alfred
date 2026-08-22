@@ -10,8 +10,13 @@ def expand_user_path(env: Mapping[str, str], raw: str) -> Path:
     """Expand ``~`` from ``HOME``, then ``ALFRED_HOME``."""
 
     path = Path(raw)
-    if raw != "~" and not raw.startswith("~/"):
+    if not raw.startswith("~"):
         return path
+    if raw != "~" and not raw.startswith("~/"):
+        try:
+            return path.expanduser()
+        except RuntimeError:
+            return path
     home = next(
         (
             Path(value)
