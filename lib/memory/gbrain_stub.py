@@ -59,6 +59,7 @@ from pathlib import Path
 from typing import Any
 
 from fleet_brain import Lesson, Severity, new_id
+from runtime_home import expand_user_path
 
 __all__ = ["GBrainProvider"]
 
@@ -92,7 +93,7 @@ class GBrainProvider:
         the binary is missing -- ``recall`` just returns ``[]``."""
         envmap = env if env is not None else dict(os.environ)
         raw = envmap.get("ALFRED_GBRAIN_BIN", "").strip()
-        path = Path(raw).expanduser() if raw else None
+        path = expand_user_path(envmap, raw) if raw else None
         return cls(binary_path=path)
 
     # ----- recall --------------------------------------------------------
