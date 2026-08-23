@@ -10,6 +10,7 @@ import {
 
 const outputDir = resolve(process.cwd(), "test-results/visual-audit");
 const viewports = {
+  wide: { width: 1600, height: 1000 },
   desktop: { width: 1440, height: 900 },
   short: { width: 1280, height: 720 },
   tablet: { width: 768, height: 900 },
@@ -362,14 +363,41 @@ for (const appearance of appearances) {
           .click();
         const dockWorkInspector = viewport.width >= 1600;
         if (dockWorkInspector) {
-          await expect(
-            page.getByRole("complementary", {
-              name: "Work item inspector",
-            }),
-          ).toBeVisible();
+          const inspector = page.getByRole("complementary", {
+            name: "Work item inspector",
+          });
+          await expect(inspector).toBeVisible();
           await expect(
             page.getByRole("dialog", { name: "Work item" }),
           ).toHaveCount(0);
+          const [inspectorBox, signatureBox] = await Promise.all([
+            inspector.boundingBox(),
+            inspector.getByText("Signature", { exact: true }).boundingBox(),
+          ]);
+          expect(inspectorBox).not.toBeNull();
+          expect(signatureBox).not.toBeNull();
+          if (inspectorBox && signatureBox) {
+            expect(
+              signatureBox.y + signatureBox.height,
+              "the docked action area must not cover the evidence summary",
+            ).toBeLessThanOrEqual(inspectorBox.y + inspectorBox.height);
+          }
+          await inspector.evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+          });
+          const actionBox = await inspector
+            .getByRole("button", { name: "Open on GitHub" })
+            .boundingBox();
+          expect(actionBox).not.toBeNull();
+          if (inspectorBox && actionBox) {
+            expect(actionBox.y).toBeGreaterThanOrEqual(inspectorBox.y);
+            expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(
+              inspectorBox.y + inspectorBox.height,
+            );
+          }
+          await inspector.evaluate((element) => {
+            element.scrollTop = 0;
+          });
         } else {
           await expect(
             page.getByRole("dialog", { name: "Work item" }),

@@ -144,6 +144,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Kept the docked Work action below its evidence, so signature and check rows
+  stay readable at wide Desktop widths.
 - Docked Work evidence beside the lifecycle board at standard Desktop widths.
   Public screenshots and video no longer blur the board behind a modal.
 - Applied the phone-width media query on the first render, so a quick sidebar

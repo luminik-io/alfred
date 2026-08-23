@@ -467,12 +467,10 @@
 }
 
 .pipeline-inspector .detail-panel--sheet > .card-actions:last-child {
-  position: sticky;
-  bottom: -1.15rem;
+  position: static;
   margin-top: auto;
   border-top: 1px solid var(--hairline);
-  background: var(--surface);
-  padding: 0.9rem 0 1.15rem;
+  padding-top: 0.9rem;
 }
 
 .plan-decision {
