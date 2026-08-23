@@ -52,13 +52,13 @@ test("records the public tour from sample data only", async ({ page }) => {
   await page
     .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
+  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Work item inspector" }),
-  ).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Work item" })).toHaveCount(0);
+  ).toHaveCount(0);
   await pause();
 
-  await page.getByRole("button", { name: "Close inspector" }).click();
+  await page.getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("button", { name: "Code", exact: true }).click();
   await expect(
