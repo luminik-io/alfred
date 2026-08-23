@@ -18,6 +18,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Removed the obsolete Desktop screenshot script that could report blank
+  captures as successful. `npm run capture:visual` remains the supported,
+  fixture-backed visual audit.
 - Aligned the Learnings lesson list and technical disclosure to one readable
   content width across every Desktop theme and supported window size.
 - OpenCode firings now receive the same role-scoped skills as Claude Code and
