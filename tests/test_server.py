@@ -3686,6 +3686,54 @@ def test_api_schedule_marks_a_truncated_roster(
     assert body["truncated"] is True
 
 
+def test_api_schedule_reports_an_unreadable_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.worker\tworker.py\tinterval:600\tno\talfred.worker\tworker\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+    original_read_text = Path.read_text
+
+    def unreadable(path: Path, *args: object, **kwargs: object) -> str:
+        if path == conf:
+            raise PermissionError("denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", unreadable)
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    body = client.get("/api/schedule").json()
+
+    assert body == {"runs": [], "truncated": False, "error": "internal error"}
+
+
+def test_api_schedule_reports_a_malformed_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.worker\tworker.py\tinvalid\tno\talfred.worker\tworker\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    body = client.get("/api/schedule").json()
+
+    assert body == {"runs": [], "truncated": False, "error": "internal error"}
+
+
 def test_api_schedule_reads_deployed_runtime_conf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

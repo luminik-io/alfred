@@ -1274,9 +1274,10 @@ export type Snapshot = {
   // Empty when the server predates the route or no schedule is readable; the
   // Running & scheduled lane then shows an honest empty note.
   schedule: ScheduledRun[];
-  // True when /api/schedule returned its bounded first page. A missing row is
-  // then unknown rather than proof that the agent has no schedule.
-  scheduleTruncated?: boolean;
+  // True only when /api/schedule explicitly confirms its response contains
+  // the complete roster. A missing row is then unknown rather than proof that
+  // the agent has no schedule.
+  scheduleComplete?: boolean;
   // Per-section failures from the settled snapshot load. /api/v1/status is the
   // spine and never lands here (its failure rejects the whole load); the other
   // endpoints degrade independently so one outage cannot blank the view.

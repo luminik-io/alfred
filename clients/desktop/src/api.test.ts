@@ -111,6 +111,7 @@ type EndpointKey = keyof typeof ENDPOINTS;
 function jsonFor(path: string): unknown {
   if (path.includes(ENDPOINTS.schedule)) {
     return {
+      truncated: false,
       runs: [
         {
           codename: "bane",
@@ -394,6 +395,7 @@ describe("loadSnapshot degradation", () => {
     // The upcoming schedule rolls into the snapshot alongside the spine.
     expect(snap.schedule).toHaveLength(2);
     expect(snap.schedule[0].codename).toBe("bane");
+    expect(snap.scheduleComplete).toBe(true);
     // The cost rollup + intake profile ride on /api/v1/status.
     expect(snap.status.metrics?.spend_usd).toBe(1.75);
     expect(snap.status.intake_profile).toBe("technical");
@@ -449,8 +451,26 @@ describe("loadSnapshot degradation", () => {
     const snap = await loadSnapshot(DEFAULT_BASE_URL);
 
     expect(snap.schedule).toEqual([]);
-    expect(snap.scheduleTruncated).toBe(true);
+    expect(snap.scheduleComplete).toBe(false);
     expect(snap.degraded?.schedule).toBeUndefined();
+  });
+
+  it("treats missing schedule coverage metadata as incomplete", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const path = String(input);
+        if (path.includes(ENDPOINTS.schedule)) {
+          return new Response(JSON.stringify({ runs: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify(jsonFor(path)), { status: 200 });
+      }),
+    );
+
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
+
+    expect(snap.schedule).toEqual([]);
+    expect(snap.scheduleComplete).toBe(false);
   });
 
   it("loadShipped returns the board, surfacing a build failure as an error", async () => {
