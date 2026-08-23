@@ -241,7 +241,8 @@ function DrawerBody({
             {monogram}
           </span>
           <div className="min-w-0">
-            <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-2">
+            <SheetTitle className="agent-drawer__title">{profile.name}</SheetTitle>
+            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
               {profile.roleLabel ? (
                 <Badge
                   variant="secondary"
@@ -268,7 +269,6 @@ function DrawerBody({
                 {label}
               </Badge>
             </div>
-            <SheetTitle className="agent-drawer__title">{profile.name}</SheetTitle>
           </div>
         </div>
         <SheetDescription className="agent-drawer__purpose">
