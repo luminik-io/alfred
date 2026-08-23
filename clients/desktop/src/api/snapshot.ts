@@ -45,7 +45,11 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
   if (firings.status === "rejected") degraded.firings = settledError(firings.reason);
   if (plans.status === "rejected") degraded.plans = settledError(plans.reason);
   if (trustedSlack.status === "rejected") degraded.trustedSlack = settledError(trustedSlack.reason);
-  if (schedule.status === "rejected") degraded.schedule = settledError(schedule.reason);
+  if (schedule.status === "rejected") {
+    degraded.schedule = settledError(schedule.reason);
+  } else if (schedule.value.error?.trim()) {
+    degraded.schedule = schedule.value.error.trim();
+  }
 
   return {
     loadedAt: new Date(),
