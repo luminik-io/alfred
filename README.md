@@ -33,9 +33,9 @@ time.
 | Uses one coding CLI | Routes each role to Claude Code, Codex, or OpenCode |
 | Returns an answer or diff | Produces a PR, review findings, tests, and evidence |
 
-Alfred is local-first and open source. It is for solo builders and small teams
-that want autonomous work to continue between check-ins while they retain
-explicit control over risky actions and merge policy.
+Alfred is open source and runs on macOS or Linux. It is for solo builders and
+small teams that want autonomous work to continue between check-ins while they
+retain explicit control over risky actions and merge policy.
 
 ## How work moves
 
