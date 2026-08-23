@@ -70,21 +70,19 @@ async def api_schedule(request: Request) -> JSONResponse:
     return JSONResponse(views._jsonable({"runs": [run.to_dict() for run in runs]}))
 
 
-@router.get("/api/actions", response_class=JSONResponse)
-async def api_actions(request: Request) -> JSONResponse:
+def actions_payload(request: Request) -> dict[str, Any]:
+    """Build the reliability-actions payload for the versioned API."""
     reliability = request.app.state.reader.reliability_report()
-    return JSONResponse(
-        views._jsonable(
-            {
-                "status": reliability.get("status", "unknown"),
-                "actions": reliability.get("actions", []),
-                "failure_patterns": reliability.get("failure_patterns", []),
-                "stale_workers": reliability.get("stale_workers", []),
-                "promotion_suggestions": reliability.get("promotion_suggestions", []),
-                "error": reliability.get("error"),
-                "errors": reliability.get("errors", {}),
-            }
-        )
+    return views._jsonable(
+        {
+            "status": reliability.get("status", "unknown"),
+            "actions": reliability.get("actions", []),
+            "failure_patterns": reliability.get("failure_patterns", []),
+            "stale_workers": reliability.get("stale_workers", []),
+            "promotion_suggestions": reliability.get("promotion_suggestions", []),
+            "error": reliability.get("error"),
+            "errors": reliability.get("errors", {}),
+        }
     )
 
 

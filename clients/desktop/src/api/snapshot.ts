@@ -24,7 +24,7 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
   const [status, actions, memoryCandidates, memoryLessons, firings, plans, trustedSlack, schedule] =
     await Promise.allSettled([
       readAlfredJson<StatusResponse>(baseUrl, "/api/v1/status"),
-      readAlfredJson<ActionsResponse>(baseUrl, "/api/actions"),
+      readAlfredJson<ActionsResponse>(baseUrl, "/api/v1/actions"),
       readAlfredJson<MemoryCandidatesResponse>(baseUrl, "/api/memory/candidates?limit=20"),
       readAlfredJson<MemoryLessonsResponse>(baseUrl, "/api/memory/lessons?limit=30"),
       readAlfredJson<FiringsResponse>(baseUrl, "/api/firings?limit=14"),

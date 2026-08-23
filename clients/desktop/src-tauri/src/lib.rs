@@ -896,7 +896,7 @@ fn is_allowed_read_path(path: &str) -> bool {
     }
     let allowed = [
         "/api/v1/status",
-        "/api/actions",
+        "/api/v1/actions",
         "/api/firings",
         "/api/plans",
         "/api/memory/candidates",
@@ -3715,6 +3715,18 @@ done"#;
 
         let err = validate_api_path("/api/status", &Method::GET)
             .expect_err("unversioned status path must stay outside the desktop contract");
+        assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
+    fn get_allowlist_accepts_versioned_actions_path_only() {
+        let (path, query) = validate_api_path("/api/v1/actions", &Method::GET)
+            .expect("versioned actions path should be accepted for GET");
+        assert_eq!(path, "/api/v1/actions");
+        assert_eq!(query, None);
+
+        let err = validate_api_path("/api/actions", &Method::GET)
+            .expect_err("unversioned actions path must stay outside the desktop contract");
         assert!(err.contains("desktop contract"));
     }
 

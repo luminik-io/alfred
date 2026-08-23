@@ -181,7 +181,6 @@ error shape gets a versioned contract test:
 
 ```text
 GET /api/schedule
-GET /api/actions
 GET /api/shipped?days=14
 GET /api/code-intelligence?repo=<name>&path=<file> # local code-map summary and bounded impact
 GET /api/firings?codename=<name>&limit=50
@@ -213,6 +212,10 @@ GET /api/slack/trusted-users
 POST /api/slack/trusted-users
 POST /api/slack/trusted-users/{user_id}/remove
 ```
+
+`GET /api/v1/status`, `GET /api/v1/actions`, `GET /api/v1/usage`, and
+`GET /api/v1/usage/providers` use the versioned contract. The old unversioned
+status, actions, and usage routes are not served.
 
 State-mutating `POST`/`DELETE` endpoints require the per-launch token via the
 `X-Alfred-Token` header. The desktop shell attaches it through its native
