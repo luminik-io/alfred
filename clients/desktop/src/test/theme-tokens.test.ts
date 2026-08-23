@@ -112,7 +112,6 @@ const foregroundVariants = [
   readFileSync(resolve(srcDir, "components/ui/badge.tsx"), "utf8"),
 ].join("\n");
 const visualSweepScripts = [
-  "design-shots.mjs",
   "enterprise-shots.mjs",
   "onboarding-sweep.mjs",
   "pixel-sweep.mjs",
