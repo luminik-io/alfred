@@ -10,6 +10,7 @@ from server.api_contract import API_CONTRACT_VERSION, error_response
 from server.routes import status
 
 router = APIRouter()
+terminal_router = APIRouter()
 
 
 @router.get("/api/v1", response_class=JSONResponse)
@@ -42,7 +43,7 @@ async def api_v1_status(request: Request) -> JSONResponse:
     return JSONResponse(status.status_payload(request))
 
 
-@router.get("/api/v1/{full_path:path}", response_class=JSONResponse)
+@terminal_router.get("/api/v1/{full_path:path}", response_class=JSONResponse)
 async def api_v1_not_found(full_path: str) -> JSONResponse:
     """Keep unknown v1 GETs inside the versioned JSON error contract."""
     del full_path

@@ -1,5 +1,5 @@
 """Tests for the native subscription-usage rollup (``server.usage``) and the
-``GET /api/usage`` endpoint.
+``GET /api/v1/usage`` endpoint.
 
 The reader scans local CLI logs (Claude Code transcripts + Codex rollouts).
 These tests seed ``.jsonl`` files in a tmp dir and point the reader's env
@@ -1656,7 +1656,7 @@ def test_build_usage_unavailable_when_both_sources_fail(
 
 
 # --------------------------------------------------------------------------- #
-# GET /api/usage endpoint
+# GET /api/v1/usage endpoint
 # --------------------------------------------------------------------------- #
 
 
@@ -1673,8 +1673,9 @@ def test_api_usage_endpoint_returns_parsed_usage(
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/api/usage")
+    response = client.get("/api/v1/usage")
     assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
     payload = response.json()
     assert payload["available"] is True
     assert payload["block"]["total_tokens"] == 12600
@@ -1692,8 +1693,9 @@ def test_api_usage_endpoint_degrades_when_logs_unavailable(
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/api/usage")
+    response = client.get("/api/v1/usage")
     assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
     payload = response.json()
     # Empty logs are a valid "available, but no active block / no codex" state.
     assert payload["available"] is True
@@ -1704,7 +1706,7 @@ def test_api_usage_endpoint_degrades_when_logs_unavailable(
 
 
 # --------------------------------------------------------------------------- #
-# Provider-normalized view (build_provider_usage) + CLI + /api/usage/providers
+# Provider-normalized view (build_provider_usage) + CLI + /api/v1/usage/providers
 # --------------------------------------------------------------------------- #
 
 
@@ -1801,7 +1803,9 @@ def test_build_provider_usage_claude_present_codex_absent(
     assert payload["claude"]["available"] is True
     codex = payload["codex"]
     assert codex["available"] is False
-    assert codex["unavailable_reason"]
+    assert codex["unavailable_reason"] == (
+        "No Codex sessions were found in the configured local session directory."
+    )
     assert codex["five_hour"]["used_percent"] is None
     assert codex["weekly"]["used_percent"] is None
 
@@ -1896,8 +1900,9 @@ def test_api_usage_providers_endpoint_present(
     monkeypatch.setattr(usage_module, "build_provider_usage", lambda: real(now=_NOW))
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/api/usage/providers")
+    response = client.get("/api/v1/usage/providers")
     assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
     payload = response.json()
     assert payload["available"] is True
     assert payload["claude"]["five_hour"]["used_percent"] == 35.0
@@ -1913,8 +1918,9 @@ def test_api_usage_providers_endpoint_degrades(
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    response = client.get("/api/usage/providers")
+    response = client.get("/api/v1/usage/providers")
     assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
     payload = response.json()
     assert payload["available"] is False
     assert payload["claude"]["available"] is False

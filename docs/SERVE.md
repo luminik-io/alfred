@@ -150,16 +150,20 @@ Returns plain text `ok` with status 200. Useful for liveness probes if you run `
 The browser UI and the native client read and write the same localhost data
 through JSON endpoints:
 
-The versioned contract starts with two read-only endpoints:
+The versioned contract includes four read-only endpoints:
 
 ```text
 GET /api/v1/meta
 GET /api/v1/status
+GET /api/v1/usage
+GET /api/v1/usage/providers
 ```
 
 `GET /api/v1/meta` reports API version `1`, the localhost scope, and the
 header used for state changes. `GET /api/v1/status` returns the fleet status
-payload. Every `/api/v1` response includes `X-Alfred-API-Version: 1`.
+payload. The two usage endpoints return subscription headroom and the
+per-engine projection. Every `/api/v1` response includes
+`X-Alfred-API-Version: 1`.
 Unknown v1 routes and unsupported methods return this fixed error shape:
 
 ```json
@@ -180,8 +184,6 @@ GET /api/status
 GET /api/schedule
 GET /api/actions
 GET /api/shipped?days=14
-GET /api/usage             # served; backs the desktop capacity rail
-GET /api/usage/providers   # served; flat per-engine re-projection of /api/usage
 GET /api/code-intelligence?repo=<name>&path=<file> # local code-map summary and bounded impact
 GET /api/firings?codename=<name>&limit=50
 GET /api/firings/{firing_id}
@@ -261,8 +263,8 @@ engineering skill packs can be finished without hiding the core install state.
 If an operator explicitly disables one of those local capabilities, first-run
 readiness reports it as disabled instead of presenting it as unfinished setup.
 
-`GET /api/usage` is served by `alfred serve` today and backs Alfred Desktop's
-capacity rail. It reports your real Claude subscription headroom for
+`GET /api/v1/usage` backs Alfred Desktop's capacity rail. It reports your real
+Claude subscription headroom for
 the rolling 5-hour and weekly windows, plus Codex's latest-day token usage. Codex
 exposes no rolling-window or weekly headroom, so the API reports its latest-day
 token total rather than inventing a Codex quota percentage. All of it is read
@@ -274,9 +276,9 @@ subscription). A provider whose local state cannot be read degrades to
 CLI does not persist reads as not synced rather than a fabricated number. Reads
 run in a worker thread so filesystem work never stalls the event loop.
 
-`GET /api/usage/providers` is served by `alfred serve` (a flat per-engine
-re-projection of `/api/usage`), and the same usage numbers are available from the
-command line with `alfred usage` (see [`CLI.md`](CLI.md)).
+`GET /api/v1/usage/providers` returns a flat per-engine projection of
+`/api/v1/usage`. The same usage numbers are available from the command line
+with `alfred usage` (see [`CLI.md`](CLI.md)).
 
 The follow-up action
 endpoints are local-file actions only: they convert captured feedback into a

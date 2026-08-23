@@ -16,6 +16,7 @@ if str(LIB) not in sys.path:
 
 from fastapi.testclient import TestClient  # noqa: E402
 from server import FilesystemReader, create_app  # noqa: E402
+from server import usage as usage_module  # noqa: E402
 
 
 def _client(tmp_path: Path) -> tuple[TestClient, object]:
@@ -89,6 +90,68 @@ def test_v1_status_exposes_the_fleet_status_contract(tmp_path: Path) -> None:
         "intake_profile",
         "setup_repos",
     }
+
+
+def test_v1_usage_exposes_the_subscription_usage_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected = {
+        "available": True,
+        "kind": "subscription",
+        "source": "local_cli_state",
+        "block": None,
+        "five_hour": {"available": False},
+        "weekly": {"available": False},
+        "codex": None,
+    }
+    monkeypatch.setattr(usage_module, "build_usage", lambda: expected)
+    client, _app = _client(tmp_path)
+
+    response = client.get("/api/v1/usage")
+
+    assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json() == expected
+
+
+def test_v1_usage_providers_exposes_the_normalized_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expected = {
+        "available": True,
+        "error": None,
+        "claude": {
+            "available": True,
+            "five_hour": {"used_percent": 25.0},
+            "weekly": {"used_percent": 40.0},
+            "unavailable_reason": None,
+        },
+        "codex": {
+            "available": False,
+            "five_hour": None,
+            "weekly": None,
+            "unavailable_reason": "not synced",
+        },
+    }
+    monkeypatch.setattr(usage_module, "build_provider_usage", lambda: expected)
+    client, _app = _client(tmp_path)
+
+    response = client.get("/api/v1/usage/providers")
+
+    assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.json() == expected
+
+
+@pytest.mark.parametrize("path", ["/api/usage", "/api/usage/providers"])
+def test_unversioned_usage_routes_are_not_served(tmp_path: Path, path: str) -> None:
+    client, _app = _client(tmp_path)
+
+    response = client.get(path)
+
+    assert response.status_code == 404
 
 
 def test_v1_unexpected_error_keeps_the_contract_header(tmp_path: Path) -> None:

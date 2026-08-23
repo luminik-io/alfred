@@ -99,14 +99,14 @@ export async function loadShipped(
   return normalizeShippedBoard(board);
 }
 
-// Real subscription-usage headroom from GET /api/usage. The server reads local
+// Real subscription-usage headroom from GET /api/v1/usage. The server reads local
 // Claude/Codex logs with a bounded native reader, so it is fetched separately
 // and never gates the core snapshot.
 export async function loadUsage(baseUrl: string): Promise<UsageResponse> {
   return withTimeout(
-    readAlfredJson<UsageResponse>(baseUrl, "/api/usage"),
+    readAlfredJson<UsageResponse>(baseUrl, "/api/v1/usage"),
     12000,
-    "/api/usage",
+    "/api/v1/usage",
   );
 }
 

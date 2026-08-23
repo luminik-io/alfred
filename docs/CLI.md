@@ -184,7 +184,7 @@ Codex:
 ```
 
 `alfred usage` exposes, from the command line, the same headroom the desktop
-client's capacity rail reads over the live `GET /api/usage` endpoint. It
+client's capacity rail reads over the live `GET /api/v1/usage` endpoint. It
 always exits 0: an absent local CLI
 state is a valid, reportable condition, not a command failure. Scripts can read
 the `available` flag in the `--json` payload to detect that case.

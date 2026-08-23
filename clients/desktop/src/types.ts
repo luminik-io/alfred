@@ -1073,7 +1073,7 @@ export type SetupDemoResponse = {
   path?: string;
 };
 
-// GET /api/usage (see lib/server/usage.py). REAL subscription headroom from
+// GET /api/v1/usage (see lib/server/usage.py). Real subscription headroom from
 // local Claude/Codex logs, not the API list-price of tokens. `available` is
 // false (with an `error`) only when both sources fail.
 export type UsageBlock = {

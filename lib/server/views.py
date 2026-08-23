@@ -275,6 +275,9 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(firings.router)
     app.include_router(plans.router)
     app.include_router(health.router)
+    # Keep the versioned catch-all last so later v1 route modules remain
+    # reachable. It returns the stable v1 error envelope for any true miss.
+    app.include_router(api_contract.terminal_router)
 
 
 def _jsonable(value: Any) -> Any:

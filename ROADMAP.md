@@ -68,9 +68,9 @@ The order can change when testing finds a reliability or safety problem.
 
 ## Next
 
-- Extend the versioned `alfred serve` contract beyond metadata and fleet
-  status. Move each Desktop route only after its response and error shapes
-  have contract tests.
+- Extend the versioned `alfred serve` contract beyond metadata, fleet status,
+  and subscription usage. Move each Desktop route only after its response and
+  error shapes have contract tests.
 - Extend engine diagnostics to report permissions, MCPs, skills, and config
   ownership alongside the shipped version, authentication, and scheduler
   profile checks.

@@ -752,7 +752,7 @@ export class AlfredApiFixture {
       await this.fulfill(route, this.isReady ? sampleBoard : emptyBoard);
       return true;
     }
-    if (matches("/api/usage")) {
+    if (matches("/api/v1/usage")) {
       await this.fulfill(route, {
         available: true,
         kind: "subscription",
