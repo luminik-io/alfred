@@ -15,6 +15,7 @@ POSITIONING_ENTRYPOINTS = [
 ]
 PUBLIC_COPY = [
     *POSITIONING_ENTRYPOINTS,
+    ROOT / "AGENTS.md",
     ROOT / "PRODUCT.md",
     ROOT / "docs/CONVERSATION.md",
     ROOT / "docs/DEMO.md",
