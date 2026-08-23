@@ -302,6 +302,38 @@
   scrollbar-gutter: stable;
 }
 
+/* Every collapsed setup disclosure needs a visible affordance. The summary
+ * copy already explains the contents; this shared chevron makes it clear that
+ * the row opens without adding component-specific icons or labels. */
+.alfred-onboarding-shell__panel details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.alfred-onboarding-shell__panel details > summary::after {
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  opacity: 0.72;
+  transform: rotate(45deg);
+  transition: transform 160ms ease-out;
+}
+
+.alfred-onboarding-shell__panel details[open] > summary::after {
+  transform: rotate(225deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alfred-onboarding-shell__panel details > summary::after {
+    transition: none;
+  }
+}
+
 .alfred-step {
   display: flex;
   flex-direction: column;
