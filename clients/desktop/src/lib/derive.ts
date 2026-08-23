@@ -144,7 +144,7 @@ export function buildRunning(snapshot: Snapshot | null): RunningState {
 
 // ---------------------------------------------------------------------------
 // Fleet pause state: the client must never overstate activity while agents are
-// on hold. /api/status carries a per-agent `paused` flag; this derives the
+// on hold. /api/v1/status carries a per-agent `paused` flag; this derives the
 // fleet-wide view so the Inbox summary and "Working now" metric can tell the
 // truth when the fleet is fully or mostly paused.
 // ---------------------------------------------------------------------------

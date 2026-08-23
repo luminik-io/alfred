@@ -71,7 +71,7 @@ def test_json_api_status_firings_and_plans(tmp_path: Path) -> None:
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    status = client.get("/api/status")
+    status = client.get("/api/v1/status")
     assert status.status_code == 200
     architect = status.json()["agents"][0]
     assert architect["codename"] == "architect"
@@ -237,7 +237,7 @@ def test_api_status_reports_paused_state_from_marker(tmp_path: Path) -> None:
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    payload = client.get("/api/status").json()
+    payload = client.get("/api/v1/status").json()
     by_codename = {agent["codename"]: agent for agent in payload["agents"]}
 
     assert by_codename["senior-dev"]["paused"] is False
@@ -259,7 +259,7 @@ def test_api_status_orders_and_profiles_core_agents(tmp_path: Path) -> None:
         )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    agents = client.get("/api/status").json()["agents"]
+    agents = client.get("/api/v1/status").json()["agents"]
     assert [agent["codename"] for agent in agents[:4]] == [
         "architect",
         "senior-dev",
@@ -298,7 +298,7 @@ def test_api_status_includes_scheduled_agents_before_first_firing(tmp_path: Path
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    agents = client.get("/api/status").json()["agents"]
+    agents = client.get("/api/v1/status").json()["agents"]
     by_codename = {agent["codename"]: agent for agent in agents}
 
     assert [agent["codename"] for agent in agents] == [
@@ -909,7 +909,7 @@ def test_api_status_paused_marker_without_timestamp_uses_mtime(tmp_path: Path) -
     marker.write_text("", encoding="utf-8")
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    payload = client.get("/api/status").json()
+    payload = client.get("/api/v1/status").json()
     robin = next(a for a in payload["agents"] if a["codename"] == "robin")
 
     assert robin["paused"] is True
@@ -3466,7 +3466,7 @@ def test_api_status_rolls_up_todays_cost(tmp_path: Path) -> None:
     )
 
     client = TestClient(create_app(FilesystemReader(state_root=state)))
-    metrics = client.get("/api/status").json()["metrics"]
+    metrics = client.get("/api/v1/status").json()["metrics"]
 
     assert metrics["spend_usd"] == 1.75
     assert metrics["firings"] == 4
@@ -3479,7 +3479,7 @@ def test_api_status_cost_rollup_is_null_when_no_spend(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir()
     client = TestClient(create_app(FilesystemReader(state_root=state)))
-    metrics = client.get("/api/status").json()["metrics"]
+    metrics = client.get("/api/v1/status").json()["metrics"]
 
     # No ledgers today: spend is null (not 0) so the client can show an honest
     # "not surfaced" instead of fabricating a zero-dollar day.
@@ -3494,14 +3494,14 @@ def test_api_status_reports_intake_profile(tmp_path: Path, monkeypatch: pytest.M
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
     monkeypatch.delenv("ALFRED_INTAKE_PROFILE", raising=False)
-    assert client.get("/api/status").json()["intake_profile"] == "technical"
+    assert client.get("/api/v1/status").json()["intake_profile"] == "technical"
 
     monkeypatch.setenv("ALFRED_INTAKE_PROFILE", "plain")
-    assert client.get("/api/status").json()["intake_profile"] == "plain"
+    assert client.get("/api/v1/status").json()["intake_profile"] == "plain"
 
     # A typo never silently downgrades into plain mode.
     monkeypatch.setenv("ALFRED_INTAKE_PROFILE", "PLAINish")
-    assert client.get("/api/status").json()["intake_profile"] == "technical"
+    assert client.get("/api/v1/status").json()["intake_profile"] == "technical"
 
 
 def test_api_schedule_returns_cron_and_interval_runs(
@@ -3737,7 +3737,7 @@ def test_custom_agents_appear_in_status_and_schedule(
     )
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
-    agents = client.get("/api/status").json()["agents"]
+    agents = client.get("/api/v1/status").json()["agents"]
     assert agents[0]["codename"] == "release-captain"
     assert agents[0]["display_name"] == "Release Captain"
     assert agents[0]["role_title"] == "Release coordinator"

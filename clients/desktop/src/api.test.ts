@@ -43,7 +43,7 @@ import { loadSetupRepos, loadSetupStatus, saveSetupRepos } from "./api/setup";
 // we can drive every endpoint's outcome by stubbing fetch per URL.
 
 const ENDPOINTS = {
-  status: "/api/status",
+  status: "/api/v1/status",
   actions: "/api/actions",
   memoryCandidates: "/api/memory/candidates",
   firings: "/api/firings",
@@ -376,7 +376,7 @@ describe("loadSnapshot degradation", () => {
     expect(snap.status.agents).toHaveLength(1);
     expect(invokeMock).toHaveBeenCalledWith(
       "fetch_alfred_json",
-      expect.objectContaining({ baseUrl: customUrl, path: "/api/status" }),
+      expect.objectContaining({ baseUrl: customUrl, path: "/api/v1/status" }),
     );
   });
 
@@ -390,7 +390,7 @@ describe("loadSnapshot degradation", () => {
     // The upcoming schedule rolls into the snapshot alongside the spine.
     expect(snap.schedule).toHaveLength(2);
     expect(snap.schedule[0].codename).toBe("bane");
-    // The cost rollup + intake profile ride on /api/status.
+    // The cost rollup + intake profile ride on /api/v1/status.
     expect(snap.status.metrics?.spend_usd).toBe(1.75);
     expect(snap.status.intake_profile).toBe("technical");
     // The Kanban board is fetched separately via loadShipped, not in the snapshot.
@@ -543,7 +543,7 @@ describe("loadSnapshot degradation", () => {
     expect(snap.degraded?.memoryCandidates).toBeTruthy();
   });
 
-  it("throws when the spine /api/status fails", async () => {
+  it("throws when the spine /api/v1/status fails", async () => {
     vi.stubGlobal("fetch", stubFetch({ status: 403 }));
     await expect(loadSnapshot(DEFAULT_BASE_URL)).rejects.toBeInstanceOf(ApiError);
   });

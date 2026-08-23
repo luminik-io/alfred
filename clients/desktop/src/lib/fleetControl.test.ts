@@ -145,7 +145,7 @@ describe("buildFleetRows", () => {
     );
     const seniorDev = rows.find((row) => row.codename === "senior-dev");
     const testEngineer = rows.find((row) => row.codename === "test-engineer");
-    // No `alfred status --json` map supplied; state comes straight from /api/status.
+    // No `alfred status --json` map supplied; state comes straight from /api/v1/status.
     expect(seniorDev?.service).toBe("running");
     expect(testEngineer?.service).toBe("paused");
     expect(testEngineer?.pausedSince).toBe("2026-05-30T09:00:00Z");
@@ -158,7 +158,7 @@ describe("buildFleetRows", () => {
   });
 
   it("prefers the polled summary over the CLI service map", () => {
-    // /api/status says paused; a stale CLI map says running. Summary wins.
+    // /api/v1/status says paused; a stale CLI map says running. Summary wins.
     const map = parseFleetServiceState(
       nativeResult({
         stdout: JSON.stringify({

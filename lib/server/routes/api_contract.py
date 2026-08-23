@@ -40,7 +40,10 @@ async def api_v1_meta() -> JSONResponse:
 @router.get("/api/v1/status", response_class=JSONResponse)
 async def api_v1_status(request: Request) -> JSONResponse:
     """Return fleet readiness through the explicit v1 contract."""
-    return JSONResponse(status.status_payload(request))
+    return JSONResponse(
+        status.status_payload(request),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @terminal_router.get("/api/v1/{full_path:path}", response_class=JSONResponse)

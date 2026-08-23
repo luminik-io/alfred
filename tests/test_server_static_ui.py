@@ -117,7 +117,7 @@ def test_api_routes_are_not_shadowed_by_ui(tmp_path: Path, monkeypatch: pytest.M
     dist = _write_dist(tmp_path)
     client = _client(state, dist, monkeypatch)
 
-    status = client.get("/api/status")
+    status = client.get("/api/v1/status")
     assert status.status_code == 200
     assert status.headers["content-type"].startswith("application/json")
 
@@ -142,10 +142,11 @@ def test_not_built_placeholder_when_no_dist(
 
     assert response.status_code == 200
     assert "not built yet" in response.text
+    assert 'href="/api/v1/status"' in response.text
     # No token is injected into the placeholder (it has no app to authorize).
     assert 'name="alfred-token"' not in response.text
     # The API still works with no UI build present.
-    assert client.get("/api/status").status_code == 200
+    assert client.get("/api/v1/status").status_code == 200
 
 
 def test_spa_fallback_refuses_directory_traversal(

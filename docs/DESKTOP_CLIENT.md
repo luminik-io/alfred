@@ -136,7 +136,7 @@ light or dark mode. Roster themes only change the names shown for roles.
 
 The client reads the fleet's own state over the `alfred serve` JSON API and runs a small set of safe local actions through a native command allowlist. It opens no public port, and `$ALFRED_HOME` remains the single source of truth.
 
-- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/v1/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
+- **Read path.** The UI loads `/api/v1/status`, `/api/actions`, `/api/v1/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
 - **Local actions.** State-changing controls use a narrow native allowlist: install or repair Alfred core, start the local runtime, fleet status, list agents, auth status, brain doctor, code-memory doctor and index, starter skills install, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
 - **Outside links.** Slack and GitHub links open outside the app through Tauri's opener plugin. Local Alfred plans and firings stay in the native inspector panes.
 
@@ -213,7 +213,7 @@ gates stay the same. See [`PLAIN_MODE.md`](PLAIN_MODE.md).
 The client uses these local API contracts today:
 
 ```text
-GET  /api/status
+GET  /api/v1/status
 GET  /api/schedule
 GET  /api/actions
 GET  /api/shipped

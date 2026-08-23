@@ -895,7 +895,7 @@ fn is_allowed_read_path(path: &str) -> bool {
         return true;
     }
     let allowed = [
-        "/api/status",
+        "/api/v1/status",
         "/api/actions",
         "/api/firings",
         "/api/plans",
@@ -1346,7 +1346,7 @@ fn terminal_core_install_command(plan: &CoreInstallPlan, runtime_port: u16) -> S
 
 fn terminal_runtime_start_command(port: u16) -> String {
     let serve = shell_command("alfred", &alfred_serve_args(port));
-    let health_url = format!("http://127.0.0.1:{port}/api/status");
+    let health_url = format!("http://127.0.0.1:{port}/api/v1/status");
     let port = port.to_string();
     let port_preflight = terminal_runtime_port_preflight_probe();
     let health_probe = terminal_runtime_health_probe();
@@ -3238,7 +3238,7 @@ mod tests {
         assert!(command.contains("urllib.request.urlopen"));
         assert!(command.contains("launched_process_alive"));
         assert!(command.contains("setup_repos"));
-        assert!(command.contains("http://127.0.0.1:7123/api/status"));
+        assert!(command.contains("http://127.0.0.1:7123/api/v1/status"));
         assert!(command.contains("Alfred runtime did not become healthy on port"));
         assert!(command.contains("The local runtime is healthy on port 7123"));
         assert!(command.contains("$HOME/.alfred/logs/desktop-runtime.log"));
@@ -3707,6 +3707,18 @@ done"#;
     }
 
     #[test]
+    fn get_allowlist_accepts_versioned_status_path_only() {
+        let (path, query) = validate_api_path("/api/v1/status", &Method::GET)
+            .expect("versioned status path should be accepted for GET");
+        assert_eq!(path, "/api/v1/status");
+        assert_eq!(query, None);
+
+        let err = validate_api_path("/api/status", &Method::GET)
+            .expect_err("unversioned status path must stay outside the desktop contract");
+        assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
     fn get_allowlist_accepts_schedule_path() {
         let (path, query) = validate_api_path("/api/schedule", &Method::GET)
             .expect("schedule path should be accepted for GET");
@@ -3931,7 +3943,7 @@ done"#;
         // Every other path keeps the tight default so a hung endpoint fails fast.
         assert_eq!(request_timeout("/api/roster-theme"), short);
         assert_eq!(request_timeout("/api/conversation/control"), short);
-        assert_eq!(request_timeout("/api/status"), short);
+        assert_eq!(request_timeout("/api/v1/status"), short);
         assert!(long > short);
     }
 
