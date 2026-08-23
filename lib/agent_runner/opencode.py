@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,7 @@ def _permission_policy(
     allow_writes: bool,
     shell_commands: tuple[str, ...] = (),
     mcp_tools: Mapping[str, tuple[str, ...]] | None = None,
+    skill_names: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     for command in shell_commands:
         if (
@@ -78,7 +80,7 @@ def _permission_policy(
         "plan_enter": "deny",
         "plan_exit": "deny",
         "task": "deny",
-        "skill": "deny",
+        "skill": {"*": "deny", **dict.fromkeys(sorted(set(skill_names)), "allow")},
         "mcp_*": "deny",
     }
     permissions["edit"] = "allow" if allow_writes else "deny"
@@ -100,6 +102,33 @@ def _permission_policy(
         for tool in tools:
             permissions[f"{server}_{tool}"] = "allow"
     return permissions
+
+
+_SKILL_NAME_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
+def stage_opencode_skills(
+    skill_paths: Mapping[str, Path],
+    *,
+    config_dir: Path,
+) -> tuple[str, ...]:
+    """Copy selected operator-curated skills into OpenCode's isolated config."""
+    staged: list[str] = []
+    skills_dir = config_dir / "skills"
+    for name, skill_md in sorted(skill_paths.items()):
+        if (
+            len(name) > 64
+            or _SKILL_NAME_RE.fullmatch(name) is None
+            or skill_md.name != "SKILL.md"
+            or skill_md.parent.name != name
+            or not skill_md.is_file()
+        ):
+            continue
+        destination = skills_dir / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(skill_md.parent.resolve(), destination)
+        staged.append(name)
+    return tuple(staged)
 
 
 def _local_mcp_config(
@@ -138,6 +167,7 @@ def opencode_environment(
     workdir: Path | None = None,
     mcp_servers: Mapping[str, Mapping[str, Any]] | None = None,
     mcp_tools: Mapping[str, tuple[str, ...]] | None = None,
+    skill_names: tuple[str, ...] = (),
 ) -> dict[str, str]:
     """Return an isolated, deterministic OpenCode subprocess environment.
 
@@ -155,6 +185,7 @@ def opencode_environment(
         allow_writes=allow_writes,
         shell_commands=shell_commands,
         mcp_tools=allowed_mcp_tools,
+        skill_names=skill_names,
     )
     config = {
         "$schema": "https://opencode.ai/config.json",

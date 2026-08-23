@@ -80,6 +80,7 @@ from .opencode import (
     opencode_environment,
     parse_opencode_events,
     parse_opencode_mcp_status,
+    stage_opencode_skills,
 )
 from .paths import (
     CODEX_APPROVAL_POLICY,
@@ -107,7 +108,11 @@ from .result import (
 )
 from .rubric import GraderVerdict
 from .rubric import grade as grade_transcript
-from .skills_context import skills_context_for_role
+from .skills_context import (
+    render_opencode_skills_block,
+    selected_skills_for_role,
+    skills_context_for_role,
+)
 from .transcripts import (
     _extract_codex_session_id,
     _extract_codex_tokens,
@@ -1593,6 +1598,7 @@ def opencode_invoke(
     model: str | None = None,
     allow_writes: bool = False,
     shell_commands: tuple[str, ...] = (),
+    skill_paths: Mapping[str, Path] | None = None,
 ) -> ClaudeResult:
     """Run one OpenCode prompt through its bounded NDJSON CLI contract."""
 
@@ -1624,15 +1630,21 @@ def opencode_invoke(
 
     try:
         with tempfile.TemporaryDirectory(prefix="alfred-opencode-") as directory:
+            config_dir = Path(directory)
+            staged_skill_names = stage_opencode_skills(
+                skill_paths or {},
+                config_dir=config_dir,
+            )
             started_at = time.monotonic()
             child_env = opencode_environment(
                 os.environ,
-                config_dir=Path(directory),
+                config_dir=config_dir,
                 allow_writes=allow_writes,
                 shell_commands=shell_commands,
                 workdir=workdir,
                 mcp_servers=mcp_servers,
                 mcp_tools=mcp_tools,
+                skill_names=staged_skill_names,
             )
             if mcp_servers:
                 probe_timeout = min(10, max(1, timeout))
@@ -1662,12 +1674,13 @@ def opencode_invoke(
                 ready_tools = {name: mcp_tools[name] for name in attached_mcp}
                 child_env = opencode_environment(
                     os.environ,
-                    config_dir=Path(directory),
+                    config_dir=config_dir,
                     allow_writes=allow_writes,
                     shell_commands=shell_commands,
                     workdir=workdir,
                     mcp_servers=ready_servers,
                     mcp_tools=ready_tools,
+                    skill_names=staged_skill_names,
                 )
             elapsed = time.monotonic() - started_at
             remaining_timeout = max(1, int(timeout - elapsed))
@@ -1714,6 +1727,7 @@ def opencode_invoke(
         "mcp_servers_attached": attached_mcp,
         "mcp_startup_failures": mcp_startup_failures,
         "mcp_servers_unavailable": mcp_unavailable,
+        "skills_attached": list(staged_skill_names),
     }
 
     if proc.returncode == 124:
@@ -2236,7 +2250,18 @@ def invoke_agent_engine(
             # inside with_memory_prompt, so this is a no-op unless armed.
             orientation_paths=orientation_paths,
         )
-        prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
+        opencode_skill_paths: dict[str, Path] = {}
+        if mode == "opencode":
+            resolved_role = _resolve_firing_role(role, agent)
+            selected_skills = []
+            with contextlib.suppress(Exception):
+                selected_skills = selected_skills_for_role(resolved_role)
+            block = render_opencode_skills_block(selected_skills)
+            if block:
+                prompt_with_context = f"{prompt_with_context}\n\n{block}"
+                opencode_skill_paths = {meta.name: meta.path for meta in selected_skills}
+        else:
+            prompt_with_context = _with_skills_block(prompt_with_context, role, agent)
         prompt_with_context = _with_skeleton_priming_block(
             prompt_with_context,
             repo=memory_repo,
@@ -2299,6 +2324,7 @@ def invoke_agent_engine(
                 model=opencode_model,
                 allow_writes=opencode_allow_writes,
                 shell_commands=opencode_shell_commands,
+                skill_paths=opencode_skill_paths,
             )
 
         def _resilient_invoke(engine_name: str, invoke: Callable[[], ClaudeResult]) -> ClaudeResult:

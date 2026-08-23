@@ -18,6 +18,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- OpenCode firings now receive the same role-scoped skills as Claude Code and
+  Codex. Alfred copies only the selected skill directories into the firing's
+  temporary configuration and allows only those skill names.
 - Gave Prism a spectral cloud mark, Graphite a text-only wordmark, and Ledger a
   gold target mark. Work now shows full repository names, clearer lifecycle
   cards, and structured evidence details.

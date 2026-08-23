@@ -148,6 +148,17 @@ def test_context_for_role_default_on_appends_block(tmp_path: Path) -> None:
     assert "Available skills" in out
 
 
+def test_opencode_context_uses_native_skill_names_without_external_paths(tmp_path: Path) -> None:
+    skill = _write_skill(tmp_path, "add-observability", "Instrument external calls.")
+    selected = skills_context.selected_skills_for_role("feature-dev", dirs=[tmp_path], env={})
+
+    out = skills_context.render_opencode_skills_block(selected)
+
+    assert "add-observability" in out
+    assert "native skill tool" in out
+    assert str(skill) not in out
+
+
 def test_context_for_role_no_role_returns_empty(tmp_path: Path) -> None:
     _write_skill(tmp_path, "write-tests", "Trigger.")
     assert skills_context.skills_context_for_role(None, dirs=[tmp_path], env={}) == ""
@@ -387,3 +398,45 @@ def test_invoke_agent_engine_operational_codename_leaves_prompt_clean(
     )
     assert "just this" in seen["prompt"]
     assert "[skills for" not in seen["prompt"]
+
+
+def test_invoke_agent_engine_stages_native_opencode_skills(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected = _metas("review-security")
+    monkeypatch.setattr(process, "selected_skills_for_role", lambda role: selected)
+    seen: dict[str, object] = {}
+
+    def fake_opencode(prompt, **kwargs):
+        seen["prompt"] = prompt
+        seen["skill_paths"] = kwargs["skill_paths"]
+        from agent_runner.result import ClaudeResult
+
+        return ClaudeResult(
+            success=True,
+            subtype="success",
+            num_turns=1,
+            cost_usd=0.0,
+            session_id=None,
+            result_text="ok",
+            raw={},
+            stop_reason="end_turn",
+            error_message=None,
+        )
+
+    result, engine = process.invoke_agent_engine(
+        "review this",
+        engine="opencode",
+        agent="reviewer",
+        firing_id="f1",
+        workdir=Path("."),
+        claude_allowed_tools="Read",
+        timeout=10,
+        opencode_fn=fake_opencode,
+    )
+
+    assert result.success
+    assert engine == "opencode"
+    assert "native skill tool" in str(seen["prompt"])
+    assert "/x/review-security/SKILL.md" not in str(seen["prompt"])
+    assert seen["skill_paths"] == {"review-security": Path("/x/review-security/SKILL.md")}

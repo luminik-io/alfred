@@ -81,11 +81,74 @@ def test_environment_isolates_config_and_denies_unexpected_boundaries(
     assert config["permission"]["external_directory"] == "deny"
     assert config["permission"]["question"] == "deny"
     assert config["permission"]["task"] == "deny"
-    assert config["permission"]["skill"] == "deny"
+    assert config["permission"]["skill"] == {"*": "deny"}
     assert config["permission"]["mcp_*"] == "deny"
     assert config["permission"]["edit"] == "deny"
     assert config["permission"]["bash"] == "deny"
     assert config["agent"]["alfred"]["permission"] == config["permission"]
+
+
+def test_environment_allows_only_staged_skill_names(fresh_agent_runner, tmp_path: Path):
+    from agent_runner.opencode import opencode_environment
+
+    environment = opencode_environment(
+        {},
+        config_dir=tmp_path / "config",
+        allow_writes=True,
+        skill_names=("review-security", "spec-to-issues"),
+    )
+
+    permissions = json.loads(environment["OPENCODE_CONFIG_CONTENT"])["permission"]
+    assert permissions["skill"] == {
+        "*": "deny",
+        "review-security": "allow",
+        "spec-to-issues": "allow",
+    }
+    assert permissions["external_directory"] == "deny"
+
+
+def test_installed_opencode_discovers_staged_skill_without_external_scans(
+    fresh_agent_runner, tmp_path: Path
+):
+    from agent_runner.opencode import opencode_environment, stage_opencode_skills
+
+    binary = shutil.which("opencode")
+    if binary is None:
+        pytest.skip("OpenCode is not installed")
+    source = tmp_path / "operator-skills" / "review-security"
+    source.mkdir(parents=True)
+    skill_md = source / "SKILL.md"
+    skill_md.write_text(
+        "---\nname: review-security\ndescription: Review security boundaries.\n---\n\n# Procedure\n",
+        encoding="utf-8",
+    )
+    config_dir = tmp_path / "isolated"
+    staged = stage_opencode_skills(
+        {"review-security": skill_md},
+        config_dir=config_dir,
+    )
+    environment = opencode_environment(
+        {},
+        config_dir=config_dir,
+        allow_writes=False,
+        skill_names=staged,
+    )
+
+    result = subprocess.run(
+        [binary, "--pure", "debug", "skill"],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    discovered = json.loads(result.stdout)
+    skill = next(item for item in discovered if item["name"] == "review-security")
+    assert skill["location"] == str(config_dir / "skills" / "review-security" / "SKILL.md")
+    assert "# Procedure" in skill["content"]
 
 
 def test_environment_attaches_only_approved_local_mcp_tools(fresh_agent_runner, tmp_path: Path):
@@ -534,6 +597,57 @@ def test_invoke_uses_verified_binary_stdin_and_ephemeral_config(
     assert "--auto" not in captured["command"]
     assert result.raw["engine"] == "opencode"
     assert "stdout" not in result.raw
+
+
+def test_invoke_stages_only_selected_skills_in_ephemeral_config(
+    fresh_agent_runner, monkeypatch, tmp_path: Path
+):
+    ar = fresh_agent_runner
+    import agent_runner.process as proc
+
+    binary = tmp_path / "verified" / "opencode"
+    binary.parent.mkdir()
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(0o755)
+    monkeypatch.setattr(proc, "_probe_dispatch_engine", lambda _engine: _ready_probe(ar, binary))
+    source = tmp_path / "operator-skills" / "review-security"
+    source.mkdir(parents=True)
+    skill_md = source / "SKILL.md"
+    skill_md.write_text(
+        "---\nname: review-security\ndescription: Review security boundaries.\n---\n\n# Procedure\n",
+        encoding="utf-8",
+    )
+    (source / "checklist.md").write_text("Check authorization.\n", encoding="utf-8")
+
+    def fake_run(command, **kwargs):
+        config_dir = Path(kwargs["env"]["OPENCODE_CONFIG_DIR"])
+        staged = config_dir / "skills" / "review-security"
+        assert (staged / "SKILL.md").read_text(encoding="utf-8") == skill_md.read_text(
+            encoding="utf-8"
+        )
+        assert (staged / "checklist.md").read_text(encoding="utf-8") == "Check authorization.\n"
+        permissions = json.loads(kwargs["env"]["OPENCODE_CONFIG_CONTENT"])["permission"]
+        assert permissions["skill"] == {"*": "deny", "review-security": "allow"}
+        assert permissions["external_directory"] == "deny"
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {"type": "text", "sessionID": "ses_skill", "part": {"text": "Done."}}
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(proc, "_popen_run_text", fake_run)
+
+    result = ar.opencode_invoke(
+        "Review this change.",
+        workdir=tmp_path,
+        agent="reviewer",
+        skill_paths={"review-security": skill_md},
+    )
+
+    assert result.success is True
 
 
 def test_invoke_attaches_only_servers_that_pass_startup_probe(

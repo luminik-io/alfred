@@ -151,13 +151,11 @@ skill on its own.
 
 ### The runner skill-injector (metadata-only)
 
-`lib/agent_runner/skills_context.py` is the automatic, engine-neutral path. When
-a firing runs, `invoke_agent_engine` appends a compact block naming the skills
-recommended for that firing's **role**, with the path to each `SKILL.md` so the
-agent reads the body on demand (progressive disclosure). It parses **only** the
-YAML frontmatter (name + description), never the body, and caps each file read
-at 10 MB (mirroring deepagents' `MAX_SKILL_FILE_SIZE`), so it is cheap. The
-block looks like:
+`lib/agent_runner/skills_context.py` selects skills for every engine from the
+same role map. For Claude Code and Codex, `invoke_agent_engine` appends a compact
+block with the path to each `SKILL.md`, so the agent reads the body only when the
+trigger matches. The selector parses only the YAML frontmatter (name and
+description) and caps each file read at 10 MB. The block looks like:
 
 ```
 Available skills (invoke by name when the trigger matches; read the SKILL.md ...):
@@ -174,6 +172,12 @@ nothing. It is on by default and gated by `ALFRED_SKILLS_INJECT` (set to
 `0`/`false`/`no`/`off` to disable), mirroring the `ALFRED_*_MCP` convention. When
 no installed skill matches the role, no role resolves, or the gate is off, the
 prompt is left untouched.
+
+OpenCode keeps the same selection but does not receive the source paths. Alfred
+copies each selected skill directory into the firing's temporary OpenCode
+configuration, names it in the prompt, and allows that name through OpenCode's
+native skill tool. Ambient user skills, project skills, and external-directory
+reads remain denied. The temporary copy is removed with the firing.
 
 The injector discovers skills ONLY from global, operator-controlled locations:
 the configured global skills dir (`ALFRED_SKILLS_DIR`, default `~/.claude/skills`,
