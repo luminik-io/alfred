@@ -48,7 +48,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   transcript without storing credentials or prompt text.
 - Finished the Desktop screen pass across Prism, Graphite, and Ledger, then
   split each primary screen into its own bundle. The initial JavaScript fell
-  from 1,489.16 kB to 495.17 kB in the v0.8.0 release build.
+  from 1,489.16 kB to 495.89 kB in the v0.8.0 release build.
 - Re-recorded the public Desktop tour and gallery from fixture data on a Mac.
   Public media uses light mode and includes wide and narrow layouts.
 
@@ -99,6 +99,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Re-recorded the public Desktop tour and gallery from the v0.8 fixture on a
   Mac. Public media now uses light mode and includes a checked narrow-window
   Settings capture alongside the wide-screen tour.
+- Gave Prism a spectral cloud mark, Graphite a text-only wordmark, and Ledger a
+  gold target mark. Work now shows full repository names, clearer lifecycle
+  cards, and structured evidence details.
 - Saved run evidence now records the selected engine route, actual provider,
   model source, binary, capability contract, timeout, write boundary, and
   memory attachment state without storing credentials or prompt text.
@@ -118,7 +121,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   names now describe what each appearance looks like.
 - Split Work, Ask, Code, Agents, Settings, Activity, and Learnings into separate
   Desktop bundles. The initial JavaScript in the production build decreased
-  from 1,489.16 kB to 494.44 kB.
+  from 1,489.16 kB to 495.89 kB.
 - Preload a Desktop screen when pointer or keyboard focus reaches its navigation
   control. A build check now rejects an initial bundle above 550 kB raw or 170
   kB gzip.
