@@ -382,6 +382,28 @@ for (const appearance of appearances) {
               "the docked action area must not cover the evidence summary",
             ).toBeLessThanOrEqual(inspectorBox.y + inspectorBox.height);
           }
+          const initialEvidenceLayout = await inspector.evaluate((element) => {
+            const evidence = element.querySelector<HTMLElement>(
+              ".inspector-evidence--github",
+            );
+            const actions = element.querySelector<HTMLElement>(
+              ".detail-panel--sheet > .card-actions:last-child",
+            );
+            if (!evidence || !actions) return null;
+            const evidenceBox = evidence.getBoundingClientRect();
+            const actionBox = actions.getBoundingClientRect();
+            return {
+              evidenceBottom: evidenceBox.bottom,
+              actionTop: actionBox.top,
+            };
+          });
+          expect(initialEvidenceLayout).not.toBeNull();
+          if (initialEvidenceLayout) {
+            expect(
+              initialEvidenceLayout.actionTop,
+              "the docked action area must start after the GitHub evidence",
+            ).toBeGreaterThanOrEqual(initialEvidenceLayout.evidenceBottom);
+          }
           await inspector.evaluate((element) => {
             element.scrollTop = element.scrollHeight;
           });
