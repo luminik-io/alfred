@@ -1682,7 +1682,7 @@ def test_api_actions_preserves_reliability_errors(tmp_path: Path) -> None:
 
     client = TestClient(create_app(Reader(state_root=tmp_path / "state")))
 
-    response = client.get("/api/actions")
+    response = client.get("/api/v1/actions")
 
     assert response.status_code == 200
     assert response.json()["errors"] == {"promotion_suggestions": "bridge unavailable"}

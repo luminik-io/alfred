@@ -547,7 +547,7 @@ export class AlfredApiFixture {
       });
       return true;
     }
-    if (matches("/api/actions")) {
+    if (matches("/api/v1/actions")) {
       await this.fulfill(route, {
         status: "ok",
         actions: [],

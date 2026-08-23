@@ -101,6 +101,33 @@ def test_unversioned_status_route_is_not_served(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
+def test_v1_actions_exposes_the_reliability_actions_contract(tmp_path: Path) -> None:
+    client, _app = _client(tmp_path)
+
+    response = client.get("/api/v1/actions")
+
+    assert response.status_code == 200
+    assert response.headers["X-Alfred-API-Version"] == "1"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert set(response.json()) == {
+        "status",
+        "actions",
+        "failure_patterns",
+        "stale_workers",
+        "promotion_suggestions",
+        "error",
+        "errors",
+    }
+
+
+def test_unversioned_actions_route_is_not_served(tmp_path: Path) -> None:
+    client, _app = _client(tmp_path)
+
+    response = client.get("/api/actions")
+
+    assert response.status_code == 404
+
+
 def test_v1_usage_exposes_the_subscription_usage_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

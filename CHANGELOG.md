@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Alfred Desktop now loads reliability actions from `GET /api/v1/actions`.
+  The unversioned actions route is no longer served.
 - Alfred Desktop and the local runtime health check now use
   `GET /api/v1/status`. The unversioned status route is no longer served.
 - Graphify binary and graph paths, Headroom overrides, setup status, and agent

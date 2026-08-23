@@ -44,7 +44,7 @@ import { loadSetupRepos, loadSetupStatus, saveSetupRepos } from "./api/setup";
 
 const ENDPOINTS = {
   status: "/api/v1/status",
-  actions: "/api/actions",
+  actions: "/api/v1/actions",
   memoryCandidates: "/api/memory/candidates",
   firings: "/api/firings",
   plans: "/api/plans",
@@ -377,6 +377,10 @@ describe("loadSnapshot degradation", () => {
     expect(invokeMock).toHaveBeenCalledWith(
       "fetch_alfred_json",
       expect.objectContaining({ baseUrl: customUrl, path: "/api/v1/status" }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      "fetch_alfred_json",
+      expect.objectContaining({ baseUrl: customUrl, path: "/api/v1/actions" }),
     );
   });
 

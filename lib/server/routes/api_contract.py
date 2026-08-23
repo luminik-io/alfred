@@ -46,6 +46,15 @@ async def api_v1_status(request: Request) -> JSONResponse:
     )
 
 
+@router.get("/api/v1/actions", response_class=JSONResponse)
+async def api_v1_actions(request: Request) -> JSONResponse:
+    """Return reliability actions through the explicit v1 contract."""
+    return JSONResponse(
+        status.actions_payload(request),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @terminal_router.get("/api/v1/{full_path:path}", response_class=JSONResponse)
 async def api_v1_not_found(full_path: str) -> JSONResponse:
     """Keep unknown v1 GETs inside the versioned JSON error contract."""
