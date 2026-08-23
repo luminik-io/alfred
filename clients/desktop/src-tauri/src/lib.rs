@@ -903,7 +903,7 @@ fn is_allowed_read_path(path: &str) -> bool {
         "/api/schedule",
         "/api/slack/trusted-users",
         "/api/shipped",
-        "/api/usage",
+        "/api/v1/usage",
         "/api/setup",
     ];
     allowed
@@ -3691,10 +3691,19 @@ done"#;
 
     #[test]
     fn get_allowlist_accepts_usage_path() {
-        let (path, query) = validate_api_path("/api/usage", &Method::GET)
+        let (path, query) = validate_api_path("/api/v1/usage", &Method::GET)
             .expect("usage path should be accepted for GET");
-        assert_eq!(path, "/api/usage");
+        assert_eq!(path, "/api/v1/usage");
         assert_eq!(query, None);
+
+        let (path, query) = validate_api_path("/api/v1/usage/providers", &Method::GET)
+            .expect("provider usage path should be accepted for GET");
+        assert_eq!(path, "/api/v1/usage/providers");
+        assert_eq!(query, None);
+
+        let err = validate_api_path("/api/usage", &Method::GET)
+            .expect_err("unversioned usage path must stay outside the desktop contract");
+        assert!(err.contains("desktop contract"));
     }
 
     #[test]

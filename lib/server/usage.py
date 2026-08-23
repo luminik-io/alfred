@@ -1,6 +1,6 @@
 """Real subscription-usage rollup from Claude Code's own local logs.
 
-This module powers ``GET /api/usage``. It reports the operator's REAL
+This module powers ``GET /api/v1/usage``. It reports the operator's real
 subscription headroom for the current Claude 5-hour block (and a Codex row),
 not the API list-price of tokens. Under a Max/Pro subscription the per-token
 dollar figure is meaningless (and is ``$0`` for Codex), so the dashboard's old
@@ -206,7 +206,7 @@ def unavailable_usage_payload(
 
 
 # --------------------------------------------------------------------------- #
-# Provider-normalized view (``alfred usage`` + ``GET /api/usage/providers``)
+# Provider-normalized view (``alfred usage`` + ``GET /api/v1/usage/providers``)
 # --------------------------------------------------------------------------- #
 #
 # ``build_usage`` returns the dashboard's rich shape (a single Claude 5-hour
@@ -441,7 +441,7 @@ def _provider_codex(
         reason = (
             f"Codex local usage could not be read: {read_error}"
             if read_error
-            else "No Codex sessions were found in local logs (~/.codex)."
+            else "No Codex sessions were found in the configured local session directory."
         )
         return {
             "available": False,

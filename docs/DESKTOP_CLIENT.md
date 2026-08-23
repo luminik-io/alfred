@@ -40,7 +40,7 @@ The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary 
 
 | Tab | What it shows | What it can do |
 |---|---|---|
-| **Inbox** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the capacity rail for Claude and Codex subscription headroom (backed by the live `GET /api/usage` endpoint). | Draft work, refresh state, pause or resume scheduled firings through the native allowlist, and jump to the right surface. |
+| **Inbox** | The decision queue: blocked plans, follow-ups, stale workers, repeated failures, memory candidates, recent runs, and the capacity rail for Claude and Codex subscription headroom (backed by the live `GET /api/v1/usage` endpoint). | Draft work, refresh state, pause or resume scheduled firings through the native allowlist, and jump to the right surface. |
 | **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
 | **Code** | The local code-map catalog and a bounded impact view for one file: direct dependents, dependencies, symbols, contract surfaces, contract drift, nearby files, and recommended checks. | Select an indexed repository, analyze a file path without sending source away, and inspect the evidence Alfred should use before changing it. |
@@ -54,7 +54,7 @@ Plans carry their origin so the Slack collaboration trail stays visible while th
 Inbox is the first screen: a decision queue and local command center.
 
 - fleet health
-- Claude and Codex subscription headroom on the capacity rail (backed by the live `GET /api/usage` endpoint)
+- Claude and Codex subscription headroom on the capacity rail (backed by the live `GET /api/v1/usage` endpoint)
 - pending approvals
 - blocked plans
 - stale workers
@@ -136,7 +136,7 @@ light or dark mode. Roster themes only change the names shown for roles.
 
 The client reads the fleet's own state over the `alfred serve` JSON API and runs a small set of safe local actions through a native command allowlist. It opens no public port, and `$ALFRED_HOME` remains the single source of truth.
 
-- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
+- **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/v1/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
 - **Local actions.** State-changing controls use a narrow native allowlist: install or repair Alfred core, start the local runtime, fleet status, list agents, auth status, brain doctor, code-memory doctor and index, starter skills install, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
 - **Outside links.** Slack and GitHub links open outside the app through Tauri's opener plugin. Local Alfred plans and firings stay in the native inspector panes.
 
@@ -144,7 +144,7 @@ When run in a plain browser (development preview), the app stays read-only: nati
 
 ## Usage on the capacity rail
 
-The Inbox capacity rail shows real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows. The figures come from `GET /api/usage`, which reads the engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through their local subscription CLIs rather than API keys, so there is no billing API to query and no per-token dollar figure (it is meaningless under a Max or Pro subscription). A window the local state cannot confirm reads as not synced rather than a fabricated number. The same numbers are available from the command line with `alfred usage`. See [`SERVE.md`](SERVE.md) for the endpoint and [`CLI.md`](CLI.md) for the CLI.
+The Inbox capacity rail shows real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows. The figures come from `GET /api/v1/usage`, which reads the engines' own local CLI state files on the host. Alfred drives Claude Code and Codex through their local subscription CLIs rather than API keys, so there is no billing API to query and no per-token dollar figure (it is meaningless under a Max or Pro subscription). A window the local state cannot confirm reads as not synced rather than a fabricated number. The same numbers are available from the command line with `alfred usage`. See [`SERVE.md`](SERVE.md) for the endpoint and [`CLI.md`](CLI.md) for the CLI.
 
 ## Run it locally
 
@@ -217,8 +217,8 @@ GET  /api/status
 GET  /api/schedule
 GET  /api/actions
 GET  /api/shipped
-GET  /api/usage             # served; backs the capacity rail
-GET  /api/usage/providers   # served; flat per-engine re-projection of /api/usage
+GET  /api/v1/usage             # served; backs the capacity rail
+GET  /api/v1/usage/providers   # served; flat per-engine projection
 GET  /api/firings
 GET  /api/firings/{firing_id}
 GET  /api/firings/{firing_id}/tail
@@ -253,11 +253,13 @@ POST /api/slack/trusted-users/{user_id}/remove
 POST /api/conversation/control
 ```
 
-`GET /api/usage` is served by `alfred serve` today and backs the capacity rail. It reports your real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows, read from the engines' own local CLI state files on the host.
+`GET /api/v1/usage` backs the capacity rail. It reports your real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows, read from the engines' own local CLI state files on the host.
 
 `GET /api/setup/status` requires the local action token because it runs GitHub and engine probes. The native bridge attaches the token. The response includes `first_run`, the onboarding go/no-go contract for the first real local workflow. Required rows cover GitHub auth, a working default engine route, repo scope, queue coverage, local checkout mapping, scheduled fleet deployment, and the Desktop action token. Recommended rows cover code graph memory, Alfred's built-in context governor, and engineering skill packs. Optional rows cover the architect parent repo and Slack collaboration. Settings keeps recommended upgrades visible after onboarding without blocking a basic run.
 
-`GET /api/usage/providers` is also served by `alfred serve` (a flat per-engine re-projection of `/api/usage`), and the same usage numbers are available from the command line with `alfred usage`.
+`GET /api/v1/usage/providers` returns a flat per-engine projection of
+`/api/v1/usage`. The same usage numbers are available from the command line
+with `alfred usage`.
 
 The native client also has a narrow local command allowlist:
 

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/api/usage", response_class=JSONResponse)
+@router.get("/api/v1/usage", response_class=JSONResponse)
 async def api_usage(request: Request) -> JSONResponse:
     """Real subscription-usage headroom from local Claude/Codex logs.
 
@@ -36,15 +36,21 @@ async def api_usage(request: Request) -> JSONResponse:
         payload = await run_in_threadpool(build_usage)
     except Exception:  # never break the client on a usage failure
         logger.exception("api_usage: failed to build usage payload")
-        return JSONResponse(unavailable_usage_payload(views._GENERIC_ERROR))
-    return JSONResponse(views._jsonable(payload))
+        return JSONResponse(
+            unavailable_usage_payload(views._GENERIC_ERROR),
+            headers={"Cache-Control": "no-store"},
+        )
+    return JSONResponse(
+        views._jsonable(payload),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
-@router.get("/api/usage/providers", response_class=JSONResponse)
+@router.get("/api/v1/usage/providers", response_class=JSONResponse)
 async def api_usage_providers(request: Request) -> JSONResponse:
     """Provider-normalized usage meters: ``{"claude": {...}, "codex": {...}}``.
 
-    A flat re-projection of ``/api/usage`` that surfaces each engine's
+    A flat re-projection of ``/api/v1/usage`` that surfaces each engine's
     5-hour and weekly rolling windows under uniform keys (``used_percent``,
     ``remaining_percent``, ``reset_at``, ``minutes_to_reset``). Alfred drives
     Claude Code and Codex through their local subscription CLIs, so there is
@@ -79,4 +85,7 @@ async def api_usage_providers(request: Request) -> JSONResponse:
                 "unavailable_reason": views._GENERIC_ERROR,
             },
         }
-    return JSONResponse(views._jsonable(payload))
+    return JSONResponse(
+        views._jsonable(payload),
+        headers={"Cache-Control": "no-store"},
+    )
