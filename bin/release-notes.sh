@@ -38,6 +38,26 @@ if [[ "$mode" == "--require-dated" ]]; then
     echo "release-notes: dated heading required for $version" >&2
     exit 1
   fi
+  release_date="${target_heading##* - }"
+  IFS=- read -r release_year release_month release_day <<< "$release_date"
+  year_number=$((10#$release_year))
+  month_number=$((10#$release_month))
+  day_number=$((10#$release_day))
+  max_day=0
+  case "$month_number" in
+    1 | 3 | 5 | 7 | 8 | 10 | 12) max_day=31 ;;
+    4 | 6 | 9 | 11) max_day=30 ;;
+    2)
+      max_day=28
+      if ((year_number % 400 == 0 || (year_number % 4 == 0 && year_number % 100 != 0))); then
+        max_day=29
+      fi
+      ;;
+  esac
+  if ((year_number < 1 || day_number < 1 || day_number > max_day)); then
+    echo "release-notes: invalid release date for $version: $release_date" >&2
+    exit 1
+  fi
 fi
 
 notes_file="$(mktemp)"
