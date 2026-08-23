@@ -57,6 +57,23 @@ def test_v1_unknown_route_has_a_stable_json_error(tmp_path: Path) -> None:
     }
 
 
+def test_v1_namespace_root_has_the_same_stable_json_error(tmp_path: Path) -> None:
+    client, _app = _client(tmp_path)
+
+    response = client.get("/api/v1")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["X-Alfred-API-Version"] == "1"
+    assert response.json() == {
+        "api_version": "1",
+        "error": {
+            "code": "not_found",
+            "message": "API route not found",
+        },
+    }
+
+
 def test_v1_status_exposes_the_fleet_status_contract(tmp_path: Path) -> None:
     client, _app = _client(tmp_path)
 
@@ -71,6 +88,30 @@ def test_v1_status_exposes_the_fleet_status_contract(tmp_path: Path) -> None:
         "metrics",
         "intake_profile",
         "setup_repos",
+    }
+
+
+def test_v1_unexpected_error_keeps_the_contract_header(tmp_path: Path) -> None:
+    client, app = _client(tmp_path)
+
+    class BrokenReader:
+        def list_agents(self):
+            raise OSError("state unavailable")
+
+    app.state.reader = BrokenReader()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/api/v1/status")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["X-Alfred-API-Version"] == "1"
+    assert response.json() == {
+        "api_version": "1",
+        "error": {
+            "code": "internal_error",
+            "message": "Internal server error",
+        },
     }
 
 

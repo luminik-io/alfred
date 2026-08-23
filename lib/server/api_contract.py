@@ -11,6 +11,11 @@ API_CONTRACT_VERSION: Final[str] = "1"
 API_VERSION_HEADER: Final[str] = "X-Alfred-API-Version"
 
 
+def is_v1_path(path: str) -> bool:
+    """Return whether ``path`` belongs to the version 1 API namespace."""
+    return path == "/api/v1" or path.startswith("/api/v1/")
+
+
 def error_response(
     *,
     status_code: int,
@@ -36,4 +41,5 @@ __all__ = [
     "API_CONTRACT_VERSION",
     "API_VERSION_HEADER",
     "error_response",
+    "is_v1_path",
 ]

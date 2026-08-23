@@ -12,6 +12,16 @@ from server.routes import status
 router = APIRouter()
 
 
+@router.get("/api/v1", response_class=JSONResponse)
+async def api_v1_root() -> JSONResponse:
+    """Keep the bare namespace inside the versioned JSON error contract."""
+    return error_response(
+        status_code=404,
+        code="not_found",
+        message="API route not found",
+    )
+
+
 @router.get("/api/v1/meta", response_class=JSONResponse)
 async def api_v1_meta() -> JSONResponse:
     """Describe the contract a local client must use before other v1 calls."""
