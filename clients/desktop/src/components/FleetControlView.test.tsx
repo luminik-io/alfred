@@ -294,6 +294,73 @@ describe("FleetControlView", () => {
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
+  it("shows Not set when an agent has no configured schedule", async () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[agent("senior-dev", { status: "live" })]}
+        schedule={[]}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await openDrawer(user, "lucius");
+
+    expect(screen.getAllByText("Not set").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+  });
+
+  it("shows Unavailable when schedule data did not load", async () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[agent("senior-dev", { status: "live" })]}
+        schedule={[]}
+        scheduleAvailable={false}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await openDrawer(user, "lucius");
+
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Not set")).not.toBeInTheDocument();
+  });
+
+  it("shows Unknown when a schedule row may be outside the response cap", async () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[agent("senior-dev", { status: "live" })]}
+        schedule={[]}
+        scheduleAvailable
+        scheduleComplete={false}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await openDrawer(user, "lucius");
+
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Not set")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+  });
+
   it("renders the human agent role and purpose above the runtime codename", async () => {
     render(
       <FleetControlView

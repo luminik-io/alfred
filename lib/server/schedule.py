@@ -138,13 +138,16 @@ def upcoming_runs(
     now: datetime | None = None,
     limit: int = 50,
     state_root: Path | None = None,
+    strict: bool = False,
 ) -> list[ScheduledRun]:
     """Parse ``agents.conf`` into the fleet's scheduled runs.
 
-    Returns an empty list (never raises) when the file is missing or
-    unreadable so the dashboard degrades to an honest empty state. ``cron:``
-    rows are sorted by their computed next-fire (soonest first); ``interval:``
-    rows have no timestamp and sort after them, ordered by codename.
+    Returns an empty list when the file is missing. By default, an unreadable
+    file or invalid row is also skipped. ``strict=True`` raises for those two
+    cases so API callers can report that schedule state is unavailable.
+    ``cron:`` rows are sorted by their computed next-fire (soonest first);
+    ``interval:`` rows have no timestamp and sort after them, ordered by
+    codename.
     """
     path = conf_path if conf_path is not None else agents_conf_path()
     resolved_state = state_root or _state_root_for_conf(path)
@@ -154,8 +157,10 @@ def upcoming_runs(
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             logger.debug("could not read agents.conf %s: %s", path, exc)
+            if strict:
+                raise
             text = ""
-    custom_rows = _custom_agent_rows(resolved_state, base_text=text)
+    custom_rows = _custom_agent_rows(resolved_state, base_text=text, strict=strict)
     if not text and not custom_rows:
         return []
     text = "\n".join([part for part in (text.rstrip("\n"), *custom_rows) if part])
@@ -169,6 +174,8 @@ def upcoming_runs(
         run = _parse_row(raw_line, reference=reference, state_root=resolved_state)
         if run is not None:
             runs.append(run)
+        elif strict:
+            raise ValueError("invalid agents.conf row")
 
     # Soonest next-fire first; interval rows (no timestamp) fall to the end,
     # ordered by codename so the list is stable across polls.
@@ -329,11 +336,16 @@ def _base_scheduler_identities(text: str) -> tuple[set[str], set[str]]:
     return labels, codenames
 
 
-def _custom_agent_rows(state_root: Path, *, base_text: str = "") -> list[str]:
+def _custom_agent_rows(state_root: Path, *, base_text: str = "", strict: bool = False) -> list[str]:
     try:
-        rows = CustomAgentStore.from_state_root(state_root).conf_rows(enabled_only=True)
+        rows = CustomAgentStore.from_state_root(state_root).conf_rows(
+            enabled_only=True,
+            strict=strict,
+        )
     except Exception as exc:  # pragma: no cover - defensive read-only path
         logger.debug("could not read custom agents from %s: %s", state_root, exc)
+        if strict:
+            raise
         return []
     if not base_text:
         return rows

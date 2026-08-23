@@ -55,19 +55,32 @@ async def api_schedule(request: Request) -> JSONResponse:
     ``cron:`` rows carry a computed ``next_fire_at`` (local ISO-8601);
     ``interval:`` rows carry only a ``cadence`` string ("every 15m")
     because the read-only server has no trustworthy last-fired anchor to
-    compute the next fire from. Never 500s: an unreadable/missing conf
-    degrades to an empty ``runs`` list so the lane shows an honest empty
-    state.
+    compute the next fire from. Never 500s: a missing conf returns an empty
+    ``runs`` list. An unreadable or invalid conf returns a generic error so
+    the client can distinguish unavailable state from no configured schedule.
     """
     from server.schedule import upcoming_runs
 
     try:
         state_root = getattr(request.app.state.reader, "state_root", None)
-        runs = upcoming_runs(state_root=state_root if isinstance(state_root, Path) else None)
+        response_limit = 50
+        runs = upcoming_runs(
+            state_root=state_root if isinstance(state_root, Path) else None,
+            limit=response_limit + 1,
+            strict=True,
+        )
     except Exception:  # never break the client on a parse failure
         logger.exception("api_schedule: failed to read upcoming runs")
-        return JSONResponse({"runs": [], "error": views._GENERIC_ERROR})
-    return JSONResponse(views._jsonable({"runs": [run.to_dict() for run in runs]}))
+        return JSONResponse({"runs": [], "truncated": False, "error": views._GENERIC_ERROR})
+    truncated = len(runs) > response_limit
+    return JSONResponse(
+        views._jsonable(
+            {
+                "runs": [run.to_dict() for run in runs[:response_limit]],
+                "truncated": truncated,
+            }
+        )
+    )
 
 
 def actions_payload(request: Request) -> dict[str, Any]:

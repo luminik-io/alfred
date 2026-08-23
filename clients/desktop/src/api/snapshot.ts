@@ -45,7 +45,11 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
   if (firings.status === "rejected") degraded.firings = settledError(firings.reason);
   if (plans.status === "rejected") degraded.plans = settledError(plans.reason);
   if (trustedSlack.status === "rejected") degraded.trustedSlack = settledError(trustedSlack.reason);
-  if (schedule.status === "rejected") degraded.schedule = settledError(schedule.reason);
+  if (schedule.status === "rejected") {
+    degraded.schedule = settledError(schedule.reason);
+  } else if (schedule.value.error?.trim()) {
+    degraded.schedule = schedule.value.error.trim();
+  }
 
   return {
     loadedAt: new Date(),
@@ -74,6 +78,8 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
     // Upcoming scheduled runs (agents.conf). A rejection degrades to an empty
     // lane, never a blanked view.
     schedule: schedule.status === "fulfilled" ? schedule.value.runs || [] : [],
+    scheduleComplete:
+      schedule.status === "fulfilled" && schedule.value.truncated === false,
     // The Kanban board is fetched separately (loadShipped) so its slower
     // multi-repo gh scan never gates the core snapshot.
     shipped: null,

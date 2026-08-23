@@ -546,6 +546,8 @@ function App() {
                   modelRefreshVersion={snapshotRevision}
                   agents={snapshot?.status.agents || []}
                   schedule={snapshot?.schedule || []}
+                  scheduleAvailable={!snapshot?.degraded?.schedule}
+                  scheduleComplete={Boolean(snapshot?.scheduleComplete)}
                   service={fleetService}
                   nativeBusy={nativeBusy}
                   rosterTheme={rosterTheme}

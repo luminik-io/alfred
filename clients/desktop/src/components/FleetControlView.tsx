@@ -81,6 +81,8 @@ export function FleetControlView({
   modelRefreshVersion,
   agents,
   schedule,
+  scheduleAvailable = true,
+  scheduleComplete = true,
   service,
   nativeBusy,
   rosterTheme = DEFAULT_ROSTER_THEME,
@@ -92,6 +94,8 @@ export function FleetControlView({
   modelRefreshVersion: number;
   agents: AgentSummary[];
   schedule?: ScheduledRun[];
+  scheduleAvailable?: boolean;
+  scheduleComplete?: boolean;
   service: FleetServiceState;
   nativeBusy: string | null;
   // The active roster theme (name + role-label display layer). Defaults to the shipped
@@ -396,6 +400,8 @@ export function FleetControlView({
                       key={row.codename}
                       row={row}
                       schedule={scheduleFor(scheduleByCodename, row.codename)}
+                      scheduleAvailable={scheduleAvailable}
+                      scheduleComplete={scheduleComplete}
                       selected={row.codename === selectedRow?.codename}
                       profile={themedProfile}
                       onSelect={() => selectAgent(row.codename)}
@@ -416,7 +422,9 @@ export function FleetControlView({
             serviceTone={serviceTone}
             agentProfile={themedProfile}
             agentActionCue={agentActionCue}
-            scheduleCopy={scheduleCopy}
+            scheduleCopy={(row, schedule) =>
+              scheduleCopy(row, schedule, scheduleAvailable, scheduleComplete)
+            }
             editableScheduleValue={editableScheduleValue}
             scheduleOptions={scheduleOptions}
             modelStatus={selectedRow ? modelRecords[selectedRow.codename] : undefined}
@@ -480,12 +488,16 @@ function AgentRosterRow({
   profile: resolveProfile,
   row,
   schedule,
+  scheduleAvailable,
+  scheduleComplete,
   selected,
 }: {
   onSelect: () => void;
   profile: (row: FleetControlRow, schedule?: ScheduledRun) => AgentProfile;
   row: FleetControlRow;
   schedule?: ScheduledRun;
+  scheduleAvailable: boolean;
+  scheduleComplete: boolean;
   selected: boolean;
 }) {
   const profile = resolveProfile(row, schedule);
@@ -509,7 +521,8 @@ function AgentRosterRow({
           ) : null}
         </span>
         <span className="agents-deck__row-purpose">
-          {profile.purpose || scheduleCopy(row, schedule)}
+          {profile.purpose ||
+            scheduleCopy(row, schedule, scheduleAvailable, scheduleComplete)}
         </span>
       </span>
       <span className="agents-deck__row-meta">
@@ -522,7 +535,7 @@ function AgentRosterRow({
           <AlfredStatusDot tone={tone} aria-hidden="true" />
           {label}
         </Badge>
-        <span>{scheduleCopy(row, schedule)}</span>
+        <span>{scheduleCopy(row, schedule, scheduleAvailable, scheduleComplete)}</span>
       </span>
     </button>
   );
@@ -607,12 +620,16 @@ function agentStats(rows: FleetControlRow[]) {
   );
 }
 
-function scheduleCopy(row: FleetControlRow, schedule?: ScheduledRun): string {
+function scheduleCopy(
+  _row: FleetControlRow,
+  schedule?: ScheduledRun,
+  scheduleAvailable = true,
+  scheduleComplete = true,
+): string {
+  if (!scheduleAvailable) return "Unavailable";
   if (schedule?.cadence) return schedule.cadence;
-  if (row.service === "running") return "Active";
-  if (row.service === "paused") return "Paused";
-  if (row.service === "stopped") return "Stopped";
-  return "Unknown";
+  if (!scheduleComplete) return "Unknown";
+  return "Not set";
 }
 
 function scheduleMap(schedule: ScheduledRun[]): Record<string, ScheduledRun> {
