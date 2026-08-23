@@ -3127,12 +3127,6 @@ def _battery_run_remove(
     elif battery.id == "headroom-compression":
         command = [sys.executable, "-m", "pip", "uninstall", "-y", "headroom-ai"]
     elif battery.id == "graphify":
-        override = str(current_env.get("ALFRED_GRAPHIFY_BIN", "")).strip()
-        if override:
-            print(
-                "alfred: graphify uses an operator-supplied executable. Alfred will not remove it."
-            )
-            return 0
         command = ["uv", "tool", "uninstall", "graphifyy"]
     elif battery.id == "code-memory-mcp":
         override = str(current_env.get("ALFRED_CODE_MEMORY_BIN", "")).strip()
@@ -3180,7 +3174,13 @@ def _battery_run_remove(
         remove_env = _graphify_owned_uv_environment({**os.environ, **current_env})
         owned_tool = Path(remove_env["UV_TOOL_DIR"]) / "graphifyy"
         if not owned_tool.exists():
-            print("alfred: graphify is already absent from Alfred's tool directory.")
+            if str(current_env.get("ALFRED_GRAPHIFY_BIN", "")).strip():
+                print(
+                    "alfred: graphify is absent from Alfred's tool directory. "
+                    "The operator-supplied executable remains unchanged."
+                )
+            else:
+                print("alfred: graphify is already absent from Alfred's tool directory.")
             return 0
         assignments = [f"{key}={remove_env[key]}" for key in ("UV_TOOL_DIR", "UV_TOOL_BIN_DIR")]
         printable_command = ["env", *assignments, *command]
