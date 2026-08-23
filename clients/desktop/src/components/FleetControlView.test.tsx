@@ -337,6 +337,30 @@ describe("FleetControlView", () => {
     expect(screen.queryByText("Not set")).not.toBeInTheDocument();
   });
 
+  it("shows Unknown when a schedule row may be outside the response cap", async () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[agent("senior-dev", { status: "live" })]}
+        schedule={[]}
+        scheduleAvailable
+        scheduleComplete={false}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await openDrawer(user, "lucius");
+
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Not set")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+  });
+
   it("renders the human agent role and purpose above the runtime codename", async () => {
     render(
       <FleetControlView

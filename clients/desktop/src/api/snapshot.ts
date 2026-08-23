@@ -78,6 +78,8 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
     // Upcoming scheduled runs (agents.conf). A rejection degrades to an empty
     // lane, never a blanked view.
     schedule: schedule.status === "fulfilled" ? schedule.value.runs || [] : [],
+    scheduleTruncated:
+      schedule.status === "fulfilled" ? Boolean(schedule.value.truncated) : false,
     // The Kanban board is fetched separately (loadShipped) so its slower
     // multi-repo gh scan never gates the core snapshot.
     shipped: null,

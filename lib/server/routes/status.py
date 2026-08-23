@@ -63,11 +63,23 @@ async def api_schedule(request: Request) -> JSONResponse:
 
     try:
         state_root = getattr(request.app.state.reader, "state_root", None)
-        runs = upcoming_runs(state_root=state_root if isinstance(state_root, Path) else None)
+        response_limit = 50
+        runs = upcoming_runs(
+            state_root=state_root if isinstance(state_root, Path) else None,
+            limit=response_limit + 1,
+        )
     except Exception:  # never break the client on a parse failure
         logger.exception("api_schedule: failed to read upcoming runs")
-        return JSONResponse({"runs": [], "error": views._GENERIC_ERROR})
-    return JSONResponse(views._jsonable({"runs": [run.to_dict() for run in runs]}))
+        return JSONResponse({"runs": [], "truncated": False, "error": views._GENERIC_ERROR})
+    truncated = len(runs) > response_limit
+    return JSONResponse(
+        views._jsonable(
+            {
+                "runs": [run.to_dict() for run in runs[:response_limit]],
+                "truncated": truncated,
+            }
+        )
+    )
 
 
 def actions_payload(request: Request) -> dict[str, Any]:

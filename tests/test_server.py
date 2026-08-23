@@ -3660,6 +3660,32 @@ def test_scheduled_codenames_is_not_limited_by_schedule_endpoint_cap(tmp_path: P
     assert len(schedule_mod.scheduled_codenames(conf_path=conf)) == 1005
 
 
+def test_api_schedule_marks_a_truncated_roster(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "\n".join(
+            f"alfred.worker-{index:02d}\tworker.py\tinterval:600\tno\t"
+            f"alfred.worker-{index:02d}\tworker"
+            for index in range(51)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    body = client.get("/api/schedule").json()
+
+    assert len(body["runs"]) == 50
+    assert body["truncated"] is True
+
+
 def test_api_schedule_reads_deployed_runtime_conf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

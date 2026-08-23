@@ -432,6 +432,27 @@ describe("loadSnapshot degradation", () => {
     expect(snap.degraded?.schedule).toBe("Schedule data unavailable");
   });
 
+  it("preserves a truncated schedule response in the snapshot", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string) => {
+        const path = String(input);
+        if (path.includes(ENDPOINTS.schedule)) {
+          return new Response(JSON.stringify({ runs: [], truncated: true }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify(jsonFor(path)), { status: 200 });
+      }),
+    );
+
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
+
+    expect(snap.schedule).toEqual([]);
+    expect(snap.scheduleTruncated).toBe(true);
+    expect(snap.degraded?.schedule).toBeUndefined();
+  });
+
   it("loadShipped returns the board, surfacing a build failure as an error", async () => {
     // The board endpoint returns 200 with empty columns + an `error` field when
     // GitHub / gh auth is down. loadShipped must surface that error so the

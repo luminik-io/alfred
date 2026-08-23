@@ -547,6 +547,7 @@ function App() {
                   agents={snapshot?.status.agents || []}
                   schedule={snapshot?.schedule || []}
                   scheduleAvailable={!snapshot?.degraded?.schedule}
+                  scheduleComplete={!snapshot?.scheduleTruncated}
                   service={fleetService}
                   nativeBusy={nativeBusy}
                   rosterTheme={rosterTheme}
