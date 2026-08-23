@@ -2,6 +2,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  getViewportForBounds,
   Handle,
   MiniMap,
   type NodeProps,
@@ -219,14 +220,19 @@ function prefersReducedMotion(): boolean {
 function FitToContainer({
   signature,
   fallbackBounds,
+  fitAll,
+  containerRef,
 }: {
   signature: string;
   fallbackBounds: { x: number; y: number; width: number; height: number };
+  fitAll: boolean;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { getNodes, getNodesBounds, setViewport } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
-  const width = useStore((state) => state.width);
-  const height = useStore((state) => state.height);
+  const storeWidth = useStore((state) => state.width);
+  const storeHeight = useStore((state) => state.height);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const {
     x: fallbackX,
@@ -234,9 +240,29 @@ function FitToContainer({
     width: fallbackWidth,
     height: fallbackHeight,
   } = fallbackBounds;
+  const width = containerSize.width || storeWidth;
+  const height = containerSize.height || storeHeight;
 
   useEffect(() => {
-    if (!width || !height || !nodesInitialized) {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => {
+      const bounds = container.getBoundingClientRect();
+      setContainerSize((current) =>
+        current.width === bounds.width && current.height === bounds.height
+          ? current
+          : { width: bounds.width, height: bounds.height },
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  useEffect(() => {
+    if (!width || !height || (!nodesInitialized && !fitAll)) {
       return;
     }
     let cancelled = false;
@@ -246,6 +272,25 @@ function FitToContainer({
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         if (cancelled) return;
+        if (fitAll && fallbackWidth > 0 && fallbackHeight > 0) {
+          const target = getViewportForBounds(
+            {
+              x: fallbackX,
+              y: fallbackY,
+              width: fallbackWidth,
+              height: fallbackHeight,
+            },
+            width,
+            height,
+            FIT_OPTIONS.minZoom,
+            FIT_OPTIONS.maxZoom,
+            FIT_OPTIONS.padding,
+          );
+          void setViewport(target, {
+            duration: prefersReducedMotion() ? 0 : 240,
+          });
+          return;
+        }
         const nodes = getNodes();
         const bounds = nodes.length ? getNodesBounds(nodes) : null;
         if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
@@ -287,6 +332,7 @@ function FitToContainer({
     signature,
     getNodes,
     getNodesBounds,
+    fitAll,
     setViewport,
     fallbackX,
     fallbackY,
@@ -327,6 +373,7 @@ export function WorkflowGraph({
   // zoom. Escape exits; the signature change re-fits the graph to the new size.
   const [maximized, setMaximized] = useState(false);
   const graphRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const maximizeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const toggleMaximized = () => {
@@ -428,7 +475,7 @@ export function WorkflowGraph({
         </button>
         <WorkflowLegend />
       </div>
-      <div className="workflow-graph__canvas">
+      <div ref={canvasRef} className="workflow-graph__canvas">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -469,6 +516,8 @@ export function WorkflowGraph({
           <FitToContainer
             signature={signature}
             fallbackBounds={fallbackBounds}
+            fitAll={fitMaximized}
+            containerRef={canvasRef}
           />
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
           <Controls showInteractive={false} position="bottom-left" />

@@ -17,30 +17,33 @@ test("full-screen workflow frames every agent on desktop", async ({ page }) => {
   const canvas = dialog.locator(".workflow-graph__canvas");
   const nodes = dialog.locator(".wf-node");
   await expect(nodes).toHaveCount(6);
-  await expect
-    .poll(async () => {
-      const canvasBox = await canvas.boundingBox();
-      const nodeBoxes = await nodes.evaluateAll((elements) =>
-        elements.map((element) => {
-          const box = element.getBoundingClientRect();
-          return {
-            bottom: box.bottom,
-            left: box.left,
-            right: box.right,
-            top: box.top,
-          };
-        }),
-      );
-      if (!canvasBox) return false;
-      return nodeBoxes.every(
-        (box) =>
-          box.left >= canvasBox.x &&
-          box.right <= canvasBox.x + canvasBox.width &&
-          box.top >= canvasBox.y &&
-          box.bottom <= canvasBox.y + canvasBox.height,
-      );
-    })
-    .toBe(true);
+  const allNodesAreInside = async () => {
+    const canvasBox = await canvas.boundingBox();
+    const nodeBoxes = await nodes.evaluateAll((elements) =>
+      elements.map((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+          top: box.top,
+        };
+      }),
+    );
+    if (!canvasBox) return false;
+    return nodeBoxes.every(
+      (box) =>
+        box.left >= canvasBox.x &&
+        box.right <= canvasBox.x + canvasBox.width &&
+        box.top >= canvasBox.y &&
+        box.bottom <= canvasBox.y + canvasBox.height,
+    );
+  };
+
+  await expect.poll(allNodesAreInside).toBe(true);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.waitForTimeout(500);
+  expect(await allNodesAreInside()).toBe(true);
 
   assertAlfredApiComplete(page);
 });
