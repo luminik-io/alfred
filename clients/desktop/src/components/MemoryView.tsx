@@ -50,7 +50,7 @@ export function MemoryView({
   const opsLessons = activeLessons.filter((lesson) => lesson.ops);
 
   return (
-    <section className="panel animate-rise">
+    <section className="panel memory-view animate-rise">
       <PanelHeader title="What Alfred remembers" />
       <p className="panel-intro">
         Alfred reuses approved lessons from earlier work. Review the active

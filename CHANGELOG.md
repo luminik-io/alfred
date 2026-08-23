@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Aligned the Learnings lesson list and technical disclosure to one readable
+  content width across every Desktop theme and supported window size.
 - OpenCode firings now receive the same role-scoped skills as Claude Code and
   Codex. Alfred copies only the selected skill directories into the firing's
   temporary configuration and allows only those skill names.
