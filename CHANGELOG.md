@@ -99,6 +99,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Re-recorded the public Desktop tour and gallery from the v0.8 fixture on a
   Mac. Public media now uses light mode and includes a checked narrow-window
   Settings capture alongside the wide-screen tour.
+- Gave Prism a spectral cloud mark, Graphite a text-only wordmark, and Ledger a
+  gold target mark. Work now shows full repository names, clearer lifecycle
+  cards, and structured evidence details.
 - Saved run evidence now records the selected engine route, actual provider,
   model source, binary, capability contract, timeout, write boundary, and
   memory attachment state without storing credentials or prompt text.

@@ -16,8 +16,8 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-lists the permanent Desktop Settings tool manager and the new OpenCode status
-and probe commands.
+lists the permanent Desktop tool manager, versioned local API, path handling
+fixes, stricter Graphify probes, and OpenCode status and probe commands.
 
 ## 0.8.0 (2026-08-17)
 
@@ -37,8 +37,8 @@ Desktop screen pass.
   write boundary, memory attachments, approvals, decisions, commit, pull
   request, and an optional imported transcript.
 - Prism, Graphite, and Ledger pass the screen matrix in light and dark modes at
-  desktop and phone widths. Public screenshots and video use fixture data in
-  light mode.
+  desktop, tablet, and phone widths. Public screenshots and video use fixture
+  data in light mode.
 - Screen-level bundles cut initial Desktop JavaScript from 1,489.16 kB to
   495.17 kB in the v0.8.0 release build.
 
