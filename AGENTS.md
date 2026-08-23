@@ -17,7 +17,7 @@ roster themes change display names only. `examples/` contains tutorial agents.
 Users inspect and steer the team through the Alfred CLI (`bin/alfred`), the
 optional `alfred serve` JSON API, the optional Tauri desktop client under
 `clients/desktop`, and Slack. The desktop client carries a Claude and Codex
-subscription usage rail (backed by the live `GET /api/usage` endpoint, read from
+subscription usage rail (backed by the live `GET /api/v1/usage` endpoint, read from
 local CLI state with no billing API; the same data is available from
 `alfred usage`) and an agent roster. Any issue carrying the approval
 gate label (`agent:plan-pending-approval`) is held from scheduled pickup until
