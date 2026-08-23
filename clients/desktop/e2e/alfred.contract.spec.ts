@@ -105,6 +105,10 @@ test("intermediate Work windows keep the inspector in a sheet", async ({ page })
 
 test("standard desktop Work windows keep evidence in a sheet", async ({ page }) => {
   await installAlfredApi(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("alfred-theme-name", "category-standard");
+    localStorage.setItem("alfred-theme", "light");
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
 
   await page.goto("/");
@@ -113,10 +117,24 @@ test("standard desktop Work windows keep evidence in a sheet", async ({ page }) 
     .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
 
-  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  const sheet = page.getByRole("dialog", { name: "Work item" });
+  await expect(sheet).toBeVisible();
   await expect(
     page.getByRole("complementary", { name: "Work item inspector" }),
   ).toHaveCount(0);
+
+  const [titleBox, detailBox] = await Promise.all([
+    sheet.getByRole("heading", { name: "Work item" }).boundingBox(),
+    sheet.locator(".detail-panel__head").boundingBox(),
+  ]);
+  expect(titleBox, "the Work sheet title must be visible").not.toBeNull();
+  expect(detailBox, "the Work sheet detail must be visible").not.toBeNull();
+  if (titleBox && detailBox) {
+    expect(
+      Math.abs(titleBox.x - detailBox.x),
+      "the Work sheet header and detail must share the same inset",
+    ).toBeLessThanOrEqual(1);
+  }
 
   const lanes = await page.locator(".alfred-pipeline__column").all();
   for (const lane of lanes) {
