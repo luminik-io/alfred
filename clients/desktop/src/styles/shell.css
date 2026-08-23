@@ -657,6 +657,18 @@
   color: var(--foreground);
 }
 
+@media (max-width: 640px) {
+  .agents-deck__command .agents-deck__viewtoggle {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .agents-deck__viewtoggle button {
+    flex: 1 1 50%;
+    justify-content: center;
+  }
+}
+
 .agents-deck__grid {
   display: grid;
   min-height: min(560px, calc(100svh - 13rem));
