@@ -14,7 +14,10 @@ changes that are merged or released.
 
 ## Unreleased
 
-No changes are pending.
+The
+[`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
+lists the permanent Desktop tool manager, versioned local API, path handling
+fixes, stricter Graphify probes, and OpenCode status and probe commands.
 
 ## 0.8.0 (2026-08-17)
 
