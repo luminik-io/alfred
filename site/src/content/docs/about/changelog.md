@@ -40,7 +40,7 @@ Desktop screen pass.
   desktop, tablet, and phone widths. Public screenshots and video use fixture
   data in light mode.
 - Screen-level bundles cut initial Desktop JavaScript from 1,489.16 kB to
-  495.89 kB in the v0.8.0 release build.
+  495.17 kB in the v0.8.0 release build.
 
 Read the complete
 [`0.8.0` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#080---2026-08-17).
