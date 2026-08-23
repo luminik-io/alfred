@@ -16,8 +16,9 @@ changes that are merged or released.
 
 The
 [`Unreleased` section](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#unreleased)
-lists the permanent Desktop tool manager, versioned local API, path handling
-fixes, stricter Graphify probes, and OpenCode status and probe commands.
+lists the permanent Desktop tool manager, the Prism, Graphite, and Ledger
+branding and Work view updates, the versioned local API, path handling fixes,
+stricter Graphify probes, and OpenCode status and probe commands.
 
 ## 0.8.0 (2026-08-17)
 
