@@ -56,7 +56,7 @@
 
 .settings-view {
   width: min(100%, 72rem);
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 .ask__head-title {

@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Aligned Settings with the shared Desktop content edge while keeping its
+  readable maximum width.
 - Removed the obsolete Desktop screenshot script that could report blank
   captures as successful. `npm run capture:visual` remains the supported,
   fixture-backed visual audit.

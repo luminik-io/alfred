@@ -54,10 +54,14 @@ test("primary screens share the approved plain page hierarchy", async ({
   );
 
   await openPrimaryView(page, "Agents");
-  await expectPlainHeader(page.locator('[aria-label="Agents summary"]'));
+  const agentsHeader = page.locator('[aria-label="Agents summary"]');
+  await expectPlainHeader(agentsHeader);
+  const agentsLeft = await agentsHeader.evaluate(
+    (element) => element.getBoundingClientRect().left,
+  );
 
-  const rosterRail = page.locator('.agents-deck__rail');
-  const rosterRow = page.locator('.agents-deck__row').first();
+  const rosterRail = page.locator(".agents-deck__rail");
+  const rosterRow = page.locator(".agents-deck__row").first();
   await expect(rosterRail).toBeVisible();
   await expect(rosterRow).toBeVisible();
   const rosterWidths = await Promise.all([
@@ -67,7 +71,10 @@ test("primary screens share the approved plain page hierarchy", async ({
   expect(rosterWidths[1]).toBeGreaterThan(rosterWidths[0] * 0.9);
 
   await openPrimaryView(page, "Settings");
-  await expectPlainHeader(
-    page.locator('[aria-label="Settings summary"]'),
+  const settingsHeader = page.locator('[aria-label="Settings summary"]');
+  await expectPlainHeader(settingsHeader);
+  const settingsLeft = await settingsHeader.evaluate(
+    (element) => element.getBoundingClientRect().left,
   );
+  expect(settingsLeft).toBeCloseTo(agentsLeft, 0);
 });
