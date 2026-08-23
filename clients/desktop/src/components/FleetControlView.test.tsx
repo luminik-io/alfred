@@ -294,6 +294,27 @@ describe("FleetControlView", () => {
     expect(screen.getAllByText(/paused since/i).length).toBeGreaterThan(0);
   });
 
+  it("shows Not set when an agent has no configured schedule", async () => {
+    render(
+      <FleetControlView
+        baseUrl="http://127.0.0.1:7010"
+        modelRefreshVersion={1}
+        agents={[agent("senior-dev", { status: "live" })]}
+        schedule={[]}
+        service={{}}
+        nativeBusy={null}
+        onRunLocalAction={vi.fn()}
+        onViewLogs={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+
+    await openDrawer(user, "lucius");
+
+    expect(screen.getAllByText("Not set").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Active")).not.toBeInTheDocument();
+  });
+
   it("renders the human agent role and purpose above the runtime codename", async () => {
     render(
       <FleetControlView

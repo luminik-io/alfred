@@ -607,12 +607,9 @@ function agentStats(rows: FleetControlRow[]) {
   );
 }
 
-function scheduleCopy(row: FleetControlRow, schedule?: ScheduledRun): string {
+function scheduleCopy(_row: FleetControlRow, schedule?: ScheduledRun): string {
   if (schedule?.cadence) return schedule.cadence;
-  if (row.service === "running") return "Active";
-  if (row.service === "paused") return "Paused";
-  if (row.service === "stopped") return "Stopped";
-  return "Unknown";
+  return "Not set";
 }
 
 function scheduleMap(schedule: ScheduledRun[]): Record<string, ScheduledRun> {
