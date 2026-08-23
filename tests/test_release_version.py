@@ -210,6 +210,25 @@ def test_release_notes_rejects_an_unknown_mode(tmp_path: Path) -> None:
     assert "invalid mode: --unknown" in result.stderr
 
 
+def test_release_notes_rejects_duplicate_target_sections(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Changelog\n\n"
+        "## [1.2.3] - Unreleased\n\n"
+        "### Highlights\n\n"
+        "- Pending result.\n\n"
+        "## [1.2.3] - 2026-08-23\n\n"
+        "### Highlights\n\n"
+        "- Release result.\n",
+        encoding="utf-8",
+    )
+
+    result = _release_notes("1.2.3", changelog, require_dated=True)
+
+    assert result.returncode == 1
+    assert "duplicate sections for 1.2.3" in result.stderr
+
+
 def test_release_source_gate_accepts_an_annotated_tag_on_main(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

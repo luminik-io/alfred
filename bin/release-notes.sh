@@ -17,9 +17,24 @@ if [[ -n "$mode" && "$mode" != "--require-dated" ]]; then
   echo "release-notes: invalid mode: $mode" >&2
   exit 1
 fi
+target_count="$(
+  awk -v ver="$version" '
+    $0 == "## [" ver "]" || index($0, "## [" ver "] - ") == 1 { count++ }
+    END { print count + 0 }
+  ' "$changelog"
+)"
+if ((target_count > 1)); then
+  echo "release-notes: duplicate sections for $version" >&2
+  exit 1
+fi
 if [[ "$mode" == "--require-dated" ]]; then
   version_pattern="${version//./\\.}"
-  if ! grep -Eq "^## \\[$version_pattern\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog"; then
+  target_heading="$(
+    awk -v ver="$version" '
+      $0 == "## [" ver "]" || index($0, "## [" ver "] - ") == 1 { print; exit }
+    ' "$changelog"
+  )"
+  if ! grep -Eq "^## \\[$version_pattern\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" <<< "$target_heading"; then
     echo "release-notes: dated heading required for $version" >&2
     exit 1
   fi
