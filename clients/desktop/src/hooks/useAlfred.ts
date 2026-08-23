@@ -586,7 +586,7 @@ export function useAlfred() {
     [baseUrl, refresh],
   );
 
-  // Paused/running state now comes from the polled /api/status feed (the server
+  // Paused/running state now comes from the polled /api/v1/status feed (the server
   // reads the same pause marker the CLI writes). This optional read only enriches
   // the CLI-only fail-streak counter the API does not expose, on desktop builds.
   // Best-effort: a failure leaves the previous service map in place.
@@ -623,7 +623,7 @@ export function useAlfred() {
         if (refreshAfter) {
           await refresh(baseUrl);
         }
-        // Paused/loaded badges update from the /api/status re-poll above. After a
+        // Paused/loaded badges update from the /api/v1/status re-poll above. After a
         // service-changing verb, also refresh the CLI-only fail-streak counter
         // (resume resets it) so the health rollup matches the new reality.
         if (action === "pause" || action === "resume" || action === "run") {

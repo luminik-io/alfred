@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Alfred Desktop and the local runtime health check now use
+  `GET /api/v1/status`. The unversioned status route is no longer served.
 - Graphify binary and graph paths, Headroom overrides, setup status, and agent
   firings now expand `~` from `HOME`, then `ALFRED_HOME`, so all surfaces use
   the same configured file when a service starts without `HOME`.

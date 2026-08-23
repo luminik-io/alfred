@@ -1,7 +1,7 @@
 import type { AgentSummary, AlfredStatusAgent, AlfredStatusJson, NativeCommandResult } from "../types";
 
 // A single agent's row in the Fleet Control panel: the at-a-glance summary the
-// client already polls. Paused/running state comes from the polled /api/status
+// client already polls. Paused/running state comes from the polled /api/v1/status
 // feed (the server reads the same pause marker the CLI writes); the optional
 // `alfred status --json` service map only enriches the CLI-only fail-streak
 // counter the read-only API does not expose.
@@ -77,7 +77,7 @@ export function parseFleetServiceState(result: NativeCommandResult | null): Flee
 
 /**
  * Look up an agent's service entry tolerating the CLI's fully-qualified labels.
- * The /api/status feed reports role slugs (e.g. "senior-dev") while the status
+ * The /api/v1/status feed reports role slugs (e.g. "senior-dev") while the status
  * JSON may report "fleet.local.senior-dev"; match on either the exact key or
  * the trailing segment.
  */
@@ -146,7 +146,7 @@ function toRow(
   // Paused/running state comes from the polled summary first. The server reads
   // the same pause marker the CLI writes, so the desktop client no longer needs
   // to shell `alfred status --json` for it. The CLI service map is a fallback
-  // for browser/dev runs whose /api/status omits the fields.
+  // for browser/dev runs whose /api/v1/status omits the fields.
   const summaryHasService =
     summary != null &&
     (summary.paused !== undefined || summary.loaded !== undefined);

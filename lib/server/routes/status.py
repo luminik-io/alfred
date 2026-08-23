@@ -48,11 +48,6 @@ def status_payload(request: Request) -> dict[str, Any]:
     )
 
 
-@router.get("/api/status", response_class=JSONResponse)
-async def api_status(request: Request) -> JSONResponse:
-    return JSONResponse(status_payload(request))
-
-
 @router.get("/api/schedule", response_class=JSONResponse)
 async def api_schedule(request: Request) -> JSONResponse:
     """Upcoming scheduled runs read from ``launchd/agents.conf``.

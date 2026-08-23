@@ -522,7 +522,7 @@ export class AlfredApiFixture {
 
     if (method !== "GET") return false;
 
-    if (matches("/api/status")) {
+    if (matches("/api/v1/status")) {
       await this.fulfill(route, {
         agents:
           this.mode === "workflow"

@@ -141,7 +141,7 @@ _NOT_BUILT_PAGE = """<!doctype html>
         <code>dist/</code> directory. The desktop app also works without a
         browser build.
       </p>
-      <p>The JSON API is unaffected: try <a href="/api/status">/api/status</a>.</p>
+      <p>The JSON API is unaffected: try <a href="/api/v1/status">/api/v1/status</a>.</p>
     </div>
   </body>
 </html>

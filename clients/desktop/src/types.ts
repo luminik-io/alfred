@@ -15,7 +15,7 @@ export type AgentSummary = {
   // outcome on an otherwise-"complete" firing. Older servers omit it, so it is
   // optional and absent means "not reported", never zero failures.
   failures_today?: number;
-  // Paused/running service state now comes from the polled /api/status feed
+  // Paused/running service state now comes from the polled /api/v1/status feed
   // instead of shelling `alfred status --json`. The server reads the same
   // pause marker the CLI writes; `loaded` is the inverse of `paused` because
   // `alfred pause` unloads the scheduler unit and `alfred resume` reloads it.
@@ -1227,7 +1227,7 @@ export type GithubAuthLoginDetails = {
 };
 
 // Shape of a single agent entry in `alfred status --json`. The CLI exposes the
-// paused/running state that the read-only /api/status endpoint does not, so the
+// paused/running state that the read-only /api/v1/status endpoint does not, so the
 // Fleet Control panel parses this snapshot to reflect live service state.
 export type AlfredStatusAgent = {
   agent: string;
@@ -1273,7 +1273,7 @@ export type Snapshot = {
   // Empty when the server predates the route or no schedule is readable; the
   // Running & scheduled lane then shows an honest empty note.
   schedule: ScheduledRun[];
-  // Per-section failures from the settled snapshot load. /api/status is the
+  // Per-section failures from the settled snapshot load. /api/v1/status is the
   // spine and never lands here (its failure rejects the whole load); the other
   // endpoints degrade independently so one outage cannot blank the view.
   degraded?: {

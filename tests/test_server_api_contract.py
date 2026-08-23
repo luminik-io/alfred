@@ -82,6 +82,7 @@ def test_v1_status_exposes_the_fleet_status_contract(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.headers["X-Alfred-API-Version"] == "1"
+    assert response.headers["Cache-Control"] == "no-store"
     assert set(response.json()) == {
         "agents",
         "total_today",
@@ -90,6 +91,14 @@ def test_v1_status_exposes_the_fleet_status_contract(tmp_path: Path) -> None:
         "intake_profile",
         "setup_repos",
     }
+
+
+def test_unversioned_status_route_is_not_served(tmp_path: Path) -> None:
+    client, _app = _client(tmp_path)
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 404
 
 
 def test_v1_usage_exposes_the_subscription_usage_contract(

@@ -161,9 +161,9 @@ GET /api/v1/usage/providers
 
 `GET /api/v1/meta` reports API version `1`, the localhost scope, and the
 header used for state changes. `GET /api/v1/status` returns the fleet status
-payload. The two usage endpoints return subscription headroom and the
-per-engine projection. Every `/api/v1` response includes
-`X-Alfred-API-Version: 1`.
+payload and disables response caching. The two usage endpoints return
+subscription headroom and the per-engine projection. Every `/api/v1` response
+includes `X-Alfred-API-Version: 1`.
 Unknown v1 routes and unsupported methods return this fixed error shape:
 
 ```json
@@ -176,11 +176,10 @@ Unknown v1 routes and unsupported methods return this fixed error shape:
 }
 ```
 
-The Desktop routes below remain under `/api` while each response and error
-shape gets a versioned contract test:
+The remaining Desktop routes below stay under `/api` while each response and
+error shape gets a versioned contract test:
 
 ```text
-GET /api/status
 GET /api/schedule
 GET /api/actions
 GET /api/shipped?days=14

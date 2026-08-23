@@ -585,7 +585,7 @@ def _today_cost_rollup(reader: Any) -> dict[str, Any]:
     ``None`` (not ``0``) when no spend ledger exists for today, so the client
     can distinguish "no data surfaced" from a genuine zero-dollar day. Any
     failure (missing state root, import error) degrades to an empty rollup
-    rather than blanking ``/api/status``.
+    rather than blanking ``/api/v1/status``.
     """
     empty = {
         "spend_usd": None,

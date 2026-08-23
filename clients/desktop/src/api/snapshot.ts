@@ -16,14 +16,14 @@ import { readAlfredJson, settledError, streamingUrl, withTimeout } from "./clien
 
 // The dashboard reads several independent endpoints. A failure on any one of them
 // should not blank the whole view, so we settle each request and render what
-// resolved, marking the missing sections as degraded. /api/status is the spine
+// resolved, marking the missing sections as degraded. /api/v1/status is the spine
 // (it carries fleet liveness and the reliability rollup): if it fails the whole
 // snapshot is genuinely unusable, so that one rejection still surfaces as the
 // connection error the banner shows.
 export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
   const [status, actions, memoryCandidates, memoryLessons, firings, plans, trustedSlack, schedule] =
     await Promise.allSettled([
-      readAlfredJson<StatusResponse>(baseUrl, "/api/status"),
+      readAlfredJson<StatusResponse>(baseUrl, "/api/v1/status"),
       readAlfredJson<ActionsResponse>(baseUrl, "/api/actions"),
       readAlfredJson<MemoryCandidatesResponse>(baseUrl, "/api/memory/candidates?limit=20"),
       readAlfredJson<MemoryLessonsResponse>(baseUrl, "/api/memory/lessons?limit=30"),
