@@ -2,6 +2,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  getViewportForBounds,
   Handle,
   MiniMap,
   type NodeProps,
@@ -25,6 +26,7 @@ import {
   WORKFLOW_ZOOM,
   type WorkflowNodeInput,
 } from "../lib/workflowGraph";
+import { useMediaQuery } from "../hooks/use-mobile";
 import { AlfredStatusDot } from "./ui/alfred";
 
 import "@xyflow/react/dist/style.css";
@@ -218,14 +220,19 @@ function prefersReducedMotion(): boolean {
 function FitToContainer({
   signature,
   fallbackBounds,
+  fitAll,
+  containerRef,
 }: {
   signature: string;
   fallbackBounds: { x: number; y: number; width: number; height: number };
+  fitAll: boolean;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const { getNodes, getNodesBounds, setViewport } = useReactFlow();
   const nodesInitialized = useNodesInitialized();
-  const width = useStore((state) => state.width);
-  const height = useStore((state) => state.height);
+  const storeWidth = useStore((state) => state.width);
+  const storeHeight = useStore((state) => state.height);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const {
     x: fallbackX,
@@ -233,9 +240,29 @@ function FitToContainer({
     width: fallbackWidth,
     height: fallbackHeight,
   } = fallbackBounds;
+  const width = containerSize.width || storeWidth;
+  const height = containerSize.height || storeHeight;
 
   useEffect(() => {
-    if (!width || !height || !nodesInitialized) {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => {
+      const bounds = container.getBoundingClientRect();
+      setContainerSize((current) =>
+        current.width === bounds.width && current.height === bounds.height
+          ? current
+          : { width: bounds.width, height: bounds.height },
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  useEffect(() => {
+    if (!width || !height || (!nodesInitialized && !fitAll)) {
       return;
     }
     let cancelled = false;
@@ -245,6 +272,25 @@ function FitToContainer({
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         if (cancelled) return;
+        if (fitAll && fallbackWidth > 0 && fallbackHeight > 0) {
+          const target = getViewportForBounds(
+            {
+              x: fallbackX,
+              y: fallbackY,
+              width: fallbackWidth,
+              height: fallbackHeight,
+            },
+            width,
+            height,
+            FIT_OPTIONS.minZoom,
+            FIT_OPTIONS.maxZoom,
+            FIT_OPTIONS.padding,
+          );
+          void setViewport(target, {
+            duration: prefersReducedMotion() ? 0 : 240,
+          });
+          return;
+        }
         const nodes = getNodes();
         const bounds = nodes.length ? getNodesBounds(nodes) : null;
         if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
@@ -286,6 +332,7 @@ function FitToContainer({
     signature,
     getNodes,
     getNodesBounds,
+    fitAll,
     setViewport,
     fallbackX,
     fallbackY,
@@ -326,6 +373,7 @@ export function WorkflowGraph({
   // zoom. Escape exits; the signature change re-fits the graph to the new size.
   const [maximized, setMaximized] = useState(false);
   const graphRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const maximizeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const toggleMaximized = () => {
@@ -396,6 +444,9 @@ export function WorkflowGraph({
     };
   }, [maximized]);
 
+  const desktopLayout = useMediaQuery("(min-width: 1024px)");
+  const fitMaximized = maximized && desktopLayout;
+
   const graph = (
     <div
       ref={graphRef}
@@ -424,15 +475,17 @@ export function WorkflowGraph({
         </button>
         <WorkflowLegend />
       </div>
-      <div className="workflow-graph__canvas">
+      <div ref={canvasRef} className="workflow-graph__canvas">
         <ReactFlow
           nodes={nodes}
           edges={edges}
           nodeTypes={NODE_TYPES}
           // Initial + resize framing is driven by FitToContainer (readable floor,
-          // leftmost-lane start). We deliberately omit the `fitView` prop so React
-          // Flow does not auto-fit the whole graph below the readable floor on
-          // load. The Controls fit button still uses fitViewOptions to reach it.
+          // leftmost-lane start). Full screen is the deliberate exception: it
+          // opens with the complete pipeline in view, using the same bounds as
+          // the explicit fit control instead of carrying over the cropped page
+          // framing.
+          fitView={fitMaximized}
           fitViewOptions={FIT_OPTIONS}
           minZoom={WORKFLOW_ZOOM.min}
           maxZoom={WORKFLOW_ZOOM.max}
@@ -463,6 +516,8 @@ export function WorkflowGraph({
           <FitToContainer
             signature={signature}
             fallbackBounds={fallbackBounds}
+            fitAll={fitMaximized}
+            containerRef={canvasRef}
           />
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
           <Controls showInteractive={false} position="bottom-left" />
