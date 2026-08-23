@@ -380,7 +380,7 @@
 
 .settings-runtime-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(19rem, 0.65fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(22rem, 0.65fr);
   align-items: start;
   gap: 1rem;
 }

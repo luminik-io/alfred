@@ -166,6 +166,29 @@ test("wide Work windows dock evidence without narrowing lifecycle lanes", async 
   }
 });
 
+test("laptop Settings keeps runtime actions on one line", async ({ page }) => {
+  await installAlfredApi(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  await page.goto("/?tab=settings");
+
+  for (const name of [
+    "Install or repair",
+    "Start runtime",
+    "Auth check",
+    "Recheck setup",
+  ]) {
+    const label = page.getByRole("button", { name }).locator("span");
+    await expect(label).toBeVisible();
+    const lineCount = await label.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getClientRects().length;
+    });
+    expect(lineCount, `${name} must stay on one line`).toBe(1);
+  }
+});
+
 test("narrow Settings keeps every section label readable", async ({ page }) => {
   await installAlfredApi(page);
   await page.setViewportSize({ width: 390, height: 844 });
