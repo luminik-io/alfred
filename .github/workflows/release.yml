@@ -83,7 +83,7 @@ jobs:
           tag_no_v="${tag#v}"
           repo="${{ github.repository }}"
           git show "${tag}:CHANGELOG.md" > /tmp/tag-changelog.md
-          bin/release-notes.sh "$tag_no_v" /tmp/tag-changelog.md \
+          bin/release-notes.sh "$tag_no_v" /tmp/tag-changelog.md --require-dated \
             > /tmp/release-notes.md
           {
             echo

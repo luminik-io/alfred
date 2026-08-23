@@ -36,9 +36,17 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _release_notes(version: str, changelog: Path) -> subprocess.CompletedProcess[str]:
+def _release_notes(
+    version: str,
+    changelog: Path,
+    *,
+    require_dated: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    args = [str(ROOT / "bin/release-notes.sh"), version, str(changelog)]
+    if require_dated:
+        args.append("--require-dated")
     return subprocess.run(
-        [str(ROOT / "bin/release-notes.sh"), version, str(changelog)],
+        args,
         check=False,
         capture_output=True,
         text=True,
@@ -66,17 +74,22 @@ def test_release_version_is_consistent() -> None:
     assert desktop_package["version"] == version
 
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    release_heading = re.search(
+    dated_release_heading = re.search(
         rf"^## \[{re.escape(version)}\] - (?P<date>\d{{4}}-\d{{2}}-\d{{2}})$",
         changelog,
         re.MULTILINE,
     )
-    assert release_heading is not None
-    release_date = release_heading.group("date")
     site_changelog = (ROOT / "site/src/content/docs/about/changelog.md").read_text(encoding="utf-8")
-    assert f"## {version} ({release_date})" in site_changelog
-    anchor = version.replace(".", "")
-    assert f"CHANGELOG.md#{anchor}---{release_date}" in site_changelog
+    if dated_release_heading is None:
+        assert f"## [{version}] - Unreleased" in changelog
+        assert f"## Upcoming {version}" in site_changelog
+        anchor = version.replace(".", "")
+        assert f"CHANGELOG.md#{anchor}---unreleased" in site_changelog
+    else:
+        release_date = dated_release_heading.group("date")
+        assert f"## {version} ({release_date})" in site_changelog
+        anchor = version.replace(".", "")
+        assert f"CHANGELOG.md#{anchor}---{release_date}" in site_changelog
 
 
 def test_release_workflow_validates_the_dispatch_tag_before_shell_use() -> None:
@@ -101,7 +114,7 @@ def test_release_workflow_validates_the_dispatch_tag_before_shell_use() -> None:
     assert "--jq '.commit.verification.verified'" in workflow
     assert 'git show "${tag}:VERSION"' in workflow
     assert 'git show "${tag}:CHANGELOG.md"' in workflow
-    assert "bin/release-notes.sh" in workflow
+    assert 'bin/release-notes.sh "$tag_no_v" /tmp/tag-changelog.md --require-dated' in workflow
     assert "--json isDraft,isImmutable" in workflow
     assert 'if [ "$is_draft" = "true" ]; then' in workflow
     assert "gh release edit" in workflow
@@ -121,7 +134,7 @@ def test_release_notes_extracts_only_highlights(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    result = _release_notes("1.2.3", changelog)
+    result = _release_notes("1.2.3", changelog, require_dated=True)
 
     assert result.returncode == 0
     assert result.stdout == "- First result.\n- Second result.\n"
@@ -164,6 +177,69 @@ def test_release_notes_does_not_treat_regex_characters_as_wildcards(tmp_path: Pa
 
     assert result.returncode == 1
     assert "no Highlights found for 1.2.3" in result.stderr
+
+
+def test_release_notes_rejects_an_undated_tagged_release(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Changelog\n\n## [1.2.3] - Unreleased\n\n### Highlights\n\n- Pending result.\n",
+        encoding="utf-8",
+    )
+
+    result = _release_notes("1.2.3", changelog, require_dated=True)
+
+    assert result.returncode == 1
+    assert "dated heading required for 1.2.3" in result.stderr
+
+
+def test_release_notes_rejects_an_unknown_mode(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Changelog\n\n## [1.2.3] - 2026-08-23\n\n### Highlights\n\n- Result.\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [str(ROOT / "bin/release-notes.sh"), "1.2.3", str(changelog), "--unknown"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "invalid mode: --unknown" in result.stderr
+
+
+def test_release_notes_rejects_duplicate_target_sections(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Changelog\n\n"
+        "## [1.2.3] - Unreleased\n\n"
+        "### Highlights\n\n"
+        "- Pending result.\n\n"
+        "## [1.2.3] - 2026-08-23\n\n"
+        "### Highlights\n\n"
+        "- Release result.\n",
+        encoding="utf-8",
+    )
+
+    result = _release_notes("1.2.3", changelog, require_dated=True)
+
+    assert result.returncode == 1
+    assert "duplicate sections for 1.2.3" in result.stderr
+
+
+def test_release_notes_rejects_an_impossible_release_date(tmp_path: Path) -> None:
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "# Changelog\n\n## [1.2.3] - 2026-02-31\n\n### Highlights\n\n- Result.\n",
+        encoding="utf-8",
+    )
+
+    result = _release_notes("1.2.3", changelog, require_dated=True)
+
+    assert result.returncode == 1
+    assert "invalid release date for 1.2.3: 2026-02-31" in result.stderr
 
 
 def test_release_source_gate_accepts_an_annotated_tag_on_main(tmp_path: Path) -> None:
