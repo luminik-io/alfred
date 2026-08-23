@@ -373,10 +373,10 @@ BATTERIES: tuple[Battery, ...] = (
         requires_daemon=False,
         install_kind=INSTALL_AUTOFETCH,
         install_hint=(
-            "Alfred installs the pinned graphifyy MCP tool under $ALFRED_HOME with uv. Build or "
-            "refresh a repo graph with `$ALFRED_HOME/bin/graphify update <repo>`. Firings serve "
-            "`graphify-out/graph.json` read-only. Until each repo is indexed, Alfred uses its "
-            "code-memory fallback. Local; no daemon, no embeddings."
+            "Alfred installs the pinned graphifyy MCP tool in Alfred's home with uv. Build or "
+            'refresh a repo graph with `"${ALFRED_HOME:-$HOME/.alfred}/bin/graphify" update '
+            "<repo>`. Firings serve `graphify-out/graph.json` read-only. Until each repo is "
+            "indexed, Alfred uses its code-memory fallback. Local; no daemon, no embeddings."
         ),
         autofetch_cmd=(
             "uv",

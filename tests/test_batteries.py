@@ -622,6 +622,7 @@ def test_graphify_is_optin_code_graph_engine() -> None:
         "mcp==1.28.1",
         "graphifyy[mcp]==0.9.8",
     )
+    assert '"${ALFRED_HOME:-$HOME/.alfred}/bin/graphify" update <repo>' in g.install_hint
 
 
 def test_graphify_and_code_memory_are_mutually_exclusive() -> None:
