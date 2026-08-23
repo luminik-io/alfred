@@ -25,6 +25,7 @@ import {
   WORKFLOW_ZOOM,
   type WorkflowNodeInput,
 } from "../lib/workflowGraph";
+import { useMediaQuery } from "../hooks/use-mobile";
 import { AlfredStatusDot } from "./ui/alfred";
 
 import "@xyflow/react/dist/style.css";
@@ -396,6 +397,9 @@ export function WorkflowGraph({
     };
   }, [maximized]);
 
+  const desktopLayout = useMediaQuery("(min-width: 1024px)");
+  const fitMaximized = maximized && desktopLayout;
+
   const graph = (
     <div
       ref={graphRef}
@@ -430,9 +434,11 @@ export function WorkflowGraph({
           edges={edges}
           nodeTypes={NODE_TYPES}
           // Initial + resize framing is driven by FitToContainer (readable floor,
-          // leftmost-lane start). We deliberately omit the `fitView` prop so React
-          // Flow does not auto-fit the whole graph below the readable floor on
-          // load. The Controls fit button still uses fitViewOptions to reach it.
+          // leftmost-lane start). Full screen is the deliberate exception: it
+          // opens with the complete pipeline in view, using the same bounds as
+          // the explicit fit control instead of carrying over the cropped page
+          // framing.
+          fitView={fitMaximized}
           fitViewOptions={FIT_OPTIONS}
           minZoom={WORKFLOW_ZOOM.min}
           maxZoom={WORKFLOW_ZOOM.max}
