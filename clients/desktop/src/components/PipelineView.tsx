@@ -224,9 +224,9 @@ export function PipelineView({
 
   return (
     <section className="alfred-pipeline" aria-label="Work">
-      <section className="alfred-page-hero px-4 py-4" aria-label="Work summary">
-        <div className="relative flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 space-y-1">
+      <section className="alfred-page-hero" aria-label="Work summary">
+        <div className="alfred-pipeline__hero">
+          <div className="alfred-pipeline__hero-copy">
             <h1 className="font-heading text-2xl font-medium tracking-normal text-foreground">
               Work
             </h1>
@@ -234,32 +234,38 @@ export function PipelineView({
               One lifecycle: plans you approve become queued work, then runs in
               flight, then shipped outcomes.
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {status ? (
-              <span
-                className="text-xs text-muted-foreground"
-                title={generatedAt ? exactTime(generatedAt) : undefined}
-              >
-                {status}
-              </span>
-            ) : null}
-            {onRefresh ? (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                type="button"
-                onClick={onRefresh}
-                disabled={loading}
-                aria-label="Refresh pipeline"
-              >
-                <RefreshCw
-                  size={15}
-                  aria-hidden="true"
-                  className={loading ? "animate-spin" : undefined}
-                />
-              </Button>
-            ) : null}
+            <div className="alfred-pipeline__hero-meta">
+              {board?.sample ? (
+                <span
+                  className="alfred-pipeline__sample"
+                  role="note"
+                  aria-label="Demo data. No real repositories or agent activity."
+                >
+                  Sample data
+                </span>
+              ) : null}
+              {status ? (
+                <span title={generatedAt ? exactTime(generatedAt) : undefined}>
+                  {status}
+                </span>
+              ) : null}
+              {onRefresh ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  type="button"
+                  onClick={onRefresh}
+                  disabled={loading}
+                  aria-label="Refresh pipeline"
+                >
+                  <RefreshCw
+                    size={15}
+                    aria-hidden="true"
+                    className={loading ? "animate-spin" : undefined}
+                  />
+                </Button>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>
@@ -280,12 +286,6 @@ export function PipelineView({
           onQueueAction={onQueueAction}
           busy={Boolean(busyQueue)}
         />
-      ) : null}
-
-      {board?.sample ? (
-        <p className="sample-board-notice" role="note">
-          Demo data. No real repositories or agent activity.
-        </p>
       ) : null}
 
       {hardError && !hasAnything ? (

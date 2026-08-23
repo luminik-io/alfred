@@ -1,6 +1,10 @@
-import { repoShortName } from "../../lib/chips";
 import { isSafeExternalUrl } from "../../lib/links";
-import type { AssignmentTargetAgent, PlanDraft, QueueAction, ShippedCard } from "../../types";
+import type {
+  AssignmentTargetAgent,
+  PlanDraft,
+  QueueAction,
+  ShippedCard,
+} from "../../types";
 import type { RepoChip } from "../LifecycleCard";
 
 export type QueueActionHandler = (
@@ -11,7 +15,7 @@ export type QueueActionHandler = (
 ) => void | Promise<boolean>;
 
 export function repoChips(repos: string[]): RepoChip[] {
-  return repos.map((repo) => ({ short: repoShortName(repo), full: repo }));
+  return repos.map((repo) => ({ short: repo, full: repo }));
 }
 
 export function cardKey(card: ShippedCard): string {

@@ -182,11 +182,29 @@ body {
   box-shadow: none;
 }
 
-.alfred-brand-logo {
+.alfred-brand-mark svg {
   display: block;
-  filter:
-    drop-shadow(0 4px 10px color-mix(in oklch, var(--primary), transparent 76%))
-    saturate(1.08);
+  width: 100%;
+  height: 100%;
+}
+
+.alfred-brand-mark__ledger {
+  display: none !important;
+  stroke: var(--warn);
+  stroke-width: 1.15;
+  stroke-linecap: round;
+}
+
+:root[data-theme="category-standard"] .alfred-brand-mark {
+  display: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-brand-mark__prism {
+  display: none;
+}
+
+:root[data-theme="linked-fold"] .alfred-brand-mark__ledger {
+  display: block !important;
 }
 
 .alfred-brand-mark::after {

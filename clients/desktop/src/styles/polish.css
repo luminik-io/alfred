@@ -14,6 +14,23 @@
   font-weight: 620;
 }
 
+:root[data-theme="signal-edge"] .alfred-brand-mark + span span {
+  font-weight: 480;
+  letter-spacing: -0.025em;
+}
+
+:root[data-theme="category-standard"] .alfred-brand-mark + span span {
+  font-size: 1.22rem;
+  font-weight: 680;
+}
+
+:root[data-theme="linked-fold"] .alfred-brand-mark + span span {
+  font-family: var(--theme-font-heading);
+  font-size: 1.42rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
 /* The approved comps use page titles as navigation landmarks, not as cards.
  * Keep glass for true overlays and persistent chrome. A page heading should not
  * compete with the work directly below it. */
@@ -54,12 +71,12 @@
   background:
     linear-gradient(
       115deg,
-      color-mix(in oklch, var(--signal-mint), transparent 97%),
+      color-mix(in oklch, var(--signal-mint), transparent 98%),
       transparent 34%
     ),
     linear-gradient(
       300deg,
-      color-mix(in oklch, var(--signal-violet), transparent 98%),
+      color-mix(in oklch, var(--signal-violet), transparent 98.5%),
       transparent 42%
     ),
     var(--background);
@@ -94,7 +111,9 @@
   background:
     linear-gradient(180deg, var(--glass-highlight), transparent 48%),
     var(--glass);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 12px 32px color-mix(in oklch, var(--glass-shadow), transparent 78%);
   backdrop-filter: blur(calc(var(--glass-blur) * 0.65));
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.65));
 }
@@ -110,33 +129,31 @@
       top / 100% 1px no-repeat,
     linear-gradient(180deg, var(--glass-highlight), transparent 22%),
     var(--glass);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 16px 44px color-mix(in oklch, var(--glass-shadow), transparent 68%);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
   backdrop-filter: blur(calc(var(--glass-blur) * 0.62))
     saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 0.62))
     saturate(var(--glass-saturate));
-  padding: 0.55rem;
+  padding: 0;
 }
 
 :root[data-theme="signal-edge"] .alfred-card {
   border-color: var(--hairline);
   background: var(--surface);
   box-shadow: none;
-  gap: 0.58rem;
-  padding: 0.78rem 0.82rem;
+  gap: 0.68rem;
+  padding: 0.86rem 0.9rem;
 }
 
 :root[data-theme="signal-edge"] .alfred-card__outcome,
 :root[data-theme="linked-fold"] .alfred-card__outcome {
-  font-size: 0.92rem;
-  line-height: 1.4;
+  font-size: 0.96rem;
+  line-height: 1.44;
 }
 
 :root[data-theme="linked-fold"] .alfred-card {
-  gap: 0.55rem;
-  padding: 0.76rem;
+  gap: 0.68rem;
+  padding: 0.86rem;
 }
 
 :root[data-theme="signal-edge"] .alfred-card--selected {
@@ -203,6 +220,21 @@
 
 /* Graphite --------------------------------------------------------------- */
 
+:root[data-theme="category-standard"].dark .alfred-app-atmosphere {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, var(--blue), transparent 96%),
+      transparent 42%
+    ),
+    linear-gradient(
+      315deg,
+      color-mix(in oklch, var(--cyan), transparent 97%),
+      transparent 48%
+    ),
+    var(--background);
+}
+
 :root[data-theme="category-standard"]
   :is(
     .panel,
@@ -238,7 +270,7 @@
 :root[data-theme="category-standard"] .alfred-pipeline__assign {
   border-color: var(--border-strong);
   border-radius: 0;
-  background: var(--surface-2);
+  background: color-mix(in oklch, var(--surface-2), var(--background) 16%);
   box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 
@@ -248,7 +280,7 @@
   background:
     linear-gradient(90deg, var(--col-tone), transparent 48%) top / 100% 1px
       no-repeat,
-    var(--surface-2);
+    color-mix(in oklch, var(--surface-2), var(--background) 8%);
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -264,8 +296,16 @@
 
 :root[data-theme="category-standard"] .alfred-card {
   border-color: var(--border-strong);
-  background: var(--surface);
-  box-shadow: none;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--foreground), transparent 98%),
+      transparent 42%
+    ),
+    var(--surface);
+  box-shadow: inset 0 1px 0
+    color-mix(in oklch, var(--foreground), transparent 94%);
+  padding: 0.86rem 0.88rem;
 }
 
 :root[data-theme="category-standard"] .alfred-card--selected {
@@ -276,7 +316,7 @@
 :root[data-theme="category-standard"] .pipeline-inspector {
   border-color: var(--border-strong);
   border-radius: 0;
-  background: var(--surface-2);
+  background: color-mix(in oklch, var(--surface-2), var(--background) 10%);
   box-shadow: inset 1px 0 0 var(--border-strong);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -312,6 +352,11 @@
       circle at 18% 12%,
       color-mix(in oklch, var(--glass-highlight), transparent 12%),
       transparent 34%
+    ),
+    linear-gradient(
+      135deg,
+      color-mix(in oklch, white, transparent 76%),
+      transparent 44%
     ),
     var(--background);
 }
@@ -417,7 +462,7 @@
   width: 1.1rem;
   height: 1.1rem;
   border: 0;
-  background: var(--background);
+  background: color-mix(in oklch, var(--surface), var(--background) 32%);
   box-shadow:
     -1px 1px 0 var(--fold-line),
     1px -1px 0 var(--fold-line);
@@ -438,7 +483,9 @@
       transparent 48%
     ),
     var(--surface);
-  box-shadow: none;
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--glass-highlight), transparent 22%),
+    0 8px 20px color-mix(in oklch, var(--glass-shadow), transparent 80%);
 }
 
 :root[data-theme="linked-fold"] .alfred-card--selected {
