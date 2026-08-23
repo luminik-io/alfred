@@ -585,9 +585,17 @@ def _graphify_command() -> tuple[str, list[str]] | None:
         if resolved and _graphify_entrypoint_works(resolved):
             return resolved, []
         return None
-    installed = shutil.which("graphify-mcp")
-    if installed and _graphify_entrypoint_works(installed):
-        return installed, []
+    configured_home = os.environ.get("ALFRED_HOME", "").strip()
+    home = (
+        expand_user_path(os.environ, configured_home)
+        if configured_home
+        else Path.home() / ".alfred"
+    )
+    installed = home / "bin" / "graphify-mcp"
+    if installed.is_file() and os.access(installed, os.X_OK):
+        command = str(installed)
+        if _graphify_entrypoint_works(command):
+            return command, []
     return None
 
 

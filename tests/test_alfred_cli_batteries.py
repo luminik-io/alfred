@@ -115,6 +115,53 @@ def test_autofetch_print_command_includes_prospective_env(
     assert "&& alfred batteries enable code-memory-mcp --yes" in output
 
 
+def test_graphify_install_uses_alfred_owned_uv_directories(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import batteries
+
+    installed_checks = iter([False, True])
+    monkeypatch.setattr(batteries, "is_installed", lambda _battery, _env: next(installed_checks))
+    seen: dict[str, object] = {}
+
+    def run(command, *, timeout, env=None):
+        seen["command"] = command
+        seen["env"] = env
+        return 0
+
+    monkeypatch.setattr(cli, "_run_subcommand", run)
+
+    assert cli.main(["batteries", "install", "graphify", "--yes"]) == 0
+
+    assert seen["command"] == [
+        "uv",
+        "tool",
+        "install",
+        "--force",
+        "--with",
+        "mcp==1.28.1",
+        "graphifyy[mcp]==0.9.8",
+    ]
+    install_env = seen["env"]
+    assert isinstance(install_env, dict)
+    assert install_env["UV_TOOL_DIR"] == str(tmp_path / ".alfred" / "tools" / "uv")
+    assert install_env["UV_TOOL_BIN_DIR"] == str(tmp_path / ".alfred" / "bin")
+
+
+def test_graphify_print_command_names_alfred_owned_uv_directories(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import batteries
+
+    monkeypatch.setattr(batteries, "is_installed", lambda _battery, _env: False)
+
+    assert cli.main(["batteries", "install", "graphify", "--print-command"]) == 0
+
+    output = capsys.readouterr().out
+    assert f"UV_TOOL_DIR={tmp_path / '.alfred' / 'tools' / 'uv'}" in output
+    assert f"UV_TOOL_BIN_DIR={tmp_path / '.alfred' / 'bin'}" in output
+
+
 def test_daemon_enable_print_command_does_not_mutate_config(
     cli, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -205,6 +252,69 @@ def test_remove_runs_local_uninstall_without_mutating_config(
     assert cli.main(["batteries", "remove", "dense-embeddings", "--yes"]) == 0
     assert commands == [[sys.executable, "-m", "pip", "uninstall", "-y", "sqlite-vec"]]
     assert env_path.read_text(encoding="utf-8") == original
+
+
+def test_remove_graphify_targets_only_alfred_owned_uv_directories(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_GRAPHIFY_MCP=0\n", encoding="utf-8")
+    tool_dir = tmp_path / ".alfred" / "tools" / "uv" / "graphifyy"
+    tool_dir.mkdir(parents=True)
+    seen: dict[str, object] = {}
+
+    def run(command, *, timeout, env=None):
+        seen["command"] = command
+        seen["env"] = env
+        return 0
+
+    monkeypatch.setattr(cli, "_run_subcommand", run)
+
+    assert cli.main(["batteries", "remove", "graphify", "--yes"]) == 0
+
+    assert seen["command"] == ["uv", "tool", "uninstall", "graphifyy"]
+    remove_env = seen["env"]
+    assert isinstance(remove_env, dict)
+    assert remove_env["UV_TOOL_DIR"] == str(tmp_path / ".alfred" / "tools" / "uv")
+    assert remove_env["UV_TOOL_BIN_DIR"] == str(tmp_path / ".alfred" / "bin")
+
+
+def test_remove_graphify_is_idempotent_when_owned_tool_is_absent(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_GRAPHIFY_MCP=0\n", encoding="utf-8")
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda *_args, **_kwargs: pytest.fail("an absent owned tool needs no uninstall"),
+    )
+
+    assert cli.main(["batteries", "remove", "graphify", "--yes"]) == 0
+
+    assert "already absent" in capsys.readouterr().out
+
+
+def test_remove_graphify_preserves_operator_supplied_entrypoint(
+    cli, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env_path = tmp_path / ".alfred" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(
+        "ALFRED_GRAPHIFY_MCP=0\nALFRED_GRAPHIFY_BIN=/opt/graphify-mcp\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        cli,
+        "_run_subcommand",
+        lambda *_args, **_kwargs: pytest.fail("operator-owned executable must not be removed"),
+    )
+
+    assert cli.main(["batteries", "remove", "graphify", "--yes"]) == 0
+
+    assert "operator-supplied executable" in capsys.readouterr().out
 
 
 def test_remove_external_service_prints_operator_guidance(
