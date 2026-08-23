@@ -87,9 +87,9 @@ test("compact Work windows open the inspector as a sheet", async ({ page }) => {
   await expect(page.getByRole("complementary", { name: "Work item inspector" })).toHaveCount(0);
 });
 
-test("intermediate Work windows keep the inspector in a sheet", async ({ page }) => {
+test("Work windows below the dock breakpoint keep the inspector in a sheet", async ({ page }) => {
   await installAlfredApi(page);
-  await page.setViewportSize({ width: 1439, height: 900 });
+  await page.setViewportSize({ width: 1599, height: 900 });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Work", exact: true }).click();
@@ -123,18 +123,21 @@ test("standard desktop Work windows keep evidence in a sheet", async ({ page }) 
     page.getByRole("complementary", { name: "Work item inspector" }),
   ).toHaveCount(0);
 
-  const [titleBox, detailBox] = await Promise.all([
-    sheet.getByRole("heading", { name: "Work item" }).boundingBox(),
-    sheet.locator(".detail-panel__head").boundingBox(),
-  ]);
-  expect(titleBox, "the Work sheet title must be visible").not.toBeNull();
-  expect(detailBox, "the Work sheet detail must be visible").not.toBeNull();
-  if (titleBox && detailBox) {
-    expect(
-      Math.abs(titleBox.x - detailBox.x),
-      "the Work sheet header and detail must share the same inset",
-    ).toBeLessThanOrEqual(1);
-  }
+  await expect
+    .poll(
+      async () => {
+        const [titleBox, detailBox] = await Promise.all([
+          sheet.getByRole("heading", { name: "Work item" }).boundingBox(),
+          sheet.locator(".detail-panel__head").boundingBox(),
+        ]);
+        if (!titleBox || !detailBox) return Number.POSITIVE_INFINITY;
+        return Math.abs(titleBox.x - detailBox.x);
+      },
+      {
+        message: "the Work sheet header and detail must share the same inset",
+      },
+    )
+    .toBeLessThanOrEqual(1);
 
   const lanes = await page.locator(".alfred-pipeline__column").all();
   for (const lane of lanes) {
@@ -143,9 +146,9 @@ test("standard desktop Work windows keep evidence in a sheet", async ({ page }) 
   }
 });
 
-test("wide Work windows dock evidence without narrowing lifecycle lanes", async ({ page }) => {
+test("Work windows dock evidence at the documented breakpoint", async ({ page }) => {
   await installAlfredApi(page);
-  await page.setViewportSize({ width: 1680, height: 900 });
+  await page.setViewportSize({ width: 1600, height: 900 });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Work", exact: true }).click();

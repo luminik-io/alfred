@@ -542,7 +542,10 @@
   background: color-mix(in oklch, var(--surface), var(--accent) 12%);
 }
 
-@media (min-width: 1280px) {
+/* PipelineView docks the inspector only when four 230px lifecycle lanes and
+ * the evidence rail fit together. Keep this theme-width refinement on that
+ * same boundary so the stylesheet never advertises an earlier layout mode. */
+@media (min-width: 1600px) {
   .alfred-pipeline__workspace.has-inspector {
     grid-template-columns: minmax(0, 1fr) clamp(22.5rem, 25vw, 24rem);
   }
