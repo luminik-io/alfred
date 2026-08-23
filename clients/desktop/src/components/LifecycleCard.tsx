@@ -89,13 +89,13 @@ export function LifecycleCard({
     <>
       <div className="alfred-card__meta">
         <AlfredChip chip={chip} />
-        <RepoChips repos={repos} />
         {age ? (
           <time className="alfred-card__age" title={exactTime(age)}>
             {friendlyTime(age)}
           </time>
         ) : null}
       </div>
+      <RepoChips repos={repos} />
       <p className="alfred-card__outcome">{outcome}</p>
     </>
   );

@@ -46,7 +46,7 @@ test("records the public tour from sample data only", async ({ page }) => {
   await pause();
 
   await page.getByRole("button", { name: "Work", exact: true }).click();
-  await expect(page.getByRole("note")).toHaveText(
+  await expect(page.getByRole("note")).toHaveAccessibleName(
     "Demo data. No real repositories or agent activity.",
   );
   await page

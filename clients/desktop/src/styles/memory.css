@@ -237,18 +237,36 @@
 }
 
 .compact-meta {
-  margin: 0.65rem 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: 0.85rem 0 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.compact-meta div {
+  display: grid;
+  gap: 0.18rem;
+  border: 0;
+  background: transparent;
+  padding: 0.72rem 0;
+}
+
+.compact-meta div:nth-child(even) {
+  padding-left: 0.72rem;
+  border-left: 1px solid var(--hairline);
 }
 
 .compact-meta dt {
-  display: inline;
+  display: block;
   color: var(--muted-foreground);
   font-size: 0.68rem;
 }
 
 .compact-meta dd {
-  display: inline;
-  margin: 0 0 0 0.25rem;
+  display: block;
+  margin: 0;
   color: var(--foreground);
   font-size: 0.74rem;
   font-weight: 650;
@@ -265,22 +283,26 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 1rem;
+}
+
+.pipeline-inspector .detail-panel--sheet {
+  min-height: calc(100% - 4.1rem);
 }
 
 .inspector-evidence {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.65rem;
   border-top: 1px solid var(--hairline);
   border-bottom: 1px solid var(--hairline);
-  padding: 0.75rem 0;
+  padding: 0.95rem 0;
 }
 
 .inspector-evidence h4 {
   margin: 0;
   color: var(--foreground);
   font-family: var(--font-heading);
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 650;
 }
 
@@ -295,7 +317,7 @@
 .inspector-evidence li {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -307,18 +329,22 @@
 
 .evidence-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: 1fr;
+  gap: 0;
   margin: 0;
+  border-top: 1px solid var(--hairline);
 }
 
 .evidence-summary div {
   display: grid;
-  gap: 0.1rem;
+  grid-template-columns: minmax(6rem, 0.65fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
   min-width: 0;
-  border: 1px solid var(--hairline);
-  background: color-mix(in oklch, var(--muted), transparent 52%);
-  padding: 0.4rem 0.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+  padding: 0.58rem 0;
 }
 
 .evidence-summary dt,
@@ -330,14 +356,14 @@
   color: var(--muted-foreground);
   font-size: 0.62rem;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .evidence-summary dd {
   min-width: 0;
   overflow: hidden;
   color: var(--foreground);
-  font-size: 0.7rem;
+  font-size: 0.74rem;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -415,15 +441,30 @@
 .detail-panel__head {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.4rem;
 }
 
 .detail-panel__head span {
   color: var(--muted-foreground);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.detail-panel__head h3 {
+  max-width: 24ch;
+  font-size: 1.14rem;
+  line-height: 1.28;
+}
+
+.pipeline-inspector .detail-panel--sheet > .card-actions:last-child {
+  position: sticky;
+  bottom: -1.15rem;
+  margin-top: auto;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface);
+  padding: 0.9rem 0 1.15rem;
 }
 
 .plan-decision {

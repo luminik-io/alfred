@@ -94,6 +94,41 @@ function renderPipeline(
 }
 
 describe("PipelineView", () => {
+  it("keeps the full repository identity on lifecycle cards", () => {
+    renderPipeline({
+      board: board({
+        columns: {
+          queued: [card()],
+          in_progress: [],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 0 },
+      }),
+    });
+
+    expect(screen.getByText("your-org/api")).toBeInTheDocument();
+  });
+
+  it("keeps sample disclosure with the Work update instead of between the composer and board", () => {
+    const { container } = renderPipeline({
+      board: board({
+        sample: true,
+        columns: {
+          queued: [card()],
+          in_progress: [],
+          shipped: [],
+        },
+        counts: { queued: 1, in_progress: 0, shipped: 0 },
+      }),
+    });
+
+    const summary = screen.getByLabelText("Work summary");
+    expect(within(summary).getByText("Sample data")).toBeInTheDocument();
+    expect(
+      container.querySelector(".sample-board-notice"),
+    ).not.toBeInTheDocument();
+  });
+
   it("teaches the four columns with an empty state when nothing is in flight", () => {
     renderPipeline();
     expect(

@@ -6,7 +6,7 @@ import {
   RefreshCw,
   Sun,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import type { Snapshot } from "../../types";
 import type { TabKey } from "../../lib/uiTypes";
@@ -166,16 +166,7 @@ export function AppShell({
               <SidebarTrigger>
                 <PanelLeft aria-hidden="true" />
               </SidebarTrigger>
-              <span
-                className="alfred-brand-mark size-7 shrink-0"
-                aria-hidden="true"
-              >
-                <img
-                  src="/brand/alfred-logo-transparent.png"
-                  alt=""
-                  className="alfred-brand-logo size-7 object-contain"
-                />
-              </span>
+              <AlfredBrandMark className="size-7 shrink-0" />
               <span className="font-heading text-sm font-medium">Alfred</span>
               <div className="ml-auto">
                 <FleetStatus snapshot={snapshot} error={error} compact />
@@ -212,19 +203,49 @@ function SidebarBrandButton({
       onClick={navigateHome}
       aria-label="Open Alfred inbox"
     >
-      <span className="alfred-brand-mark size-9 shrink-0" aria-hidden="true">
-        <img
-          src="/brand/alfred-logo-transparent.png"
-          alt=""
-          className="alfred-brand-logo size-9 object-contain"
-        />
-      </span>
+      <AlfredBrandMark className="size-9 shrink-0" />
       <span className="min-w-0 group-data-[collapsible=icon]:hidden">
         <span className="block truncate font-heading text-base font-semibold">
           Alfred
         </span>
       </span>
     </button>
+  );
+}
+
+function AlfredBrandMark({ className }: { className: string }) {
+  const gradientId = useId().replace(/:/g, "");
+  return (
+    <span className={`alfred-brand-mark ${className}`} aria-hidden="true">
+      <svg
+        className="alfred-brand-mark__prism"
+        viewBox="0 0 36 36"
+        fill="none"
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="5" y1="29" x2="31" y2="7">
+            <stop stopColor="var(--signal-mint)" />
+            <stop offset="0.5" stopColor="var(--signal-rose)" />
+            <stop offset="1" stopColor="var(--signal-violet)" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M11.7 28.1h14.8a6.3 6.3 0 0 0 1.2-12.5A9.3 9.3 0 0 0 9.8 13a7.6 7.6 0 0 0 1.9 15.1Z"
+          stroke={`url(#${gradientId})`}
+          strokeWidth="1.35"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <svg
+        className="alfred-brand-mark__ledger"
+        viewBox="0 0 36 36"
+        fill="none"
+      >
+        <circle cx="18" cy="18" r="7" />
+        <path d="M18 4v8M18 24v8M4 18h8M24 18h8" />
+      </svg>
+    </span>
   );
 }
 
