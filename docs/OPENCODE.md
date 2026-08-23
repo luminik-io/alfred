@@ -74,6 +74,8 @@ Each firing starts a new non-interactive OpenCode session with:
 - an explicit Alfred agent and permission map
 - user and project configuration excluded from the firing
 - user plugins, external skills, and project subagents denied for the firing
+- role-scoped skills copied into the temporary config, with only those names
+  available through OpenCode's native skill tool
 - ready `alfred_memory` and `code_memory` servers checked before use
 - an exact allowlist for the read-only tools on each attached server
 
@@ -114,8 +116,11 @@ Unexpected permission requests are rejected because Alfred does not pass
 `--auto`.
 
 External paths, interactive questions, plan-mode transitions, project
-subagents, and external skills are denied in both modes. Alfred does not import
-the user's OpenCode configuration or MCP registry. It adds only its own ready
+subagents, and ambient external skills are denied in both modes. Alfred does
+not import the user's OpenCode configuration or MCP registry. For a role with
+curated skills, Alfred copies only those selected skill directories into the
+temporary config and allows only their names. The source directories remain
+outside the firing's permission boundary. Alfred also adds its own ready
 read-only memory servers. Each server starts under OpenCode's local MCP client
 before the main firing. A failed server is removed from the firing config.
 Attached, failed, and unavailable server names are recorded in the local firing

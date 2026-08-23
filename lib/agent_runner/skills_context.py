@@ -45,7 +45,9 @@ __all__ = [
     "SKILLS_INJECT_ENV",
     "SkillMeta",
     "discover_skills",
+    "render_opencode_skills_block",
     "render_skills_block",
+    "selected_skills_for_role",
     "skills_context_for_role",
     "skills_for_role",
 ]
@@ -207,6 +209,25 @@ def render_skills_block(metas: Sequence[SkillMeta]) -> str:
     return "\n".join(lines)
 
 
+def render_opencode_skills_block(metas: Sequence[SkillMeta]) -> str:
+    """Render selected skills for OpenCode's isolated native skill tool.
+
+    OpenCode firings deny external-directory reads and disable ambient skill
+    discovery. The runner stages only these selected skills in its temporary
+    config directory, so the prompt names the native tool instead of exposing
+    the original operator-controlled paths.
+    """
+    if not metas:
+        return ""
+    lines = [
+        "Available skills (invoke by name with the native skill tool when the trigger matches; "
+        "load the full procedure before you rely on it):"
+    ]
+    for meta in metas:
+        lines.append(f"- {meta.name}: {meta.description}")
+    return "\n".join(lines)
+
+
 def _skills_inject_enabled(env: dict[str, str] | None = None) -> bool:
     """True unless ``ALFRED_SKILLS_INJECT`` is explicitly falsy (default on)."""
     envmap = env if env is not None else os.environ
@@ -266,9 +287,17 @@ def skills_context_for_role(
     Returning ``""`` in every empty case keeps the runner change behavior-
     preserving: appending an empty string leaves the prompt untouched.
     """
+    return render_skills_block(selected_skills_for_role(role, dirs=dirs, env=env))
+
+
+def selected_skills_for_role(
+    role: str | None,
+    *,
+    dirs: Iterable[Path] | None = None,
+    env: dict[str, str] | None = None,
+) -> list[SkillMeta]:
+    """Return the curated, role-scoped skills selected for one firing."""
     if not role or not _skills_inject_enabled(env):
-        return ""
+        return []
     scan_dirs = list(dirs) if dirs is not None else _default_skill_dirs()
-    metas = discover_skills(scan_dirs)
-    selected = skills_for_role(role, metas)
-    return render_skills_block(selected)
+    return skills_for_role(role, discover_skills(scan_dirs))
