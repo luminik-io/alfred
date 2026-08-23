@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `alfred batteries --json list` and `alfred batteries list --json` now return
+  the same JSON manifest.
 - Aligned Settings with the shared Desktop content edge while keeping its
   readable maximum width.
 - Removed the obsolete Desktop screenshot script that could report blank

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -242,3 +243,22 @@ def test_list_uses_plain_setup_groups(
     assert "Optional local tools" in output
     assert "External services" in output
     assert "Advanced integrations" not in output
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    (
+        ["batteries", "--json", "list"],
+        ["batteries", "list", "--json"],
+    ),
+)
+def test_list_accepts_json_before_or_after_subcommand(
+    cli,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+) -> None:
+    assert cli.main(arguments) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["version"] == 2
+    assert payload["batteries"]
