@@ -134,16 +134,21 @@
     0 14px 38px rgba(0, 0, 0, 0.22);
 }
 
-/* Fit-to-viewport: the Inbox fills the content area (hero row auto, the grid row
-   takes the rest) so it never leaves a dead void below and never scrolls the
-   page. Lanes scroll inside their own pane bodies instead. */
+/* Fit-to-viewport: the Inbox fills the content area while every summary or
+   fixture notice keeps its natural height. The workspace takes the remainder,
+   so an optional notice cannot create an implicit grid row and overlap it. */
 .command-center {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.command-center > .command-center__top,
+.command-center > .sample-board-notice {
+  flex: 0 0 auto;
 }
 
 .command-center__top,
@@ -252,8 +257,9 @@
 .command-center__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(19rem, 22rem);
+  flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
+  height: auto;
   align-items: stretch;
   gap: 1rem;
 }
