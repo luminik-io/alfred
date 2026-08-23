@@ -1,4 +1,5 @@
 import { expect, test } from "playwright/test";
+import type { Page } from "playwright/test";
 
 import {
   assertAlfredApiComplete,
@@ -7,7 +8,8 @@ import {
 
 const pauseMs = Number(process.env.ALFRED_TOUR_PAUSE_MS ?? 0);
 
-async function pause(): Promise<void> {
+async function pause(page: Page): Promise<void> {
+  await expect(page.getByText(/^Loading /)).toHaveCount(0);
   if (pauseMs > 0) await new Promise((resolve) => setTimeout(resolve, pauseMs));
 }
 
@@ -29,7 +31,7 @@ test("records the public tour from sample data only", async ({ page }) => {
     .toEqual([1440, 900]);
   await expect(page.getByLabel("Inbox", { exact: true })).toBeVisible();
   await expect(page.getByText("Usage unavailable.")).toHaveCount(0);
-  await pause();
+  await pause(page);
 
   await page.getByRole("button", { name: "Ask" }).click();
   await page
@@ -43,7 +45,7 @@ test("records the public tour from sample data only", async ({ page }) => {
   await expect(
     page.getByText("What outcome should the test prove?", { exact: false }),
   ).toBeVisible();
-  await pause();
+  await pause(page);
 
   await page.getByRole("button", { name: "Work", exact: true }).click();
   await expect(page.getByRole("note")).toHaveAccessibleName(
@@ -56,7 +58,7 @@ test("records the public tour from sample data only", async ({ page }) => {
   await expect(
     page.getByRole("complementary", { name: "Work item inspector" }),
   ).toHaveCount(0);
-  await pause();
+  await pause(page);
 
   await page.getByRole("button", { name: "Close" }).click();
 
@@ -64,16 +66,16 @@ test("records the public tour from sample data only", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Code intelligence" }),
   ).toBeVisible();
-  await pause();
+  await pause(page);
 
   await page.getByRole("button", { name: "Agents", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
-  await pause();
+  await pause(page);
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await page.getByRole("tab", { name: "Appearance" }).click();
   await expect(page.getByRole("region", { name: "Appearance" })).toBeVisible();
   await expect(page.getByText("Prism", { exact: true })).toBeVisible();
-  await pause();
+  await pause(page);
 });
