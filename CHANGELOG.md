@@ -53,6 +53,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `alfred opencode status` and `alfred opencode probe` commands check its CLI
   contract and provider login.
 
+### Fixed
+
+- Kept the docked Work action below its evidence, so signature and check rows
+  stay readable at wide Desktop widths.
+
 ## [0.8.0] - 2026-08-17
 
 ### Highlights
