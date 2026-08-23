@@ -175,6 +175,15 @@ const FIT_OPTIONS = {
   maxZoom: WORKFLOW_ZOOM.max,
 } as const;
 
+// Full screen has no surrounding page chrome, so it needs only a narrow safe
+// gutter. Keeping the regular 14% canvas padding here pushed the six-stage
+// desktop pipeline below the declared readable zoom floor even though the
+// viewport had enough room to show every node at that scale.
+const FULLSCREEN_FIT_OPTIONS = {
+  ...FIT_OPTIONS,
+  padding: 0.06,
+} as const;
+
 const MAX_INITIAL_FRAME_ATTEMPTS = 8;
 
 // MiniMap node color tracks the agent's live status, so the overview reads the
@@ -282,9 +291,9 @@ function FitToContainer({
             },
             width,
             height,
-            FIT_OPTIONS.minZoom,
-            FIT_OPTIONS.maxZoom,
-            FIT_OPTIONS.padding,
+            FULLSCREEN_FIT_OPTIONS.minZoom,
+            FULLSCREEN_FIT_OPTIONS.maxZoom,
+            FULLSCREEN_FIT_OPTIONS.padding,
           );
           void setViewport(target, {
             duration: prefersReducedMotion() ? 0 : 240,
@@ -486,7 +495,7 @@ export function WorkflowGraph({
           // the explicit fit control instead of carrying over the cropped page
           // framing.
           fitView={fitMaximized}
-          fitViewOptions={FIT_OPTIONS}
+          fitViewOptions={maximized ? FULLSCREEN_FIT_OPTIONS : FIT_OPTIONS}
           minZoom={WORKFLOW_ZOOM.min}
           maxZoom={WORKFLOW_ZOOM.max}
           // Canvas controls: the mouse wheel and trackpad two-finger scroll zoom
