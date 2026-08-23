@@ -338,7 +338,8 @@ for (const appearance of appearances) {
             name: /Record engine settings for every run/,
           })
           .click();
-        if (viewportName === "desktop") {
+        const dockWorkInspector = viewport.width >= 1600;
+        if (dockWorkInspector) {
           await expect(
             page.getByRole("complementary", {
               name: "Work item inspector",
@@ -355,7 +356,7 @@ for (const appearance of appearances) {
         await capture(page, viewportName, "work-inspector");
         await page
           .getByRole("button", {
-            name: viewportName === "desktop" ? "Close inspector" : "Close",
+            name: dockWorkInspector ? "Close inspector" : "Close",
           })
           .click();
 

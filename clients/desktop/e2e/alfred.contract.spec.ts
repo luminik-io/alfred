@@ -103,7 +103,7 @@ test("intermediate Work windows keep the inspector in a sheet", async ({ page })
   ).toHaveCount(0);
 });
 
-test("standard desktop Work windows dock the inspector beside readable lanes", async ({ page }) => {
+test("standard desktop Work windows keep evidence in a sheet", async ({ page }) => {
   await installAlfredApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -113,16 +113,15 @@ test("standard desktop Work windows dock the inspector beside readable lanes", a
     .getByRole("button", { name: /Record engine settings for every run/ })
     .click();
 
-  const inspector = page.getByRole("complementary", {
-    name: "Work item inspector",
-  });
-  await expect(inspector).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "Work item" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Work item" })).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Work item inspector" }),
+  ).toHaveCount(0);
 
   const lanes = await page.locator(".alfred-pipeline__column").all();
   for (const lane of lanes) {
     const box = await lane.boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(195);
+    expect(box?.width).toBeGreaterThanOrEqual(230);
   }
 });
 
