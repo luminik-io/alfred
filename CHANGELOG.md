@@ -9,6 +9,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Added a permanent Tools section in Desktop Settings for the same curated battery choices used during onboarding.
+- Added the first versioned `alfred serve` endpoints. `GET /api/v1/meta`
+  declares the local contract, `GET /api/v1/status` returns fleet readiness,
+  and every v1 response carries an API-version header. Unknown routes and
+  unsupported methods return a fixed JSON error shape.
 
 ### Changed
 

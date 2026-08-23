@@ -59,7 +59,9 @@ shipped work. The canonical source is
 
 ## Next
 
-- Version the `alfred serve` API and add contract tests.
+- Extend the versioned `alfred serve` contract beyond metadata and fleet
+  status. Move each Desktop route after its response and error shapes have
+  contract tests.
 - Expand engine diagnostics to report permissions, MCPs, skills, and config
   ownership alongside the shipped authentication and profile checks.
 - Generate reversible role-specific CLI configuration from one capability

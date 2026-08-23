@@ -8,13 +8,22 @@ truth. The default driver in ``bin/alfred-serve.py`` constructs a
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import static_ui, views
+from .api_contract import (
+    API_CONTRACT_VERSION,
+    API_VERSION_HEADER,
+    error_response,
+    is_v1_path,
+)
 from .reader import FleetReader
 
 logger = logging.getLogger(__name__)
@@ -34,11 +43,21 @@ def create_app(reader: FleetReader) -> FastAPI:
     app = FastAPI(
         title="alfred serve",
         description="Localhost-only dashboard + JSON API over $ALFRED_HOME/state.",
-        version="0.5.0",
+        version=f"{API_CONTRACT_VERSION}.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
+
+    @app.middleware("http")
+    async def _version_v1_responses(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        if is_v1_path(request.url.path):
+            response.headers[API_VERSION_HEADER] = API_CONTRACT_VERSION
+        return response
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -52,6 +71,40 @@ def create_app(reader: FleetReader) -> FastAPI:
         return JSONResponse({"error": "forbidden"}, status_code=403)
 
     app.add_exception_handler(views.MutationForbidden, _mutation_forbidden)
+
+    async def _http_error(request: Request, exc: Exception) -> Response:
+        if not isinstance(exc, StarletteHTTPException):
+            raise exc
+        if is_v1_path(request.url.path):
+            if exc.status_code == 405:
+                return error_response(
+                    status_code=405,
+                    code="method_not_allowed",
+                    message="HTTP method not allowed",
+                    headers=exc.headers,
+                )
+            if exc.status_code == 404:
+                return error_response(
+                    status_code=404,
+                    code="not_found",
+                    message="API route not found",
+                    headers=exc.headers,
+                )
+        return await http_exception_handler(request, exc)
+
+    app.add_exception_handler(StarletteHTTPException, _http_error)
+
+    async def _unexpected_error(request: Request, _exc: Exception) -> Response:
+        if is_v1_path(request.url.path):
+            return error_response(
+                status_code=500,
+                code="internal_error",
+                message="Internal server error",
+                headers={API_VERSION_HEADER: API_CONTRACT_VERSION},
+            )
+        return PlainTextResponse("Internal Server Error", status_code=500)
+
+    app.add_exception_handler(Exception, _unexpected_error)
 
     # Attach the reader to app.state so view functions can pull it without a
     # global. Keeps create_app the only place wiring happens.

@@ -150,6 +150,31 @@ Returns plain text `ok` with status 200. Useful for liveness probes if you run `
 The browser UI and the native client read and write the same localhost data
 through JSON endpoints:
 
+The versioned contract starts with two read-only endpoints:
+
+```text
+GET /api/v1/meta
+GET /api/v1/status
+```
+
+`GET /api/v1/meta` reports API version `1`, the localhost scope, and the
+header used for state changes. `GET /api/v1/status` returns the fleet status
+payload. Every `/api/v1` response includes `X-Alfred-API-Version: 1`.
+Unknown v1 routes and unsupported methods return this fixed error shape:
+
+```json
+{
+  "api_version": "1",
+  "error": {
+    "code": "not_found",
+    "message": "API route not found"
+  }
+}
+```
+
+The Desktop routes below remain under `/api` while each response and error
+shape gets a versioned contract test:
+
 ```text
 GET /api/status
 GET /api/schedule

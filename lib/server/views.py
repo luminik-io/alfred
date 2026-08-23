@@ -244,6 +244,7 @@ def register_routes(app: FastAPI) -> None:
     """
     from server.routes import (
         agent_models,
+        api_contract,
         code_intelligence,
         conversation,
         converse,
@@ -259,6 +260,7 @@ def register_routes(app: FastAPI) -> None:
         usage,
     )
 
+    app.include_router(api_contract.router)
     app.include_router(status.router)
     app.include_router(code_intelligence.router)
     app.include_router(usage.router)
