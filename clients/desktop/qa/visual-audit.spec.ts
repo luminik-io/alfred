@@ -133,6 +133,28 @@ async function captureTakeover(page: Page, name: string): Promise<void> {
   });
 }
 
+async function assertLearningsCompositionContract(page: Page): Promise<void> {
+  const lessonList = page.locator(".active-lesson-list").first();
+  const advancedPanel = page.locator(".advanced-panel");
+  await expect(lessonList).toBeVisible();
+  await expect(advancedPanel).toBeVisible();
+
+  const [lessonListBox, advancedPanelBox] = await Promise.all([
+    lessonList.boundingBox(),
+    advancedPanel.boundingBox(),
+  ]);
+  expect(lessonListBox).not.toBeNull();
+  expect(advancedPanelBox).not.toBeNull();
+
+  expect(
+    Math.abs(
+      (lessonListBox?.x ?? 0) + (lessonListBox?.width ?? 0) -
+        ((advancedPanelBox?.x ?? 0) + (advancedPanelBox?.width ?? 0)),
+    ),
+    "the lesson list and technical disclosure must share one content edge",
+  ).toBeLessThanOrEqual(1);
+}
+
 async function assertShellContract(
   page: Page,
   viewport: ViewportName,
@@ -408,6 +430,7 @@ for (const appearance of appearances) {
           page.getByText("Keep fixture data separate from operator data."),
           "the fixture-backed visual audit must exercise a real memory card",
         ).toBeVisible();
+        await assertLearningsCompositionContract(page);
         await capture(page, viewportName, "agents-learnings");
 
         await openPrimaryView(page, viewportName, "Settings");

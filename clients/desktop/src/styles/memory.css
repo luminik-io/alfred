@@ -120,6 +120,14 @@
   gap: 0.5rem;
 }
 
+/* Keep the technical disclosure on the same readable measure as the lessons.
+   The panel itself can fill a wide Desktop window, but its two content blocks
+   must not end on unrelated vertical edges. */
+.memory-view > .advanced-panel {
+  width: 100%;
+  max-width: 900px;
+}
+
 .attention-card,
 .lesson-card,
 .plan-card,
