@@ -373,22 +373,23 @@ BATTERIES: tuple[Battery, ...] = (
         requires_daemon=False,
         install_kind=INSTALL_AUTOFETCH,
         install_hint=(
-            "Alfred installs the pinned graphifyy MCP tool with uv. Build a graph per repo with "
-            "`graphify <repo>`; refresh it later with `graphify <repo> --update`. Firings then serve "
-            "`graphify-out/graph.json` read-only. Until each repo is indexed, Alfred explicitly "
-            "falls back to its code-memory engine. "
-            "Local; no daemon, no embeddings."
+            "Alfred installs the pinned graphifyy MCP tool in Alfred's home with uv. Build or "
+            'refresh a repo graph with `"${ALFRED_HOME:-$HOME/.alfred}/bin/graphify" update '
+            "<repo>`. Firings serve `graphify-out/graph.json` read-only. Until each repo is "
+            "indexed, Alfred uses its code-memory fallback. Local; no daemon, no embeddings."
         ),
         autofetch_cmd=(
             "uv",
             "tool",
             "install",
             "--force",
+            "--with",
+            "mcp==1.28.1",
             "graphifyy[mcp]==0.9.8",
         ),
         detect="graphify",
         docs="docs/CODE_MEMORY.md",
-        version="graphifyy[mcp]==0.9.8",
+        version="graphifyy[mcp]==0.9.8; mcp==1.28.1",
         license="MIT",
         source_url="https://pypi.org/project/graphifyy/0.9.8/",
         integrity="Python package index artifact hashes",
@@ -669,9 +670,14 @@ def _graphify_available(env: Mapping[str, str]) -> bool:
         if command is None and _is_executable_file(expanded):
             command = str(expanded)
         return bool(command and _graphify_entrypoint_works(command))
-    installed = shutil.which("graphify-mcp")
-    cli = shutil.which("graphify")
-    return bool(installed and cli and _graphify_entrypoint_works(installed))
+    bin_dir = _alfred_home(env) / "bin"
+    installed = bin_dir / "graphify-mcp"
+    cli = bin_dir / "graphify"
+    return bool(
+        _is_executable_file(installed)
+        and _is_executable_file(cli)
+        and _graphify_entrypoint_works(str(installed))
+    )
 
 
 def _graphify_entrypoint_works(command: str) -> bool:

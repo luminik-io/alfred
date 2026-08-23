@@ -18,6 +18,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Graphify battery installs now use Alfred-owned uv directories under
+  `$ALFRED_HOME`. Status and agent runs ignore unrelated Graphify tools on
+  `PATH`, the compatible MCP runtime is pinned, and removal leaves
+  operator-supplied executables unchanged.
 - `alfred batteries --json list` and `alfred batteries list --json` now return
   the same JSON manifest.
 - Aligned Settings with the shared Desktop content edge while keeping its

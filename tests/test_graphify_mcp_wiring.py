@@ -38,12 +38,16 @@ def _capture(
     monkeypatch.delenv("ALFRED_DRY_RUN", raising=False)
     monkeypatch.setattr(_proc, "_memory_mcp_script", lambda: Path("/repo/bin/alfred-mcp.py"))
     monkeypatch.setattr(_proc, "_code_memory_launcher", lambda: Path("/repo/bin/code-memory-mcp"))
-    # Pretend graphify-mcp is (or is not) on PATH without touching the host.
+    alfred_home = tmp_path / ".alfred"
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    graphify_entrypoint = alfred_home / "bin" / "graphify-mcp"
+    if graphify_present:
+        graphify_entrypoint.parent.mkdir(parents=True, exist_ok=True)
+        graphify_entrypoint.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        graphify_entrypoint.chmod(0o755)
     real_which = _proc.shutil.which
 
     def fake_which(name):
-        if name == "graphify-mcp":
-            return "/usr/local/bin/graphify-mcp" if graphify_present else None
         if name == "uvx":
             return None
         return real_which(name)
@@ -100,7 +104,7 @@ def test_graphify_enabled_takes_code_graph_slot(monkeypatch, tmp_path: Path) -> 
     # graphify present, code-memory NOT attached (mutual exclusion).
     assert "graphify" in servers
     assert "code_memory" not in servers
-    assert servers["graphify"]["command"] == "/usr/local/bin/graphify-mcp"
+    assert servers["graphify"]["command"] == str(tmp_path / ".alfred" / "bin" / "graphify-mcp")
     assert servers["graphify"]["args"] == [
         str(tmp_path / "graphify-out" / "graph.json"),
         "--transport",
@@ -125,7 +129,7 @@ def test_claude_command_resolves_graphify_once_for_server_and_allowlist(
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
     cmd = _capture(monkeypatch, tmp_path, graphify_probe=probe)
 
-    assert calls == ["/usr/local/bin/graphify-mcp"]
+    assert calls == [str(tmp_path / ".alfred" / "bin" / "graphify-mcp")]
     assert "graphify" in _mcp_config(cmd)["mcpServers"]
     assert all(name in _allowed(cmd) for name in _proc._graphify_tool_names())
 
@@ -135,7 +139,7 @@ def test_graphify_enabled_but_missing_binary_falls_back(monkeypatch, tmp_path: P
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     cfg = _mcp_config(_capture(monkeypatch, tmp_path, graphify_present=False))
     assert cfg is not None
-    # No graphify on PATH -> code-memory keeps the slot rather than nothing.
+    # No Alfred-owned Graphify -> code-memory keeps the slot rather than nothing.
     assert "graphify" not in cfg["mcpServers"]
     assert "code_memory" in cfg["mcpServers"]
 
@@ -163,7 +167,7 @@ def test_graphify_battery_fallback_keeps_one_engine_for_unindexed_repo(
     assert "code_memory" in cfg["mcpServers"]
 
 
-def test_graphify_uses_a_verified_installed_entrypoint(monkeypatch) -> None:
+def test_graphify_does_not_adopt_unowned_path_entrypoint(monkeypatch) -> None:
     monkeypatch.delenv("ALFRED_GRAPHIFY_BIN", raising=False)
     monkeypatch.setattr(
         _proc.shutil,
@@ -172,7 +176,31 @@ def test_graphify_uses_a_verified_installed_entrypoint(monkeypatch) -> None:
     )
     monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
 
-    assert _proc._graphify_command() == ("/usr/local/bin/graphify-mcp", [])
+    assert _proc._graphify_command() is None
+
+
+def test_graphify_uses_verified_alfred_owned_entrypoint(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "alfred"
+    entrypoint = home / "bin" / "graphify-mcp"
+    entrypoint.parent.mkdir(parents=True)
+    entrypoint.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    entrypoint.chmod(0o755)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_GRAPHIFY_BIN", raising=False)
+    monkeypatch.setattr(_proc.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
+
+    assert _proc._graphify_command() == (str(entrypoint), [])
+
+
+def test_graphify_rejects_unverified_explicit_entrypoint(monkeypatch, tmp_path: Path) -> None:
+    entrypoint = tmp_path / "graphify-mcp"
+    entrypoint.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    entrypoint.chmod(0o755)
+    monkeypatch.setenv("ALFRED_GRAPHIFY_BIN", str(entrypoint))
+    monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: False)
+
+    assert _proc._graphify_command() is None
 
 
 def test_graphify_override_requires_an_executable_working_entrypoint(
@@ -231,13 +259,14 @@ def test_graphify_expands_home_relative_graph_path(monkeypatch, tmp_path: Path) 
     graph.parent.mkdir(parents=True)
     graph.write_text('{"nodes": [], "links": []}', encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
+    alfred_home = home / ".alfred"
+    entrypoint = alfred_home / "bin" / "graphify-mcp"
+    entrypoint.parent.mkdir(parents=True)
+    entrypoint.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    entrypoint.chmod(0o755)
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
     monkeypatch.setenv("ALFRED_GRAPHIFY_MCP", "1")
     monkeypatch.setenv("ALFRED_GRAPHIFY_GRAPH", "~/graphs/repo.json")
-    monkeypatch.setattr(
-        _proc.shutil,
-        "which",
-        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
-    )
     monkeypatch.setattr(_proc, "_graphify_entrypoint_works", lambda command: True)
 
     server = _proc._graphify_mcp_server(tmp_path)

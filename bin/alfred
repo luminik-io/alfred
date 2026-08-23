@@ -3068,6 +3068,10 @@ def _battery_run_install(
     enable_after: bool = True,
 ) -> int:
     """Prompt for consent and run a battery's install, or print the command."""
+    if battery.id == "graphify":
+        install_env = _graphify_owned_uv_environment(install_env)
+        owned_overrides = {key: install_env[key] for key in ("UV_TOOL_DIR", "UV_TOOL_BIN_DIR")}
+        install_overrides = {**(install_overrides or {}), **owned_overrides}
     if battery.pip_extra:
         command = [sys.executable, "-m", "pip", "install", f"alfred-os[{battery.pip_extra}]"]
     elif battery.autofetch_cmd:
@@ -3164,7 +3168,23 @@ def _battery_run_remove(
         print(f"        {battery.remove_command}")
         return 0
 
-    printable = " ".join(shlex.quote(part) for part in command)
+    remove_env: dict[str, str] | None = None
+    printable_command = command
+    if battery.id == "graphify":
+        remove_env = _graphify_owned_uv_environment({**os.environ, **current_env})
+        owned_tool = Path(remove_env["UV_TOOL_DIR"]) / "graphifyy"
+        if not owned_tool.exists():
+            if str(current_env.get("ALFRED_GRAPHIFY_BIN", "")).strip():
+                print(
+                    "alfred: graphify is absent from Alfred's tool directory. "
+                    "The operator-supplied executable remains unchanged."
+                )
+            else:
+                print("alfred: graphify is already absent from Alfred's tool directory.")
+            return 0
+        assignments = [f"{key}={remove_env[key]}" for key in ("UV_TOOL_DIR", "UV_TOOL_BIN_DIR")]
+        printable_command = ["env", *assignments, *command]
+    printable = " ".join(shlex.quote(part) for part in printable_command)
     if getattr(args, "print_command", False):
         print(f"alfred: run this to remove {battery.id}:")
         print(f"        {printable}")
@@ -3178,10 +3198,27 @@ def _battery_run_remove(
         if not answer.startswith("y"):
             print("alfred: skipped.")
             return 0
-    result = _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S)
+    result = _run_subcommand(command, timeout=_INSTALL_COMMAND_TIMEOUT_S, env=remove_env)
     if result == 0:
         print(f"alfred: removed {battery.id}. Configuration was not changed.")
     return result
+
+
+def _graphify_owned_uv_environment(base_env: dict[str, str] | None) -> dict[str, str]:
+    """Pin Graphify's uv tool install to Alfred-owned directories."""
+
+    from runtime_home import expand_user_path
+
+    env = dict(base_env or os.environ)
+    configured_home = env.get("ALFRED_HOME", "").strip()
+    home = (
+        expand_user_path(env, configured_home)
+        if configured_home
+        else expand_user_path(env, "~/.alfred")
+    )
+    env["UV_TOOL_DIR"] = str(home / "tools" / "uv")
+    env["UV_TOOL_BIN_DIR"] = str(home / "bin")
+    return env
 
 
 def _pr_min_approvals() -> int:

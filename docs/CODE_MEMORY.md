@@ -185,10 +185,16 @@ may occupy the same slot only while the Graphify graph is unavailable.
 Setup:
 
 ```sh
-alfred batteries enable graphify --yes  # installs pinned graphifyy[mcp] with uv
-graphify /path/to/repo           # first build: graphify-out/graph.json (no LLM)
-graphify /path/to/repo --update  # later incremental refresh
+alfred batteries enable graphify --yes
+"${ALFRED_HOME:-$HOME/.alfred}/bin/graphify" update /path/to/repo
 ```
+
+The first command installs pinned `graphifyy[mcp]==0.9.8` and `mcp==1.28.1`
+under Alfred's home (`~/.alfred` unless you set `ALFRED_HOME`). The MCP pin
+prevents uv from selecting an incompatible major release. The install does not
+replace a Graphify tool elsewhere on your `PATH`. The second command builds or
+refreshes `/path/to/repo/graphify-out/graph.json` from local code without an
+LLM. Run it again after code changes.
 
 Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
 
@@ -196,7 +202,7 @@ Then enable it (or tick it in `alfred batteries` / the desktop battery picker):
 |---|---|---|
 | `ALFRED_GRAPHIFY_MCP` | `0` (off) | Attach graphify's read-only graph MCP to firings, taking the code-graph slot. |
 | `ALFRED_GRAPHIFY_FALLBACK` | unset (`code-memory` when enabled through the battery picker) | Explicit engine to use while a repo has no Graphify graph. Set `none` to leave the slot empty instead. |
-| `ALFRED_GRAPHIFY_BIN` | auto | Override the `graphify-mcp` executable path. Alfred otherwise uses the installed entrypoint. Package installation happens during battery setup, never inside an agent firing. |
+| `ALFRED_GRAPHIFY_BIN` | Alfred's `bin/graphify-mcp` (`~/.alfred/bin/graphify-mcp` by default) | Use an operator-supplied `graphify-mcp` executable instead of Alfred's pinned install. Alfred verifies that the file is executable and that its read-only MCP server starts. Package installation happens during battery setup, never inside an agent firing. |
 | `ALFRED_GRAPHIFY_GRAPH` | `graphify-out/graph.json` | Graph file passed to the MCP server, relative to each firing's repo worktree unless absolute. |
 
 A firing serves the graph in its own working directory (`graphify-out/graph.json`),
@@ -211,3 +217,7 @@ Graphify has a usable graph.
 The read-only tools it exposes: `query_graph`, `get_node`, `get_neighbors`,
 `get_community`, `god_nodes`, `graph_stats`, `shortest_path`, `list_prs`,
 `get_pr_impact`, `triage_prs`.
+
+Disable Graphify before removing it. `alfred batteries remove graphify --yes`
+removes only the uv tool under `$ALFRED_HOME`. If `ALFRED_GRAPHIFY_BIN` selects
+an operator-supplied executable, Alfred leaves that file unchanged.

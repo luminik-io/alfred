@@ -613,7 +613,16 @@ def test_graphify_is_optin_code_graph_engine() -> None:
     assert g.requires_daemon is False
     assert g.detect == "graphify"
     assert g.install_kind == batteries.INSTALL_AUTOFETCH
-    assert g.autofetch_cmd[-1] == "graphifyy[mcp]==0.9.8"
+    assert g.autofetch_cmd == (
+        "uv",
+        "tool",
+        "install",
+        "--force",
+        "--with",
+        "mcp==1.28.1",
+        "graphifyy[mcp]==0.9.8",
+    )
+    assert '"${ALFRED_HOME:-$HOME/.alfred}/bin/graphify" update <repo>' in g.install_hint
 
 
 def test_graphify_and_code_memory_are_mutually_exclusive() -> None:
@@ -647,7 +656,7 @@ def test_enabling_a_code_graph_engine_atomically_disables_the_other() -> None:
     assert batteries.enable_values(code_memory, {})["ALFRED_GRAPHIFY_MCP"] == "0"
 
 
-def test_graphify_availability_requires_installed_cli_and_verified_mcp(monkeypatch) -> None:
+def test_graphify_availability_ignores_unowned_path_install(monkeypatch) -> None:
     graphify = batteries.battery_by_id("graphify")
     monkeypatch.setattr(
         batteries.subprocess,
@@ -657,20 +666,51 @@ def test_graphify_availability_requires_installed_cli_and_verified_mcp(monkeypat
     monkeypatch.setattr(
         batteries.shutil,
         "which",
-        lambda name: "/usr/local/bin/graphify-mcp" if name == "graphify-mcp" else None,
-    )
-    assert batteries.is_installed(graphify, {}) is False
-
-    monkeypatch.setattr(
-        batteries.shutil,
-        "which",
         lambda name: f"/usr/local/bin/{name}" if name in {"graphify", "graphify-mcp"} else None,
     )
-    assert batteries.is_installed(graphify, {}) is True
 
+    assert batteries.is_installed(graphify, {}) is False
+
+
+def test_graphify_availability_accepts_verified_alfred_owned_install(
+    monkeypatch, tmp_path: Path
+) -> None:
+    graphify = batteries.battery_by_id("graphify")
+    bin_dir = tmp_path / "alfred" / "bin"
+    bin_dir.mkdir(parents=True)
+    for name in ("graphify", "graphify-mcp"):
+        path = bin_dir / name
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(0o755)
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(batteries.shutil, "which", lambda _name: None)
+
+    assert batteries.is_installed(graphify, {"ALFRED_HOME": str(tmp_path / "alfred")}) is True
+
+
+def test_graphify_override_must_be_executable_and_start(monkeypatch, tmp_path: Path) -> None:
+    graphify = batteries.battery_by_id("graphify")
+    override = tmp_path / "graphify-mcp"
+    override.write_text("not executable", encoding="utf-8")
+    env = {"ALFRED_GRAPHIFY_BIN": str(override)}
+
+    assert batteries.is_installed(graphify, env) is False
+
+    override.chmod(0o755)
     monkeypatch.setattr(
         batteries.subprocess,
         "run",
         lambda *args, **kwargs: SimpleNamespace(returncode=1),
     )
-    assert batteries.is_installed(graphify, {}) is False
+    assert batteries.is_installed(graphify, env) is False
+
+    monkeypatch.setattr(
+        batteries.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+    assert batteries.is_installed(graphify, env) is True
