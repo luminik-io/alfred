@@ -4790,7 +4790,11 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     p_batteries.set_defaults(func=cmd_batteries, battery_action="list")
     batteries_sub = p_batteries.add_subparsers(dest="battery_action")
     p_batteries_list = batteries_sub.add_parser("list", help="list all batteries with status")
-    p_batteries_list.add_argument("--json", action="store_true")
+    p_batteries_list.add_argument(
+        "--json",
+        action="store_true",
+        default=argparse.SUPPRESS,
+    )
     p_batteries_list.set_defaults(func=cmd_batteries, battery_action="list")
     for verb in ("install", "enable", "disable", "remove"):
         p_verb = batteries_sub.add_parser(verb, help=f"{verb} one opt-in battery by id")
@@ -4801,7 +4805,7 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
             action="store_true",
             help="print the command without installing or changing configuration",
         )
-        p_verb.add_argument("--json", action="store_true")
+        p_verb.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
         p_verb.set_defaults(func=cmd_batteries, battery_action=verb)
 
     p_github_poll = sub.add_parser("github-poll", help="poll GitHub issues/PRs into fleet-brain")
