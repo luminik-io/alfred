@@ -188,6 +188,22 @@
   gap: 0.35rem;
 }
 
+/* The sidebar leaves the Agents route with less horizontal room than the
+   viewport breakpoint suggests. Stack the summary and roster controls through
+   the tablet range so the summary does not collapse into a narrow text column
+   and the controls can wrap inside the route instead of beyond its edge. */
+@media (max-width: 1023px) {
+  .agents-page > .alfred-page-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .agents-page > .alfred-page-hero .roster-theme-picker {
+    width: 100%;
+  }
+}
+
 @media (max-width: 480px) {
   .roster-theme-picker__trigger {
     min-height: 36px;
