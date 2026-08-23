@@ -56,6 +56,8 @@ def test_public_entrypoints_do_not_use_the_infrastructure_led_tagline() -> None:
         "supervised engineering fleet",
         "supervised coding agents",
         "one supervised team",
+        "run a small engineering fleet yourself",
+        "alfred is local-first",
         "coordination and supervision layer",
         "nothing proceeds without your say-so",
         "nothing single-repo ships without a go-ahead",
