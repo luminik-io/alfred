@@ -6,13 +6,13 @@ first; this file is the short version those agents need.
 
 ## What this repo is
 
-Alfred is the open-source coordination and supervision layer for local coding
-agents. It invokes Claude Code and Codex through authenticated local CLIs. The
-OS scheduler (`launchd` on macOS or `systemd --user` on Linux) starts each role.
-`lib/agent_runner/` gives runs shared locks, preflight checks, and limits.
-Roles that change or review code use isolated git worktrees. Stable role slugs
-control runtime identity. Optional
-roster themes change display names only. `examples/` contains tutorial agents.
+Alfred turns authenticated Claude Code, Codex, and OpenCode CLIs into an
+autonomous engineering team. The OS scheduler (`launchd` on macOS or
+`systemd --user` on Linux) starts each role. `lib/agent_runner/` gives runs
+shared locks, preflight checks, and limits. Roles that change or review code
+use isolated git worktrees. Stable role slugs control runtime identity.
+Optional roster themes change display names only. `examples/` contains
+tutorial agents.
 
 Users inspect and steer the team through the Alfred CLI (`bin/alfred`), the
 optional `alfred serve` JSON API, the optional Tauri desktop client under
@@ -29,9 +29,10 @@ timeline shows real progress.
 - **Single-host install.** One operator or small team, one trusted host, one
   config. Not multi-tenant and not a hosted SaaS.
 - **The OS schedules; Alfred runs.** No long-running orchestration loop.
-- **Local CLIs, not a model gateway.** Alfred shells out to `claude` / `codex`.
-- **Use harness capabilities.** Prefer supported Claude Code and Codex
-  capabilities over duplicate implementations.
+- **Local CLIs, not a model gateway.** Alfred shells out to `claude`, `codex`,
+  or `opencode`.
+- **Use harness capabilities.** Prefer supported Claude Code, Codex, and
+  OpenCode capabilities over duplicate implementations.
 
 Scope-broadening changes get declined. If a change touches these boundaries,
 open a discussion before writing code. See [`ROADMAP.md`](ROADMAP.md).
