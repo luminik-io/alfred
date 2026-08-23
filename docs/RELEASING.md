@@ -32,7 +32,10 @@ publication.
    `clients/desktop/package.json`, and `clients/desktop/src-tauri/Cargo.toml`.
    Regenerate both npm lockfiles and the Cargo lockfile. Move the shipped
    changelog entries into a dated version section and leave only future work in
-   `Unreleased`. Land the PR on `main`.
+   `Unreleased`. Land the PR on `main`. Before this final preparation, the
+   planned version section can end in `- Unreleased`. The release workflow
+   rejects that heading. Replace it with the actual release date in the final
+   preparation PR.
 
 2. **Tag from the release commit.** From `main` at the merged prep commit:
 

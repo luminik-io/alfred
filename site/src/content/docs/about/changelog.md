@@ -20,10 +20,10 @@ lists the permanent Desktop tool manager, the Prism, Graphite, and Ledger
 branding and Work view updates, the versioned local API, path handling fixes,
 stricter Graphify probes, and OpenCode status and probe commands.
 
-## 0.8.0 (2026-08-17)
+## Upcoming 0.8.0
 
-Version 0.8.0 adds OpenCode, benchmarks memory recall, starter skills, and
-compression, records each run's configuration and evidence, and finishes the
+Version 0.8.0 will add OpenCode, benchmark memory recall, starter skills, and
+compression, record each run's configuration and evidence, and finish the
 Desktop screen pass.
 
 - OpenCode can run scheduled roles, custom agents, Desktop conversations, and
@@ -44,7 +44,7 @@ Desktop screen pass.
   495.17 kB in the v0.8.0 release build.
 
 Read the complete
-[`0.8.0` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#080---2026-08-17).
+[`0.8.0` entry](https://github.com/luminik-io/alfred/blob/main/CHANGELOG.md#080---unreleased).
 
 ## 0.7.5 (2026-08-17)
 
