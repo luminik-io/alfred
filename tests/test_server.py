@@ -3734,6 +3734,29 @@ def test_api_schedule_reports_a_malformed_config(
     assert body == {"runs": [], "truncated": False, "error": "internal error"}
 
 
+def test_api_schedule_reports_a_malformed_custom_agent_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    repo = tmp_path / "repo"
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.worker\tworker.py\tinterval:600\tno\talfred.worker\tworker\n",
+        encoding="utf-8",
+    )
+    manifest = state / "custom-agents" / "custom-agents.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"version": 1, "agents": [', encoding="utf-8")
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+    body = client.get("/api/schedule").json()
+
+    assert body == {"runs": [], "truncated": False, "error": "internal error"}
+
+
 def test_api_schedule_reads_deployed_runtime_conf(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

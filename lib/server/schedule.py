@@ -160,7 +160,7 @@ def upcoming_runs(
             if strict:
                 raise
             text = ""
-    custom_rows = _custom_agent_rows(resolved_state, base_text=text)
+    custom_rows = _custom_agent_rows(resolved_state, base_text=text, strict=strict)
     if not text and not custom_rows:
         return []
     text = "\n".join([part for part in (text.rstrip("\n"), *custom_rows) if part])
@@ -336,11 +336,16 @@ def _base_scheduler_identities(text: str) -> tuple[set[str], set[str]]:
     return labels, codenames
 
 
-def _custom_agent_rows(state_root: Path, *, base_text: str = "") -> list[str]:
+def _custom_agent_rows(state_root: Path, *, base_text: str = "", strict: bool = False) -> list[str]:
     try:
-        rows = CustomAgentStore.from_state_root(state_root).conf_rows(enabled_only=True)
+        rows = CustomAgentStore.from_state_root(state_root).conf_rows(
+            enabled_only=True,
+            strict=strict,
+        )
     except Exception as exc:  # pragma: no cover - defensive read-only path
         logger.debug("could not read custom agents from %s: %s", state_root, exc)
+        if strict:
+            raise
         return []
     if not base_text:
         return rows
