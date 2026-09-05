@@ -18,7 +18,7 @@ permissions:
 jobs:
   lint-python:
     name: Lint (ruff + mypy)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -34,7 +34,7 @@ jobs:
 
   test-python:
     name: pytest
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +52,7 @@ jobs:
 
   shellcheck:
     name: shellcheck (bash)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Remove flaky runner apt sources
@@ -90,7 +90,7 @@ jobs:
 
   python-syntax:
     name: Python syntax check
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -105,7 +105,7 @@ jobs:
 
   scrub-check:
     name: Alfred cleanliness scan
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Refuse known-private patterns
@@ -114,7 +114,7 @@ jobs:
   public-metadata:
     name: Public PR metadata
     if: github.event_name == 'pull_request'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     # A squash merge turns the PR title and body into the permanent commit
     # subject and message, so scanning them protects history. Every commit
     # message on the branch is scanned too, in case the PR is not squashed.
@@ -146,7 +146,7 @@ jobs:
 
   site-emitter:
     name: Site proof emitter (node:test)
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -163,7 +163,7 @@ jobs:
 
   desktop-client:
     name: Desktop client
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
