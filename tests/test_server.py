@@ -6,7 +6,7 @@ import json
 import os
 import re
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -516,6 +516,10 @@ def test_api_memory_lessons_lists_active_lessons(
     """The endpoint surfaces lessons from the provider chain (AMS + local),
     not the local SQLite ledger, so an AMS-primary install is not shown empty."""
     state = tmp_path / "state"
+    # memory_status reads "active" only while valid_until is in the future, and
+    # the endpoint evaluates it against the wall clock. Keep the expiry relative
+    # to now: a fixed 2026-08-30 date here expired and turned the test red.
+    valid_until = datetime.now(UTC).replace(microsecond=0) + timedelta(days=90)
     provider = _StubRecallProvider(
         [
             Lesson(
@@ -526,7 +530,7 @@ def test_api_memory_lessons_lists_active_lessons(
                 tags=["graphql"],
                 created_at=datetime(2026, 5, 30, 12, 0, tzinfo=UTC),
                 firing_id=None,
-                valid_until=datetime(2026, 8, 30, 12, 0, tzinfo=UTC),
+                valid_until=valid_until,
                 provenance="pr:https://github.com/example-org/alfred/pull/12",
             ),
             # A harvested run-failure lesson: about Alfred's runtime, not the
@@ -558,7 +562,7 @@ def test_api_memory_lessons_lists_active_lessons(
     assert rows[0]["match_reason"] == "Active lesson for example-org/alfred."
     assert rows[0]["recall_provider"] == "stub"
     assert rows[0]["provenance"] == "pr:https://github.com/example-org/alfred/pull/12"
-    assert rows[0]["valid_until"] == "2026-08-30T12:00:00+00:00"
+    assert rows[0]["valid_until"] == valid_until.isoformat()
     assert rows[0]["memory_status"] == "active"
     # Ops flag: the codebase lesson is not ops; the harvested one is.
     assert rows[0]["ops"] is False
