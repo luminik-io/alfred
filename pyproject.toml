@@ -197,6 +197,14 @@ addopts = "-q --strict-markers"
 filterwarnings = [
   "error",
   "ignore::DeprecationWarning:dateutil.*",
+  # anyio 4.15.0 (2026-09-02) deprecated the `anyio.abc.BlockingPortal`
+  # alias, which starlette's TestClient module still imports at module scope
+  # in every released starlette (<= 1.6.0), so `from fastapi.testclient
+  # import TestClient` now raises under `error` and kills collection of the
+  # server tests. The fix is merged upstream (Kludex/starlette#3498) but not
+  # yet released. Scoped to that one message from that one module so nothing
+  # else is hidden; remove once the pinned-in-CI starlette carries the fix.
+  'ignore:The anyio\.abc\.BlockingPortal alias is deprecated:DeprecationWarning:starlette\.testclient',
   # Python 3.13 surfaces sqlite3.Connection garbage-collection warnings
   # as PytestUnraisableExceptionWarning. These fire when tests open
   # short-lived in-memory or tmp-dir SQLite connections (e.g. fleet-brain)
