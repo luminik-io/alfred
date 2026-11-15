@@ -9,14 +9,20 @@ ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 
 
-def test_public_pages_use_the_public_repository_proof() -> None:
-    impact = (SITE / "src/pages/impact.astro").read_text(encoding="utf-8")
-    home = (SITE / "src/pages/index.astro").read_text(encoding="utf-8")
+def test_public_site_has_no_counters_or_analytics() -> None:
+    workflow = (ROOT / ".github/workflows/site.yml").read_text(encoding="utf-8")
+    config = (SITE / "astro.config.mjs").read_text(encoding="utf-8")
+    layout = (SITE / "src/layouts/MarketingLayout.astro").read_text(encoding="utf-8")
 
-    assert 'from "../data/impact-proof.json"' in impact
-    assert 'from "../data/impact-proof.json"' not in home
-    assert "luminik-product-proof" not in impact
-    assert "luminik-product-proof" not in home
+    assert not (SITE / "src/pages/impact.astro").exists()
+    assert not (SITE / "src/data/impact-proof.json").exists()
+    assert "proof:update" not in workflow
+    assert "schedule:" not in workflow
+    assert "TELEMETRY_STATS_URL" not in workflow
+    for source in (config, layout):
+        assert "googletagmanager" not in source
+        assert "gtag" not in source
+        assert "/impact/" not in source
 
 
 def test_private_repository_aggregate_emitter_is_not_shipped() -> None:
@@ -34,7 +40,6 @@ def test_private_repository_aggregate_emitter_is_not_shipped() -> None:
 def test_public_copy_does_not_describe_private_repository_aggregates() -> None:
     checked = [
         SITE / "src/pages/index.astro",
-        SITE / "src/pages/impact.astro",
         ROOT / "docs/SHIPPED_EMITTER.md",
     ]
     copy = "\n".join(path.read_text(encoding="utf-8") for path in checked)
@@ -53,7 +58,8 @@ def test_agent_readable_site_surfaces_use_the_product_truth() -> None:
     ]
     copy = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
-    assert "An autonomous engineering team that ships while you're away." in copy
+    assert "Claude Code, Codex or OpenCode on a schedule" in copy
+    assert "An autonomous engineering team that ships while you're away." not in copy
     assert "supervised" not in copy.lower()
     assert "on your own machine" not in copy.lower()
 
