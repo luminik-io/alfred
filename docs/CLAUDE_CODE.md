@@ -87,13 +87,21 @@ References:
 npm install -g @anthropic-ai/claude-code
 ```
 
-`install.sh` does this for you. To confirm:
+`install.sh` runs this when `claude` is missing. Anthropic's native installer
+works too and keeps itself updated:
+
+```sh
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+To confirm:
 
 ```sh
 claude --version
 ```
 
-For non-npm install paths (Linux package, devcontainer), see https://docs.claude.com/en/docs/claude-code.
+For other install paths (Homebrew, WinGet, devcontainer), see the
+[Claude Code setup guide](https://code.claude.com/docs/en/setup).
 
 ## Authenticate
 

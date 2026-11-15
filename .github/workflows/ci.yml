@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - run: uv run --python ${{ matrix.python }} --with pytest --with fastapi --with httpx --with httpx2 pytest tests/ -v
+      - run: uv run --python ${{ matrix.python }} --extra dev pytest tests/ -v
 
   shellcheck:
     name: shellcheck (bash)
@@ -111,39 +111,6 @@ jobs:
       - name: Refuse known-private patterns
         run: bash bin/scrub-check.sh
 
-  public-metadata:
-    name: Public PR metadata
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    # A squash merge turns the PR title and body into the permanent commit
-    # subject and message, so scanning them protects history. Every commit
-    # message on the branch is scanned too, in case the PR is not squashed.
-    env:
-      PR_TITLE: ${{ github.event.pull_request.title }}
-      PR_BODY: ${{ github.event.pull_request.body }}
-      PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-      PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - name: Collect PR commit messages
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          {
-            echo "PR_COMMITS<<PR_COMMITS_EOF"
-            git log --format=%B "$BASE_SHA..$HEAD_SHA"
-            echo "PR_COMMITS_EOF"
-          } >> "$GITHUB_ENV"
-      - name: Refuse private or raw PR metadata
-        run: python bin/public-metadata-check.py
-
   site-emitter:
     name: Site proof emitter (node:test)
     runs-on: ubuntu-latest
@@ -161,8 +128,35 @@ jobs:
         working-directory: site
         run: npm test
 
+  changes:
+    name: Changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      desktop: ${{ steps.diff.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Skip the Desktop build only when a PR touches nothing but the site, docs or Markdown.
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          desktop=true
+          if [ "$EVENT" = "pull_request" ]; then
+            files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+            if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(site|docs)/|\.md$'; then
+              desktop=false
+            fi
+          fi
+          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
+
   desktop-client:
     name: Desktop client
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

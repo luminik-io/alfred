@@ -36,10 +36,10 @@ Use this before tagging a public Alfred release.
 - Run the local gates:
 
   ```sh
-  uv run --with pytest pytest tests/
-  uv run --with 'ruff>=0.6' ruff check .
-  uv run --with 'ruff>=0.6' ruff format --check .
-  uv run --with 'mypy>=1.10' mypy lib/
+  uv run --extra dev pytest tests/
+  uv run --with 'ruff==0.15.22' ruff check .
+  uv run --with 'ruff==0.15.22' ruff format --check .
+  uv run --with 'mypy==2.3.0' mypy lib/
   bash bin/scrub-check.sh
   ./bin/alfred doctor
   ```

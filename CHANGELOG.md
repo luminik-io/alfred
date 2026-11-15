@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Rewrote the README around what Alfred runs, who it is for, a 5-minute demo,
+  the budget, approval and merge controls, and its limits.
 - Graphify battery installs now use Alfred-owned uv directories under
   `$ALFRED_HOME`. Status and agent runs ignore unrelated Graphify tools on
   `PATH`, the compatible MCP runtime is pinned, and removal leaves
@@ -57,6 +59,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Kept the docked Work action below its evidence, so signature and check rows
   stay readable at wide Desktop widths.
+- `get.sh` now accepts a host with only Codex or only OpenCode installed and
+  prints the matching demo command. It no longer says the demo needs Claude
+  Code.
+- The documented local test command now installs the `dev` extra, so it passes
+  with current Starlette. CI uses the same command, and the documented ruff and
+  mypy versions match CI.
+- Editing a pull request's title or body no longer restarts the full CI
+  matrix. Only the public metadata check reruns, from its own workflow. The
+  Desktop build is skipped on pull requests that change only the site, docs or
+  Markdown files.
 
 ## [0.8.0] - Unreleased
 

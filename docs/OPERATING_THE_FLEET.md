@@ -137,7 +137,7 @@ If every repo is paused, every consumer's `pick_*` helper returns nothing and ev
 ls $ALFRED_HOME/state/_paused/
 ```
 
-A self-pause writes a marker file here. Common causes: spend cap exceeded, eight consecutive failures, an explicit Slack-posted reason. `alfred status` summarizes this. `alfred resume <codename>` reverses it.
+A self-pause writes a marker file here. Common causes: a daily cap reached, five consecutive failures (`ALFRED_FAIL_STREAK_THRESHOLD`), or an explicit Slack-posted reason. `alfred status` summarizes this. `alfred resume <codename>` reverses it.
 
 ### 5. Schedule conflict or wrong unit
 

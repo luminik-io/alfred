@@ -5,37 +5,38 @@
 </p>
 
 [![CI](https://github.com/luminik-io/alfred/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred/actions/workflows/ci.yml)
-[![Site](https://github.com/luminik-io/alfred/actions/workflows/site.yml/badge.svg)](https://alfred.luminik.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![macOS](https://img.shields.io/badge/macOS-11%2B-black?logo=apple)
-![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-**An autonomous engineering team that ships while you're away.**
+Alfred runs Claude Code, Codex or OpenCode on a schedule against your GitHub
+repositories and turns well-scoped issues into reviewed pull requests.
 
-Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team. Named
-agents plan the work, write code, test it, review each other, and open pull
-requests. Alfred keeps working without you at the keyboard. You approve risky
-actions and decide what merges.
+Each role (planner, developer, reviewer, test engineer, fixer) is a short-lived
+process started by the operating system's scheduler: `launchd` on macOS,
+`systemd --user` on Linux. Code changes happen in isolated git worktrees.
+Every run checks locks, auth and daily caps before it calls a model, and stops
+on repeated failure. A person approves gated plans and decides what merges.
 
-Interactive coding agents finish one prompt while you sit at the keyboard, then
-forget what the last session learned. Alfred is for work that should keep moving
-after you step away: planned features, review comments, follow-up tests,
-dependency bumps, and multi-repo rollouts. Alfred carries each one to a pull
-request you can read, diff, and merge. It remembers what it learned for next
-time.
+Alfred uses the coding CLIs and subscriptions you already have. There is no
+model gateway, hosted service or long-running coordinator to operate.
+It runs on macOS 11 or newer and on Debian or Ubuntu Linux, with Python 3.11
+or newer.
 
-| A coding CLI session | Alfred |
-|---|---|
-| Handles the prompt in front of you | Claims queued work on a schedule |
-| Works in the current checkout | Creates an isolated worktree for code changes and review |
-| Keeps session-local context | Recalls reviewed lessons across runs |
-| Uses one coding CLI | Routes each role to Claude Code, Codex, or OpenCode |
-| Returns an answer or diff | Produces a PR, review findings, tests, and evidence |
+## Who it is for
 
-Alfred is open source and runs on macOS or Linux. It is for solo builders and
-small teams that want autonomous work to continue between check-ins while they
-retain explicit control over risky actions and merge policy.
+Alfred fits one developer or a small team that already uses a coding CLI
+interactively and has a backlog of work that is clear enough to hand off:
+
+- bug fixes and small features written up as GitHub issues
+- review comments that need a follow-up commit
+- missing tests on code that changes often
+- dependency bumps
+- a change that has to land across several repositories in order
+
+Alfred works through that backlog on a schedule, on one machine you control.
+Model usage comes out of the plans you already pay for.
+
+It is a poor fit if you need a multi-tenant service, a sandbox for untrusted
+code, or agents that merge without any human review. See [limits](#limits).
 
 ## How work moves
 
@@ -50,204 +51,211 @@ flowchart LR
     pr --> merge["Human or configured merge policy"]
 ```
 
-Each role has one job. Stable role slugs such as `planner`, `senior-dev`,
-`reviewer`, and `test-engineer` control scheduling and GitHub labels. Optional
-themes change display names only.
+GitHub is the coordination layer. Issues, labels, branches, review comments and
+pull requests carry the state between roles, so you can follow and correct the
+work with the tools your team already uses. Slack and a local desktop app are
+optional views on the same state.
 
-## Run the demo
+## Try it in 5 minutes
 
-The demo uses a throwaway repository and one authenticated engine. The default
-hybrid route tries Claude Code first and falls back to Codex when Claude cannot
-run. Use `--engine opencode` to run the same loop with OpenCode. The demo does
-not need GitHub or Slack. It stops if an engine call, file change, or test fails.
+The demo runs the whole loop once on a throwaway copy of a small Python
+project. It needs Python 3.11 or newer and one signed-in coding CLI. It does
+not need GitHub, Slack or an API key, and it does not install a scheduler job.
+
+```sh
+git clone https://github.com/luminik-io/alfred.git
+cd alfred
+python3 ./bin/alfred demo
+```
+
+The default route tries Claude Code first and falls back to Codex. Pass
+`--engine codex` or `--engine opencode` to pick one. Pass `--yes` to skip the
+approval prompt.
+
+One run does 5 things:
+
+1. A planner drafts a plan to add a missing `slugify` helper.
+2. The run pauses at an approval gate until you press Enter.
+3. A developer role implements the plan in a git worktree.
+4. A separate reviewer checks the diff. The sample project has a planted bug
+   in an existing function, and the reviewer is asked to reproduce any bug it
+   reports.
+5. If review blocks, the developer fixes it and adds a regression test. The
+   demo then runs the test suite and commits locally only if the tests pass.
+
+On an Apple silicon Mac using Codex, one full run took 110 seconds and the
+reviewer caught the planted bug. A model can miss it on a given run. See the
+[demo guide](docs/DEMO.md) for details.
+
+If you prefer a script that checks prerequisites before cloning, `get.sh` does
+the same clone and prints the exact demo command for your machine:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/luminik-io/alfred/main/get.sh | sh
-cd ~/alfred
-./bin/alfred demo
 ```
 
-The demo runs the plan, approval, implementation, review, fix, and verification
-stages. See the [demo guide](docs/DEMO.md) or watch the
-[fixture-only product tour](docs/media/alfred-tour.mp4).
+## Point it at your repositories
 
-<p align="center">
-  <a href="docs/media/alfred-tour.mp4">
-    <img src="docs/media/alfred-tour-poster.png" alt="Alfred Desktop showing fixture-only sample work in light mode" width="760">
-  </a>
-</p>
-
-## Install
-
-### Desktop app on macOS
-
-The signed desktop app installs or repairs the local runtime and opens guided
-setup. macOS on Apple silicon is the primary packaged target.
+Install the runtime, sign in, then choose repositories and roles:
 
 ```sh
-brew tap luminik-io/alfred https://github.com/luminik-io/alfred
-brew install --cask alfred-os
-```
-
-You can also download the signed macOS package or Linux packages from the
-[download page](https://alfred.luminik.io/download/).
-
-### Headless CLI
-
-```sh
-brew tap luminik-io/alfred https://github.com/luminik-io/alfred
-brew install alfred-os
-alfred-install
+bash install.sh               # packages, Python env, ~/.alfred, Claude Code if missing
 gh auth login
 claude auth login
-alfred-init
+codex login                   # optional, for roles routed to Codex
+./bin/alfred-init.py          # repos, roles, schedules, approval rules, then deploy
 ```
 
-For Linux or a source install:
+`alfred-init` needs Claude Code installed and signed in, even when some roles
+run on Codex or OpenCode. It ends by running `deploy.sh`, which loads the
+chosen roles into the scheduler, so they can start firing right away. To check
+each role before it runs on its own, pause everything and resume one role at a
+time:
 
 ```sh
-git clone https://github.com/luminik-io/alfred.git ~/code/alfred
-cd ~/code/alfred
-bash install.sh
-gh auth login
-claude auth login
-./bin/alfred-init.py
+./bin/alfred pause all
+./bin/alfred auth status      # which engines are ready
+./bin/alfred doctor           # host preflight checks
+./bin/alfred dry-run senior-dev
+./bin/alfred resume senior-dev
 ```
 
-For unattended setup, provide the repository scope explicitly:
+A dry run resolves the role and walks its lifecycle without calling a model or
+touching GitHub, Slack, git or the scheduler.
+
+Start with `--agents starter` on one repository. It enables the planner,
+developer and reviewer plus cleanup and memory upkeep.
+Add roles once you trust the output. The [installation guide](INSTALL.md) covers
+every step, unattended setup, and the [Linux](docs/LINUX.md) differences.
+
+## Budgets, approvals and merge control
+
+Each control below is an environment setting in `~/.alfred/.env`. The
+[configuration reference](docs/CONFIG.md) lists them all.
+
+### Budgets
+
+Caps count turns and actions per role per day:
+
+| Control | Default | Effect |
+|---|---|---|
+| Daily turn cap per role | developer 5000, reviewer 800, fixer 600, triage 600 | Triage skips the rest of the day. On macOS the developer, reviewer and fixer unload their scheduler job and stay stopped until you run `alfred resume` |
+| Daily action cap per role | reviewer 30 reviews, triage 50 actions | Same |
+| Per-firing timeout and max turns | per role, for example 900 s per review | The run stops and is recorded as failed |
+| Failure streak | 5 consecutive failures | The role pauses itself until you run `alfred resume` |
+| Provider budget error | always on | The run stops. Rate limits and overloads retry with a bounded wait |
+
+Each role writes a per-day spend ledger with firings, turns, successes,
+failures and dollar cost when the engine reports one. `alfred usage` shows
+remaining Claude Code and Codex subscription headroom from local CLI state, and
+`alfred metrics` gives a weekly roll-up. Alfred records dollar cost and does
+not enforce a dollar cap.
+
+### Approval gate
+
+Any issue labelled `agent:plan-pending-approval` stays out of the queue until
+the configured approver approves it and the label is cleared. Developer roles
+skip it on every firing until then. See the
+[issue state machine](docs/STATE_MACHINE.md).
+
+The architect role, which splits one change across several repositories, has
+its own gate. By default it posts the rollout plan and stops. With
+`ARCHITECT_AUTO_EXECUTE=approval-gate` it waits for approval in Slack or the
+desktop app before it files child issues. See [multi-repo changes](docs/ARCHITECT.md).
+
+### Review
+
+Reviews run in a separate process and worktree from the code they review. The
+reviewer posts findings on the pull request. The fixer addresses high-priority
+findings from the reviewer and from external reviewers such as Codex or
+CodeRabbit. Agent pull requests include a verification section that lists
+what ran, what passed and what was skipped. See
+[verification](docs/VERIFICATION.md).
+
+### Merge
+
+Alfred merges a pull request only when the `automerge` role is enabled.
+`alfred-init --agents all` enables it, so leave it out of `--agents` if you
+want to merge every pull request by hand. The role only touches
+`agent:authored` pull requests, and merges one only when all of these hold:
+
+- at least 1 approval on the exact head commit (`ALFRED_MERGE_MIN_APPROVALS`;
+  setting `ALFRED_MERGE_REQUIRE_APPROVAL=false` drops this requirement)
+- zero unresolved review threads
+- GitHub reports the merge state as clean
+- no failing checks
+- the base branch requires resolved threads, so GitHub enforces this too
+
+Any API error or unrecognised value counts as "not mergeable". See the
+[merge gate](docs/MERGE_GATE.md).
+
+## Memory and context
+
+Lessons from past runs (a failing command, a repository convention, a review
+finding that recurred) are stored locally and recalled into later prompts.
+
+- The default store is embedded SQLite with full-text search. It needs no
+  extra service.
+- Redis, and Postgres with pgvector, are optional backends for larger
+  installs. See [memory providers](docs/MEMORY_PROVIDERS.md).
+- A new lesson passes structural checks and a confidence review before it can
+  affect a run. `alfred brain` lists, promotes, rejects and forgets lessons.
+  See [fleet brain](docs/FLEET_BRAIN.md).
+- Two read-only MCP servers give roles scoped access to fleet memory and a
+  code graph. See [MCP](docs/MCP.md).
+- Prompt-size controls compact successful tool output, read large files by
+  structure first and trim recalled lessons to a budget. See
+  [batteries](docs/BATTERIES.md).
+
+## Day-to-day operation
 
 ```sh
-./bin/alfred-init.py \
-  --non-interactive \
-  --agents all \
-  --repos your-org/api,your-org/web \
-  --slack-webhook skip
+alfred status                 # what ran, what is paused, what failed
+alfred agents                 # roles, schedules, enabled state
+alfred pause senior-dev       # stop scheduled firings
+alfred resume senior-dev
+alfred run reviewer           # fire one role now
+alfred logs senior-dev        # transcripts for recent runs
+alfred serve                  # local read-only dashboard and JSON API
 ```
 
-Then verify the installation before you enable scheduled work:
+The optional [desktop app](docs/DESKTOP_CLIENT.md) reads the same local API.
+[Operating the fleet](docs/OPERATING_THE_FLEET.md) covers recovery from stuck
+locks, failed runs and auth problems.
 
-```sh
-alfred auth status
-alfred doctor
-alfred dry-run senior-dev
-```
+## Limits
 
-The dry run resolves the role and checks the lifecycle without calling an
-engine or changing GitHub, Slack, git, the scheduler, or project files. See the
-[installation guide](INSTALL.md), [Linux guide](docs/LINUX.md), and
-[dry-run contract](docs/DRY_RUN.md).
-
-## What ships
-
-### Autonomous engineering workflow
-
-- The planner turns a request into bounded implementation work.
-- The architect can split an approved change across several repositories.
-- The senior developer implements one issue in one worktree and opens a PR.
-- A separate reviewer checks the diff. The test engineer adds coverage.
-- The fixer addresses high-priority review findings.
-- Agent PRs include verification evidence by default so another person can
-  check what ran and what did not.
-- Alfred leaves merge authority with a person or an explicit repository policy.
-
-After work enters the queue, the agents continue through implementation,
-testing, review, and fixes without waiting for another prompt. Configured
-controls stop only the actions that need a decision.
-
-GitHub issues, labels, branches, comments, and pull requests form the shared
-coordination layer. Slack is optional. It supports planning, status, and trusted
-control commands, but it does not bypass approval gates.
-
-### Local memory and code context
-
-The default recalled-lesson store is embedded SQLite. FleetBrain keeps the
-local operational ledger, review queue, failure history, and worker state.
-Memory candidates pass structural checks and a confidence review before they
-can affect later runs. Operators can inspect, reject, retire, or revert lessons.
-
-Alfred also includes context controls that reduce unnecessary model input:
-
-- Compact successful tool output while retaining full failure output.
-- Read large files through structure-first and delta views.
-- Rank and trim recalled lessons to a prompt budget.
-- Add blast-radius context before a change.
-- Offer a pinned, checksum-verified codebase-memory MCP binary after you
-  configure an explicit repository scope.
-
-Optional batteries add dense local embeddings, Redis memory, Postgres with
-pgvector, Headroom compression, or an alternative graph tool. They remain
-inspectable and reversible. See [batteries](docs/BATTERIES.md),
-[memory providers](docs/MEMORY_PROVIDERS.md), and
-
-### Local control surfaces
-
-- `alfred` manages setup, health, roles, runs, engines, memory, and logs.
-- `alfred serve` provides a loopback JSON API and browser interface.
-- The Tauri desktop app uses the same local API.
-- Slack provides an optional collaboration surface.
-
-`ALFRED_HOME` defaults to `~/.alfred`. It contains deployed runners, state,
-logs, worktrees, and prompt overrides.
-
-## Safety and privacy
-
-Alfred runs with your local user permissions. Repository configuration controls
-what Alfred schedules and indexes. It is not a filesystem or network sandbox.
-
-- It schedules work only for repositories you configure.
-- Code-changing and review roles use separate worktrees.
-- It checks locks, authentication, disk space, and spend limits before engine
-  work starts.
-- It halts repeated failing runs instead of retrying without a bound.
-- It holds planned work behind the configured approval gate.
-- It does not merge its own PRs by default.
-- It records run events and verification evidence for inspection.
-
-Runtime network use can include the configured model provider, GitHub, Slack,
-optional telemetry, and download endpoints for selected batteries. Anonymous
-aggregate telemetry is enabled by default and excludes code, prompts, paths,
-repository names, branch names, and hostnames. Disable it at any time:
-
-```sh
-alfred telemetry off
-alfred telemetry status
-```
-
-Agents and project tools can make other network calls with your user account's
-permissions. Use a dedicated operating-system account, virtual machine, or
-container when you need a stronger boundary than repository configuration.
-
-Read the [threat model](docs/THREAT_MODEL.md),
-[telemetry contract](docs/TELEMETRY.md), and
-[macOS permissions](docs/MACOS_PERMISSIONS.md) before you enable unattended
-runs. Report a privacy or containment mismatch with the
-[public audit template](https://github.com/luminik-io/alfred/issues/new?template=audit.yml).
-Report exploitable vulnerabilities through a private
-[security advisory](https://github.com/luminik-io/alfred/security/advisories/new).
-
-## Verification
-
-Alfred uses reproducible tests and public artifacts instead of an adoption
-claim. The [memory benchmark](docs/BENCHMARKS.md) reports its fixture,
-denominator, engine, provider, and limitations. Stub runs verify the harness but
-do not count as engine evidence.
-
-Examples from this repository include [PR #503](https://github.com/luminik-io/alfred/pull/503),
-which added subprocess timeouts from a scoped issue, and
-[PR #528](https://github.com/luminik-io/alfred/pull/528), which added a test with
-green checks.
-
-The [verification contract](docs/VERIFICATION.md) defines what an agent PR
-records and how missing evidence appears. The
-[telemetry documentation](docs/TELEMETRY.md) defines Alfred's optional
-aggregate usage payload.
+- **No sandbox.** Roles run with your user account's permissions, including
+  network access. Repository scope limits what Alfred schedules. An agent can
+  still reach anything your account can. Use a dedicated OS user, VM or
+  container when you need a harder boundary. Read the
+  [threat model](docs/THREAT_MODEL.md).
+- **One host.** One trusted machine and one config. There is no multi-host
+  scheduling or multi-tenant mode.
+- **GitHub only.** Issues, labels and pull requests are the work queue.
+- **Results depend on the issue.** A loosely written issue tends to come back
+  as a loosely scoped pull request. The planner tightens scope, and the
+  [spec-driven workflow](docs/SPECS_DRIVEN_DEVELOPMENT.md) gives agents more
+  structure.
+- **Telemetry is on by default.** It sends anonymous aggregate counts with no
+  code, prompts, paths or repository names. Turn it off with
+  `alfred telemetry off`. See [telemetry](docs/TELEMETRY.md).
+- **Claude auth repair.** When a scheduled Claude Code call fails auth, Alfred
+  moves a stale `~/.claude/.credentials.json` aside once and retries so the CLI
+  can use the macOS Keychain. Set `ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1` to turn
+  this off.
+- **Packages lag `main`.** The latest published release is
+  [v0.6.0](https://github.com/luminik-io/alfred/releases), which is what the
+  Homebrew formula and cask install. Version 0.8.0 is on `main` and is waiting
+  on signed desktop packages. Use the source checkout above to run what this
+  README describes.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     scheduler["launchd or systemd"] --> role["short-lived role runner"]
-    role --> controls["lock, preflight, limits"]
+    role --> controls["lock, preflight, caps"]
     controls --> worktree["isolated git worktree"]
     controls --> engine{"engine adapter"}
     engine --> claude["Claude Code CLI"]
@@ -255,48 +263,31 @@ flowchart LR
     engine --> opencode["OpenCode CLI"]
     controls --> github["GitHub"]
     controls --> state["local state and memory"]
-    controls --> slack["optional Slack"]
 ```
 
-The host scheduler starts a fresh process for each firing. The shared runner
-performs preflight checks, creates or recovers a worktree when the role needs
-one, invokes the chosen CLI, records events, and updates GitHub. Alfred does not
-run a model gateway or a long-running coordinator. See
-[ARCHITECTURE.md](ARCHITECTURE.md).
+The scheduler starts a fresh process for each firing. The shared runner in
+`lib/agent_runner/` takes the lock, runs preflight checks, creates or recovers a
+worktree, calls the chosen CLI, records events and updates GitHub. Nothing stays
+running between firings. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Documentation
 
-- [Install](INSTALL.md) and [onboarding](docs/ONBOARDING.md)
-- [Architecture](ARCHITECTURE.md) and
-  [architecture diagrams](docs/ARCHITECTURE.md)
-- [Workspace patterns](docs/WORKSPACE_PATTERNS.md) and
+- [Install](INSTALL.md), [onboarding](docs/ONBOARDING.md) and [Linux](docs/LINUX.md)
+- [Roles and schedules](docs/AGENTS.md) and [identity and themes](docs/IDENTITY_AND_THEMES.md)
+- [Coding engines](docs/ENGINE_ROUTING.md), [Claude Code](docs/CLAUDE_CODE.md),
+  [Codex](docs/CODEX_PROVIDER.md) and [OpenCode](docs/OPENCODE.md)
+- [Multi-repo changes](docs/ARCHITECT.md) and
   [spec-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md)
-- [Identity and themes](docs/IDENTITY_AND_THEMES.md)
-- [Memory](docs/MEMORY_PROVIDERS.md), [MCP](docs/MCP.md), and
-  [batteries](docs/BATTERIES.md)
-- [Agent skills](docs/SKILLS.md) and [benchmarks](docs/BENCHMARKS.md)
-- [Coding engines](docs/ENGINE_ROUTING.md), [Claude Code and Codex](docs/CLAUDE_CODE.md),
-  [Codex provider](docs/CODEX_PROVIDER.md), and [OpenCode](docs/OPENCODE.md)
-- [Verification](docs/VERIFICATION.md), [security](SECURITY.md), and
-  [contributing](CONTRIBUTING.md)
-- [Roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)
+- [Memory](docs/MEMORY_PROVIDERS.md), [MCP](docs/MCP.md) and [benchmarks](docs/BENCHMARKS.md)
+- [Security](SECURITY.md), [contributing](CONTRIBUTING.md),
+  [roadmap](ROADMAP.md) and [changelog](CHANGELOG.md)
 
-Rendered documentation: [alfred.luminik.io](https://alfred.luminik.io/).
-
-## Project status
-
-Alfred supports macOS and Linux. Release tags and package downloads are on
-[GitHub Releases](https://github.com/luminik-io/alfred/releases). Claude Code,
-Codex, and OpenCode are validated execution engines. The [roadmap](ROADMAP.md)
-lists active work and future evaluation. The [changelog](CHANGELOG.md) records
-shipped changes.
+Rendered docs: [alfred.luminik.io](https://alfred.luminik.io/).
 
 ## License
 
 Code is licensed under the [MIT License](LICENSE). Documentation and website
 content are licensed under [CC BY 4.0](LICENSE-docs).
 
-Copyright (c) 2026 DataRavel Inc. (dba Luminik).
-
-"Alfred" and "Luminik" are trademarks of DataRavel Inc. See
-[TRADEMARK.md](TRADEMARK.md).
+Copyright (c) 2026 DataRavel Inc. (dba Luminik). "Alfred" and "Luminik" are
+trademarks of DataRavel Inc. See [TRADEMARK.md](TRADEMARK.md).

@@ -97,7 +97,7 @@ Current map of the public docs. Trust code first, then this index.
 Run the whole suite with:
 
 ```sh
-python3 -m pytest tests/
+uv run --extra dev pytest tests/
 ```
 
 Use `bash bin/scrub-check.sh` before public releases.
