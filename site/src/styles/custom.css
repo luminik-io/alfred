@@ -523,8 +523,15 @@ mobile-starlight-toc nav {
   color: var(--sl-color-text-accent);
 }
 
-/* ------------------------------------------------------------------ */
-/* Cookie consent banner styles are in src/styles/cookie-banner.css   */
-/* (shared with the marketing layout). Starlight loads it via the     */
-/* customCss array in astro.config.mjs.                                */
-/* ------------------------------------------------------------------ */
+.alfred-archive-note {
+  padding: 0.6rem 1rem;
+  text-align: center;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-white);
+  background: var(--sl-color-gray-6);
+  border-bottom: 1px solid var(--alfred-border-strong);
+}
+
+.alfred-archive-note a {
+  color: var(--sl-color-text-accent);
+}

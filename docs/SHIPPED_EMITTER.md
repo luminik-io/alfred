@@ -1,21 +1,7 @@
 # Public shipped-work evidence
 
-Alfred has two separate evidence paths:
-
-- The canonical site reads public GitHub data for `luminik-io/alfred`.
-- Operators can generate a scrubbed feed from their own local Alfred state.
-
-The canonical site never reads an operator's repository list or local shipped
-state. Refresh its public repository dataset with:
-
-```sh
-cd site
-npm run proof:update
-```
-
-This command updates `site/src/data/impact-proof.json`. Exact provenance labels
-qualify a merged PR. A role-like branch name does not qualify it, and
-Dependabot is excluded.
+Operators can generate a scrubbed feed of shipped pull requests from their own
+local Alfred state. The project site does not publish shipped-work numbers.
 
 ## Operator feed
 

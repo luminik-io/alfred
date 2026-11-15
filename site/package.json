@@ -9,10 +9,7 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
-    "og": "node scripts/generate-og.mjs",
-    "proof:update": "node scripts/build-impact-proof.mjs",
     "check:fonts": "node scripts/check-fonts.mjs",
-    "test": "node --test \"scripts/**/*.test.mjs\"",
     "build": "npm run check:fonts && astro check && astro build",
     "preview": "astro preview",
     "astro": "astro"

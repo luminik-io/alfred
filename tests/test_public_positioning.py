@@ -1,17 +1,14 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-POSITIONING = "An autonomous engineering team that ships while you're away."
-AUTONOMY_COPY = "Alfred keeps working without you at the keyboard."
-CONTROL_COPY = "You approve risky actions and decide what merges."
-# The README is the engineering description; the tagline lives on marketing pages.
+RETIRED_TAGLINE = "An autonomous engineering team that ships while you're away."
+DESCRIPTION = "Claude Code, Codex or OpenCode on a schedule"
 POSITIONING_ENTRYPOINTS = [
     ROOT / "site/src/pages/index.astro",
     ROOT / "site/src/content/docs/docs.mdx",
     ROOT / "site/src/pages/llms.txt.ts",
     ROOT / "site/src/pages/llms-full.txt.ts",
     ROOT / "site/src/layouts/MarketingLayout.astro",
-    ROOT / "site/scripts/generate-og.mjs",
 ]
 PUBLIC_COPY = [
     ROOT / "README.md",
@@ -25,25 +22,27 @@ PUBLIC_COPY = [
     ROOT / "site/src/content/docs/guides/skills.md",
     ROOT / "clients/desktop/src/components/layout/AppShell.tsx",
 ]
-AUTONOMY_ENTRYPOINTS = [
-    ROOT / "site/src/pages/index.astro",
-    ROOT / "site/src/content/docs/docs.mdx",
-    ROOT / "site/scripts/generate-og.mjs",
+ARCHIVE_NOTICE_SURFACES = [
+    ROOT / "site/src/layouts/MarketingLayout.astro",
+    ROOT / "site/src/components/ArchiveBanner.astro",
 ]
 
 ISSUE_TEMPLATES = ROOT / ".github/ISSUE_TEMPLATE"
 
 
-def test_public_entrypoints_use_the_outcome_led_positioning() -> None:
+def test_public_entrypoints_describe_what_alfred_runs() -> None:
     for path in POSITIONING_ENTRYPOINTS:
-        assert POSITIONING in path.read_text(), path
-
-
-def test_supporting_copy_pairs_autonomy_with_human_control() -> None:
-    for path in AUTONOMY_ENTRYPOINTS:
         content = " ".join(path.read_text().split())
-        assert AUTONOMY_COPY in content, path
-        assert CONTROL_COPY in content, path
+        assert DESCRIPTION in content, path
+        assert "reviewed pull requests" in content, path
+        assert RETIRED_TAGLINE not in content, path
+
+
+def test_every_site_page_carries_the_archive_notice() -> None:
+    for path in ARCHIVE_NOTICE_SURFACES:
+        content = path.read_text()
+        assert "Alfred is archived and no longer maintained." in content, path
+        assert "github.com/luminik-io/alfred#status" in content, path
 
 
 def test_readme_opens_with_what_alfred_runs_and_produces() -> None:
@@ -52,7 +51,7 @@ def test_readme_opens_with_what_alfred_runs_and_produces() -> None:
     assert "Claude Code, Codex or OpenCode on a schedule" in opening
     assert "reviewed pull requests" in opening
     assert "decides what merges" in opening
-    assert POSITIONING not in readme
+    assert RETIRED_TAGLINE not in readme
 
 
 def test_public_entrypoints_do_not_use_the_infrastructure_led_tagline() -> None:

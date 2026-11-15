@@ -19,7 +19,6 @@ const runtimeFiles = [
   "src/layouts/MarketingLayout.astro",
   "src/styles/marketing.css",
   "src/styles/custom.css",
-  "scripts/generate-og.mjs",
   "src/components/marketing/ArchitectFanOut.astro",
   "src/components/marketing/SpecsDrivenFlow.astro",
   "src/components/marketing/FiringLifecycle.astro",

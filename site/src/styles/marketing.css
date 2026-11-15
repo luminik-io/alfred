@@ -513,6 +513,22 @@ h1, h2, .m-display-xl, .m-display-lg, .m-display-md {
   .m-dot--pulse { animation: none; }
 }
 
+/* Archive notice */
+
+.m-archive-note {
+  padding: 0.6rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--alfred-text-bright);
+  background: var(--alfred-surface);
+  border-bottom: 1px solid var(--alfred-border-strong);
+}
+
+.m-archive-note a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 /* Header */
 
 .m-header {

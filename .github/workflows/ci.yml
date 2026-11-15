@@ -111,23 +111,6 @@ jobs:
       - name: Refuse known-private patterns
         run: bash bin/scrub-check.sh
 
-  site-emitter:
-    name: Site proof emitter (node:test)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22.23.5"
-      # The public "% shipped by Alfred agents" headline is computed by the
-      # site emitter's attribution rule; these tests lock it to the same
-      # label-only, exact-match rule as lib/self_proof.py so the displayed
-      # number cannot drift or be gamed by a branch prefix. No deps to install:
-      # the module and its tests are dependency-free and run on node:test.
-      - name: Test proof emitter attribution + share
-        working-directory: site
-        run: npm test
-
   changes:
     name: Changed areas
     runs-on: ubuntu-latest
@@ -137,7 +120,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # Skip the Desktop build only when a PR touches nothing but the site, docs or Markdown.
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
