@@ -92,7 +92,7 @@ Today's `slack_post` uses an incoming webhook. Webhooks have two limits:
 Bot-token posting exists in `lib/slack_surface/posting.py` for per-firing Block Kit
 threads. Two higher-level routing features remain follow-ups:
 
-1. **Daily-thread routing for `info`-tier**. The `fleet-recap-morning` cron posts an anchor message at 07:30; every `info` post during the day goes as a threaded reply under it. Main-channel timeline shrinks to one anchor + the day's `warn` and `alert` events.
+1. **Daily-thread routing for `info`-tier**. The `fleet-recap-morning` cron (07:45) would post an anchor message; every `info` post during the day goes as a threaded reply under it. Main-channel timeline shrinks to one anchor + the day's `warn` and `alert` events.
 2. **Channel topic from fleet state**. `slack_set_channel_topic()` renders e.g. `Lucius: 17 ✅ / 3 ❌ today · Drake: 8 ok · 0 paused repos`. Glanceable status without opening a dashboard.
 
 Both tracked in [Roadmap](/about/roadmap/) under "in-flight."
@@ -101,4 +101,4 @@ Both tracked in [Roadmap](/about/roadmap/) under "in-flight."
 
 - [Slack setup](/guides/slack/): webhook creation, AWS storage, optional bot-token path.
 - [`docs/SLACK_SETUP.md`](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md): the full guide.
-- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred/blob/main/lib/agent_runner.py): the source.
+- [`agent_runner.slack_post`](https://github.com/luminik-io/alfred/blob/main/lib/agent_runner/notify.py): the source.

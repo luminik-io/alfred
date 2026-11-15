@@ -55,16 +55,16 @@ bash deploy.sh
 
 Doctor should now report `1 passed, 0 failed` (or `N+1`).
 
-## 6. Force a firing
+## 6. Start a firing now
 
 Don't wait 30 minutes:
 
 ```sh
-alfred run echo --force
+alfred run echo
 tail -f /tmp/alfred.echo.std{out,err}
 ```
 
-Within ~10 seconds:
+`alfred run` prints `kicked echo` and returns. Within about 10 seconds, your Slack channel shows:
 
 ```
 Echo summarised myorg/sandbox-repo#42: <one-line summary>
@@ -76,14 +76,12 @@ Look at the issue on GitHub:
 - The `agent:in-flight` label briefly appeared, then was replaced with `agent:done`.
 - Three structured comments: claim, release, and the actual summary.
 
-Check your configured fleet channel in Slack: the success message is there.
-
 ## 7. Confirm dedup works
 
-Force a second firing immediately:
+Start a second firing immediately:
 
 ```sh
-alfred run echo --force
+alfred run echo
 ```
 
 Output: `[ECHO-IDLE] no agent:summarise issues`. The first firing transitioned the issue to `agent:done`, which blocks future claims.

@@ -160,7 +160,7 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
     ),
     "fleet_recap_morning": (
         "fleet-recap-morning",
-        "fleet recap morning (7:30 status post)",
+        "fleet recap morning (7:45 status post)",
         False,
         "cron:7:45",
     ),
@@ -227,12 +227,6 @@ MEMORY_AUTO_PROMOTE_CONTROL_ENVS = (
     "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
 )
 
-# The only strings that count as an explicit opt-in for a privacy-sensitive
-# consent flag. Anything else (including "false", "0", "no", "", or any other
-# string) is OFF. This is intentionally strict so a quoted "false" in a YAML or
-# JSON config never silently enables telemetry the way bool("false") would.
-_TRUTHY_CONSENT = {"1", "true", "yes", "on"}
-DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
 SETUP_TOKEN_COMMAND_TIMEOUT_S = 3600
 
 
@@ -270,31 +264,6 @@ def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
     with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
     process.wait()
-
-
-def default_telemetry_url() -> str:
-    override = os.environ.get("ALFRED_DEFAULT_TELEMETRY_URL")
-    if override is not None:
-        return override.strip()
-    return DEFAULT_TELEMETRY_URL
-
-
-def parse_consent(value: object) -> bool:
-    """Interpret a config consent value as a strict opt-in.
-
-    True only for a real boolean ``True`` or a string in ``_TRUTHY_CONSENT``
-    (case-insensitive, whitespace-trimmed). Every other value, including the
-    string ``"false"``, ``"0"``, an int, ``None``, or an empty string, is OFF.
-
-    This avoids the ``bool("false") is True`` trap: a privacy-sensitive switch
-    must never default ON just because someone quoted the value in their config.
-    """
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in _TRUTHY_CONSENT
-    # Anything else (int, float, None, list, dict) is not an explicit opt-in.
-    return False
 
 
 PROMPT_TEMPLATE_BY_ROLE = {
@@ -364,6 +333,16 @@ ALFRED_ENV_BANNER_RE = re.compile(
 ENV_ASSIGNMENT_RE = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
 
 
+# Keys of removed features stay managed so the block bounds hold, and a re-run drops them.
+REMOVED_MANAGED_ENV_KEYS = frozenset(
+    {
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
+        "ALFRED_TELEMETRY_TOKEN",
+    }
+)
+
+
 def alfred_init_managed_env_keys() -> frozenset[str]:
     keys = {
         "GH_ORG",
@@ -376,9 +355,7 @@ def alfred_init_managed_env_keys() -> frozenset[str]:
         "ARCHITECT_ROLLOUT_ORDER",
         "ALFRED_MORNING_BRIEF_AGENTS",
         "ALFRED_REPO_LOCAL_MAP",
-        "ALFRED_TELEMETRY_ENABLED",
-        "ALFRED_TELEMETRY_URL",
-        "ALFRED_TELEMETRY_TOKEN",
+        *REMOVED_MANAGED_ENV_KEYS,
         *MEMORY_AUTO_PROMOTE_CONTROL_ENVS,
         *batteries.managed_env_keys(),
     }
@@ -434,47 +411,6 @@ def note(msg: str) -> None:
     print(f"{STYLE.DIM}     {msg}{STYLE.OFF}")
 
 
-def telemetry_endpoint_label(url: str) -> str:
-    """A token-safe label for a telemetry ingest URL, for status output.
-
-    Shows scheme://host/path only. Any query string or userinfo is dropped so a
-    pasted shared secret (e.g. ``?token=...`` or ``user:secret@host``) never
-    lands in provisioning logs. Falls back to the host, then the raw URL, if the
-    URL does not parse into a usable form.
-    """
-    try:
-        parts = urllib.parse.urlsplit(url)
-    except ValueError:
-        return telemetry_url_fallback_label(url)
-    host = parts.hostname or ""
-    if parts.scheme and host:
-        try:
-            parsed_port = parts.port
-        except ValueError:
-            parsed_port = None
-        port = f":{parsed_port}" if parsed_port else ""
-        return f"{parts.scheme}://{host}{port}{parts.path}"
-    return host or telemetry_url_fallback_label(url)
-
-
-def telemetry_url_fallback_label(url: str) -> str:
-    """Best-effort token-safe label when a telemetry URL is malformed.
-
-    ``urlsplit`` can fail or parse without a hostname for malformed operator
-    input. The status line still must not echo shared secrets, so strip query,
-    fragment, and userinfo with simple delimiter rules that do not re-parse the
-    bad URL.
-    """
-    label = url.split("?", 1)[0].split("#", 1)[0]
-    if "@" not in label:
-        return label
-    before, after = label.rsplit("@", 1)
-    if "://" in before:
-        scheme = before.split("://", 1)[0]
-        return f"{scheme}://{after}"
-    return after
-
-
 # ---------------------------------------------------------------------------
 # Config dataclass, single source of truth for what the wizard collects.
 # ---------------------------------------------------------------------------
@@ -498,9 +434,6 @@ class WizardState:
     role_to_schedule: dict[str, str] = field(default_factory=dict)  # role -> schedule
     role_to_extras: dict[str, dict[str, str]] = field(default_factory=dict)  # role -> {ENV: value}
     repo_local_map: dict[str, str] = field(default_factory=dict)  # repo slug/name -> local path
-    telemetry_enabled: bool = True  # anonymous proof telemetry is opt-out
-    telemetry_url: str = field(default_factory=default_telemetry_url)
-    telemetry_token: str = ""  # optional shared ingest token (X-Ingest-Token)
     batteries: list[str] = field(default_factory=list)  # opt-in battery ids to enable
     battery_defaults_disabled: bool = False  # explicit --batteries none/builtin choice
 
@@ -641,7 +574,7 @@ def read_managed_env_file(path: Path) -> dict[str, str]:
     if not managed:
         return {}
     reject_removed_role_aliases(path, raw, managed)
-    return _parse_env_text(
+    values = _parse_env_text(
         "\n".join(
             _managed_env_assignment_lines(
                 raw,
@@ -650,6 +583,7 @@ def read_managed_env_file(path: Path) -> dict[str, str]:
             )
         )
     )
+    return {key: value for key, value in values.items() if key not in REMOVED_MANAGED_ENV_KEYS}
 
 
 def quote_env_value(value: str) -> str:
@@ -1314,15 +1248,6 @@ def render_agents_conf(state: WizardState) -> str:
         role_text = desc.split(" (", 1)[0]
         row = f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}"
         lines.append(row)
-    # Proof-telemetry is not an AGENT_CATALOG role, so it is not in
-    # enabled_roles. Emit its scheduler row only when an ingest URL exists.
-    # Without a URL, the reporter is a clean no-op and scheduling it would only
-    # create noise in doctor output.
-    if state.telemetry_enabled and state.telemetry_url:
-        lines.append(
-            "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
-            "alfred.proof-telemetry\tAnonymous usage totals"
-        )
     return "\n".join(lines) + "\n"
 
 
@@ -1383,18 +1308,6 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[f"ALFRED_{codename_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
     if "memory_auto_promote" in state.enabled_roles:
         out.update(memory_auto_promote_control_assignments(state))
-    # Anonymous proof-telemetry is opt-out. New installs use Alfred's hosted
-    # collector by default; a "no" answer writes ALFRED_TELEMETRY_ENABLED=0 so
-    # the opt-out is explicit.
-    if state.telemetry_enabled and state.telemetry_url:
-        out["ALFRED_TELEMETRY_ENABLED"] = "1"
-        out["ALFRED_TELEMETRY_URL"] = state.telemetry_url
-        # Optional shared ingest token: only written when both opted in AND a
-        # token was provided. Matches the collector's INGEST_TOKEN.
-        if state.telemetry_token:
-            out["ALFRED_TELEMETRY_TOKEN"] = state.telemetry_token
-    elif not state.telemetry_enabled:
-        out["ALFRED_TELEMETRY_ENABLED"] = "0"
     # Advanced batteries the operator picked. Included defaults need no explicit
     # env value unless the operator requested built-ins only. Each selection sets
     # its real flags from the shared manifest and composes onto the existing
@@ -1974,38 +1887,6 @@ def step_8_schedule(state: WizardState, *, non_interactive: bool) -> None:
         state.role_to_schedule[role] = new
 
 
-def step_8b_telemetry(state: WizardState, *, non_interactive: bool) -> None:
-    """Prompt for anonymous proof-telemetry. Default is YES, with opt-out."""
-    step("Anonymous usage totals")
-    note(
-        "Alfred can share anonymous aggregate counts: PRs opened, PRs merged, "
-        "terminal PRs, and changed files."
-    )
-    note("Never sent: repo names, code, paths, prompts, titles, people, or hostnames.")
-    note("Turn it off any time with `alfred telemetry off`.")
-    if state.telemetry_enabled and not state.telemetry_url:
-        state.telemetry_url = default_telemetry_url()
-    if non_interactive:
-        if state.telemetry_enabled and state.telemetry_url:
-            ok(
-                "Anonymous totals will use "
-                f"{telemetry_endpoint_label(state.telemetry_url)}. "
-                "Disable any time with `alfred telemetry off`."
-            )
-        else:
-            ok("Telemetry opted out.")
-        return
-    share = ask_yes_no("Share anonymous usage totals?", default=state.telemetry_enabled)
-    if not share:
-        state.telemetry_enabled = False
-        state.telemetry_url = ""
-        ok("Telemetry opted out.")
-        return
-    state.telemetry_enabled = True
-    state.telemetry_url = state.telemetry_url or default_telemetry_url()
-    ok("Telemetry enabled. Disable any time with `alfred telemetry off`.")
-
-
 def apply_batteries_arg(state: WizardState, batteries_arg: str | None) -> None:
     """Merge a ``--batteries`` selection into the wizard state.
 
@@ -2197,22 +2078,6 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     for role in state.enabled_roles:
         state.role_to_repos.setdefault(role, [])
     step_8_schedule(state, non_interactive=True)
-
-    existing_env = {**read_env_file(state.env_file), **existing_managed_env}
-    existing_telemetry_enabled = existing_env.get("ALFRED_TELEMETRY_ENABLED", "").strip()
-    existing_telemetry_url = existing_env.get("ALFRED_TELEMETRY_URL", "").strip()
-    if existing_telemetry_url and (
-        not existing_telemetry_enabled or parse_consent(existing_telemetry_enabled)
-    ):
-        state.telemetry_enabled = True
-        state.telemetry_url = existing_telemetry_url
-        state.telemetry_token = existing_env.get("ALFRED_TELEMETRY_TOKEN", "").strip()
-    else:
-        state.telemetry_enabled = parse_consent(existing_telemetry_enabled)
-        # Fresh roster seeding is local-only. Leave proof telemetry unscheduled
-        # until a full interactive or configured onboarding step makes that
-        # choice.
-        state.telemetry_url = ""
 
     conf = render_agents_conf(state)
     target = state.alfred_home / "launchd" / "agents.conf"
@@ -2461,14 +2326,6 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
     - ``role_extras`` (dict[str, dict[str, str]]): per-agent env values
       normally collected by interactive prompts, such as
       ``ALFRED_E2E_RUNNER_TARGET_URL`` or ``ALFRED_OPS_WATCH_ECS_CLUSTER``.
-    - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): configure
-      anonymous proof-telemetry non-interactively. Reporting is opt-out and
-      uses Alfred's hosted collector by default. ``telemetry_url`` overrides it
-      for self-hosted collectors.
-      ``telemetry_enabled`` is parsed strictly (see ``parse_consent``): a
-      quoted ``"false"`` opts out.
-    - ``telemetry_token`` (str): optional shared ingest token sent as
-      ``X-Ingest-Token``; only written when telemetry is opted in.
     - ``batteries`` (str | list[str]): opt-in battery ids to enable (e.g.
       ``["dense-embeddings"]``). ``"none"`` keeps built-ins only. Built-ins are
       always on and cannot be listed here.
@@ -2540,17 +2397,6 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
             state.role_to_extras.setdefault(role, {}).update(
                 {str(k): str(v) for k, v in raw_values.items() if str(k).strip()}
             )
-    # Telemetry opt-out. A missing key keeps the default: enabled, using
-    # Alfred's hosted collector unless telemetry_url overrides it.
-    # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is
-    # not a recognized truthy token) opts out, unlike bool("false") which is
-    # True.
-    if "telemetry_enabled" in cfg:
-        state.telemetry_enabled = parse_consent(cfg["telemetry_enabled"])
-    if "telemetry_url" in cfg:
-        state.telemetry_url = str(cfg["telemetry_url"])
-    if "telemetry_token" in cfg:
-        state.telemetry_token = str(cfg["telemetry_token"])
     if "batteries" in cfg:
         raw = cfg["batteries"]
         tokens = raw if isinstance(raw, list) else [raw]
@@ -2595,7 +2441,6 @@ def main(argv: Iterable[str] | None = None) -> int:
         config_repos = ",".join(state.role_to_repos.pop("__all__"))
     step_7_repos(state, repos_arg=args.repos or config_repos, non_interactive=non_interactive)
     step_8_schedule(state, non_interactive=non_interactive)
-    step_8b_telemetry(state, non_interactive=non_interactive)
     apply_batteries_arg(state, args.batteries)
     step_8c_batteries(state, non_interactive=non_interactive)
     step_9_generate(state, non_interactive=non_interactive)

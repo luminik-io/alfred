@@ -99,9 +99,10 @@ and reports status. With the default
 | `SLACK_WEBHOOK_SECRET_ID` | `slack_post` (AWS path) | `alfred/slack-webhook` |
 | `SLACK_WEBHOOK_SECRET_REGION` | `slack_post` (AWS path) | `us-east-1` |
 | `SLACK_BOT_TOKEN` | Block Kit / thread helpers | (none) |
-| `SLACK_BOT_TOKEN_SECRET_ID` | bot token AWS path | `alfred/slack-bot-token` |
-| `SLACK_BOT_TOKEN_SECRET_REGION` | bot token AWS region | `us-east-1` |
-| `SLACK_APP_TOKEN` | Socket Mode token for the optional planning listener | (none) |
+| `ALFRED_SECRETS_BACKEND` | set to `aws` to read the bot token from AWS Secrets Manager when `SLACK_BOT_TOKEN` is unset | (off) |
+| `ALFRED_SLACK_BOT_TOKEN_SECRET_ID` | bot token AWS path (read only when `ALFRED_SECRETS_BACKEND=aws`) | `alfred/slack-bot-token` |
+| `ALFRED_SLACK_BOT_TOKEN_SECRET_REGION` | bot token AWS region (read only when `ALFRED_SECRETS_BACKEND=aws`) | `us-east-1` |
+| `SLACK_APP_TOKEN` | Socket Mode token for the optional planning listener (env only, never read from AWS) | (none) |
 | `ALFRED_SLACK_APP_TOKEN` | Alternate Socket Mode token env var | (none) |
 | `ALFRED_OPERATOR_SLACK_USER_ID` | Operator user id for reactions and trusted listener input | (required for approvals/listener) |
 | `ALFRED_TRUSTED_SLACK_USER_IDS` | Extra users allowed to refine plans and drafts | approver only |
@@ -114,7 +115,7 @@ Resolution order: env -> 30-day disk cache at `$ALFRED_HOME/state/slack-webhook.
 
 | Var | Used by | Default |
 |---|---|---|
-| `ALFRED_HUNTRESS_AWS_PROFILE`, `ALFRED_GORDON_AWS_PROFILE` | role runners that touch AWS | (none: AWS checks disabled or use default chain) |
+| `ALFRED_E2E_RUNNER_AWS_PROFILE`, `ALFRED_OPS_WATCH_AWS_PROFILE` | e2e-runner (Huntress) and ops-watch (Gordon) | (none: AWS checks disabled or use default chain) |
 | `AWS_PROFILE` | set by role runners around owned `aws ...` calls | (none) |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_SECURITY_TOKEN` | stripped before `aws ...` calls in agents that need pure-profile auth | (admin SSO leakage) |
 

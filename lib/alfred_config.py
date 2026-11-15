@@ -44,7 +44,6 @@ CATEGORIES: tuple[str, ...] = (
     "slack",
     "server",
     "scheduler",
-    "telemetry",
     "agents",
     "ops",
     "onboarding",
@@ -1657,44 +1656,6 @@ _VARS: tuple[ConfigVar, ...] = (
         "server",
         "Heartbeat interval for server-sent-event streams.",
     ),
-    # ---- telemetry: proof-of-work telemetry ingest/report ----
-    V(
-        "ALFRED_TELEMETRY_ENABLED",
-        "bool",
-        "1",
-        "telemetry",
-        "Emit proof telemetry; opt out with 0.",
-        operator=True,
-    ),
-    V(
-        "ALFRED_TELEMETRY_URL",
-        "str",
-        None,
-        "telemetry",
-        "Override the telemetry ingest URL.",
-        operator=True,
-    ),
-    V(
-        "ALFRED_DEFAULT_TELEMETRY_URL",
-        "str",
-        None,
-        "telemetry",
-        "Hosted default telemetry URL; set empty to disable the default.",
-    ),
-    V(
-        "ALFRED_TELEMETRY_TOKEN",
-        "secret",
-        None,
-        "telemetry",
-        "Optional shared ingest token for hosted telemetry.",
-    ),
-    V(
-        "ALFRED_TELEMETRY_TRUSTED_TOKEN",
-        "secret",
-        None,
-        "telemetry",
-        "Server-trust token proving a telemetry payload is first-party.",
-    ),
     # ---- scheduler: launchd/systemd, cleanup, disk guardian, backup ----
     V(
         "ALFRED_LAUNCH_DIR",
@@ -2588,7 +2549,10 @@ NON_VAR_TOKENS: dict[str, str] = {
     "ALFRED_CODE_MEMORY_": "documentation wildcard 'ALFRED_CODE_MEMORY_*'",
     "ALFRED_LLM_": "documentation wildcard 'ALFRED_LLM_*'",
     "ALFRED_SPEC_PLANNER_": "documentation wildcard 'ALFRED_SPEC_PLANNER_*'",
-    "ALFRED_TELEMETRY_": "documentation wildcard 'ALFRED_TELEMETRY_*'",
+    # Retired proof-telemetry keys that alfred-init still clears from old .env blocks.
+    "ALFRED_TELEMETRY_ENABLED": "removed feature; cleared on re-run, never read",
+    "ALFRED_TELEMETRY_URL": "removed feature; cleared on re-run, never read",
+    "ALFRED_TELEMETRY_TOKEN": "removed feature; cleared on re-run, never read",
     # Python/shell identifier fragments matched by the broad regex.
     "ALFRED_HOME_EXPLICIT": "python module variable _ALFRED_HOME_EXPLICIT",
     "ALFRED_HOME_PRESENT": "shell variable ORIGINAL_ALFRED_HOME_PRESENT",

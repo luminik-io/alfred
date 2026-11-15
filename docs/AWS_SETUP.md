@@ -12,7 +12,7 @@ If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in 
 The operator's AWS SSO has admin everywhere. If a scheduled agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps the blast radius:
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (e.g. test credentials, webhook URLs).
-- `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token secret.
+- `ops-watch-cron` (Gordon under the default theme): read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token secret.
 - `acme-host`: read-only on `alfred/*` secrets (catch-all for fleet-wide config).
 
 Each agent's prompt invokes `aws` with that profile and strips any operator SSO env that might leak in:
@@ -105,7 +105,7 @@ Common policy templates:
 }
 ```
 
-### ECS read-only (Gordon or another monitoring codename)
+### ECS read-only (ops-watch or another monitoring role)
 
 ```json
 {
@@ -147,10 +147,10 @@ Recommended naming convention: `<scope>/<purpose>` with a small handful of stabl
 | Path | What it holds |
 |---|---|
 | `alfred/slack-webhook` | Slack incoming webhook URL |
-| `alfred/slack-bot-token` | Slack `xoxb-` token (when ready) |
-| `alfred/slack-app-token` | Slack `xapp-1-` token for Socket Mode |
+| `alfred/slack-bot-token` | Slack `xoxb-` token, read only when `ALFRED_SECRETS_BACKEND=aws` |
+| `alfred/slack-app-token` | Optional backup of the Slack `xapp-1-` Socket Mode token. Alfred does not read it; the listener reads `SLACK_APP_TOKEN` from the environment. |
 | `alfred/sentry-dsn-agents` | Sentry DSN agent runners post events to |
-| `alfred/sentry-api-token` | Sentry API token Gordon uses to query top issues |
+| `alfred/sentry-api-token` | Sentry API token ops-watch (Gordon) uses to query top issues |
 | `alfred/iam-<user>-key` | Backup of long-term access keys (key-rotation safety net) |
 
 Create:

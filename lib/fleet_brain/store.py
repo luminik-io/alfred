@@ -2147,10 +2147,8 @@ def _authored_predicate() -> tuple[str, list[object]]:
     natively case-SENSITIVE and locally scoped to this fragment. Without it an
     operator branch like ``Senior-Dev/fix`` (capitalized) would satisfy a
     ``senior-dev/`` prefix and that PR would be miscounted as Alfred-authored,
-    inflating the authored count. Case-sensitivity mirrors the list-fallback predicate
-    ``proof_telemetry._row_is_agent_authored`` (exact ``label in labels`` and
-    case-sensitive ``head_ref.startswith(prefix)``) so the SQL and Python paths
-    agree.
+    inflating the authored count. Case-sensitivity matches a Python check of exact
+    ``label in labels`` and case-sensitive ``head_ref.startswith(prefix)``.
 
     ``GLOB`` treats ``*``, ``?`` and ``[`` as metacharacters (it has no LIKE-style
     ``ESCAPE`` clause), so each literal segment is escaped via single-char

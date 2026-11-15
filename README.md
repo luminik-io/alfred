@@ -21,6 +21,47 @@ model gateway, hosted service or long-running coordinator to operate.
 It runs on macOS 11 or newer and on Debian or Ubuntu Linux, with Python 3.11
 or newer.
 
+## Status
+
+Alfred is archived and no longer maintained. It was built between April and
+September 2026 to run coding agents unattended on one machine. Since then, the
+coding tools have added most of what it did: scheduled and background agents, a
+git worktree per run, and pull requests opened for review.
+
+For the same job today, look at:
+
+- [Claude Code scheduled tasks](https://code.claude.com/docs/en/routines) and
+  [background agents](https://code.claude.com/docs/en/agent-view)
+- [GitHub Agentic Workflows](https://github.github.com/gh-aw/), which also caps
+  spend per run and per day
+- [OpenHands](https://github.com/OpenHands/OpenHands) automations
+- [OpenAI Symphony](https://github.com/openai/symphony), which runs one agent per
+  ticket and merges on acceptance
+
+The parts most worth reading:
+
+- [`lib/merge_gate.py`](lib/merge_gate.py): the merge decision, which refuses
+  whenever any input is missing or unclear
+- [`lib/agent_runner/state.py`](lib/agent_runner/state.py): locks, the daily
+  spend ledger behind the per-role caps, and the pause after 5 failures in a
+  row
+- [`lib/agent_runner/engine_registry.py`](lib/agent_runner/engine_registry.py):
+  checks each CLI's flags and login before any work starts
+- [`lib/labels.py`](lib/labels.py): the issue label state machine, including
+  the `agent:plan-pending-approval` label that holds work until a person
+  approves it
+
+Known issues at the time of archiving:
+
+- When the developer, reviewer or fixer role reaches its daily turn cap, it
+  calls `launchctl` directly. On macOS that unloads the job until you run
+  `alfred resume`. On Linux nothing is unloaded and the cap message repeats on
+  every firing.
+- The latest packaged release is v0.6.0. Version 0.8.0 on `main` was never
+  packaged.
+
+The rest of this README describes Alfred as it stood when it was archived.
+
 ## Who it is for
 
 Alfred fits one developer or a small team that already uses a coding CLI
@@ -186,7 +227,7 @@ want to merge every pull request by hand. The role only touches
 - no failing checks
 - the base branch requires resolved threads, so GitHub enforces this too
 
-Any API error or unrecognised value counts as "not mergeable". See the
+Any API error or unrecognized value counts as "not mergeable". See the
 [merge gate](docs/MERGE_GATE.md).
 
 ## Memory and context
@@ -237,9 +278,9 @@ locks, failed runs and auth problems.
   as a loosely scoped pull request. The planner tightens scope, and the
   [spec-driven workflow](docs/SPECS_DRIVEN_DEVELOPMENT.md) gives agents more
   structure.
-- **Telemetry is on by default.** It sends anonymous aggregate counts with no
-  code, prompts, paths or repository names. Turn it off with
-  `alfred telemetry off`. See [telemetry](docs/TELEMETRY.md).
+- **No telemetry.** The anonymous proof-telemetry reporter and its hosted
+  collector were removed. Alfred sends no usage data. Older installs can delete
+  the `alfred.proof-telemetry` row from `agents.conf` and redeploy.
 - **Claude auth repair.** When a scheduled Claude Code call fails auth, Alfred
   moves a stale `~/.claude/.credentials.json` aside once and retries so the CLI
   can use the macOS Keychain. Set `ALFRED_DISABLE_CLAUDE_AUTH_REPAIR=1` to turn

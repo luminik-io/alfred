@@ -49,13 +49,12 @@ Current map of the public docs. Trust code first, then this index.
 - [`PLAIN_MODE.md`](PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, OpenCode, or hybrid routing; precedence chain; default matrix; engine contract.
 - [`OPERATING_THE_FLEET.md`](OPERATING_THE_FLEET.md): week-two runbook. Daily Slack rhythm, CLI recipes, sentinels, logs, "fleet went quiet" troubleshooting.
-- [`CLI.md`](CLI.md): the read-only `alfred metrics` and `alfred logs` inspectors over the state tree, plus `alfred slack-listener`, the optional Socket Mode planning-intake listener.
+- [`CLI.md`](CLI.md): a one-line list of every `alfred` subcommand, plus details for `alfred status`, `metrics`, `logs`, `usage`, `evidence`, `agent`, and `slack-listener`. Not a full flag reference; use `alfred <command> --help`.
 - [`CONNECTORS.md`](CONNECTORS.md): input connectors that feed the `agent:implement` issue queue from non-GitHub sources such as Linear tickets and Sentry alerts without changing the agents.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.
 - [`CAPABILITIES.md`](CAPABILITIES.md): read-only local inventory for code graph memory, Alfred's context governor, and engineering skill packs.
 - [`TOOL_COMPACTOR.md`](TOOL_COMPACTOR.md): the tool-output compactor. Shrinks noisy Bash output before it enters context, compacting only on a confirmed-success exit so an error is never hidden, plus config knobs.
 - [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and observed turns per PR.
-- [`TELEMETRY.md`](TELEMETRY.md): the opt-out anonymous usage reporter that sends aggregate totals to the public Impact counter, its controls, and how to point it at a self-hosted collector.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.
 - [`OPENCODE.md`](OPENCODE.md): OpenCode install, authentication, permission boundary, model selection, diagnostics, and runtime contract.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook, optional bot-token setup, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.
@@ -72,7 +71,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`GLOSSARY.md`](GLOSSARY.md): one-sentence definitions for every role, themed name, label, sentinel, and runtime concept.
 - [`ARCHITECT_PARENT_ISSUE_TEMPLATE.md`](ARCHITECT_PARENT_ISSUE_TEMPLATE.md): the exact parent-issue body shape the architect lifecycle parser expects, the gotchas it does not surface, and a copy-paste template.
 - [`SHIPPED_EMITTER.md`](SHIPPED_EMITTER.md): the `alfred-shipped-public` emitter that scrubs local state through a field allowlist and redaction table to publish a weekly shipped-work feed for your own repos.
-- [`SLOP_DETECTOR.md`](SLOP_DETECTOR.md): the read-only, stdlib-only `alfred slop-detect` scanner that flags LLM-cliche vocabulary and phrasing in prose and exits non-zero in CI.
+- [`SLOP_DETECTOR.md`](SLOP_DETECTOR.md): the read-only, stdlib-only `bin/slop-detector.py` scanner that flags LLM-cliche vocabulary and phrasing in prose and exits non-zero in CI.
 - [`../lib/agent_runner/`](../lib/agent_runner/__init__.py): shared runtime library (package; public API in `__init__.py`).
 - [`../lib/slack_surface/posting.py`](../lib/slack_surface/posting.py): Slack Block Kit formatting helpers.
 - [`../lib/architect_lifecycle.py`](../lib/architect_lifecycle.py): multi-repo bundle primitives.

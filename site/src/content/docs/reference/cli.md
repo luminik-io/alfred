@@ -151,9 +151,6 @@ alfred codex probe
 alfred opencode status
 alfred opencode probe
 alfred auth status
-alfred telemetry status
-alfred telemetry on
-alfred telemetry off
 alfred labels bootstrap <repo>|--all [--check] [--force]
 alfred labels check <repo>|--all
 alfred architect setup [--check-only]
@@ -192,11 +189,7 @@ and architect approval waits. `clear-lock` diagnoses stale `/tmp/agent-lock-*`
 directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, architect planning,
-and issue-claim overrides. `telemetry` controls anonymous usage totals:
-`status` shows local state, `on` writes the hosted endpoint to `$ALFRED_HOME/.env`, and
-`off` clears the previous report and writes the opt-out flag. The scheduler row
-can stay installed; without an endpoint, or after opt-out, it exits cleanly and
-sends nothing.
+and issue-claim overrides.
 `shipped` reports merged PRs, issues, LOC, and
 model/config changes across the period-specific shipped-summary repo env, the
 shared `ALFRED_SHIPPED_SUMMARY_REPOS` fallback, or explicit `--repo`
@@ -341,8 +334,9 @@ alfred metrics --json                   # machine-readable
 ```
 
 `--since` accepts `7`, `7d`, `48h`, `2w`, `1m`. `--days N` overrides
-`--since` when both are passed. Exit 1 on user errors (bad `--since`,
-unknown codename); exit 2 when the state directory is missing.
+`--since` when both are passed. An unparseable `--since` prints a warning
+and falls back to 7 days (exit 0). Exit 1 for an unknown `--codename` when
+other agents have state; exit 2 when the state directory is missing.
 
 ## `alfred logs`
 
@@ -364,8 +358,10 @@ firings and lists skill invocations separately. The single-firing dump
 pretty-prints the stream-JSON one event per line with tool-use inputs
 summarised inline.
 
-See [`docs/CLI.md`](https://github.com/luminik-io/alfred/blob/main/docs/CLI.md)
-for the full reference including library examples.
+[`docs/CLI.md`](https://github.com/luminik-io/alfred/blob/main/docs/CLI.md)
+has exit codes, sample output, library examples, and a one-line list of every
+`alfred` subcommand. Neither page documents every flag; run
+`alfred <command> --help` for the rest.
 
 ## `alfred evidence`
 

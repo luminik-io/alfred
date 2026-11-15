@@ -7,9 +7,9 @@
 Every environment variable Alfred reads is declared once in the typed
 registry at `lib/alfred_config.py`. This page is generated from it.
 
-- Declared variables: **393**
-- Operator-facing (in `.env.example`): **76**
-- Internal / experimental: **317**
+- Declared variables: **388**
+- Operator-facing (in `.env.example`): **74**
+- Internal / experimental: **314**
 
 Operator-facing vars also appear, with their defaults, in
 `.env.example`. Internal vars are listed here for completeness; they
@@ -322,16 +322,6 @@ are experimental, deep-tuning, or set by Alfred itself at runtime.
 | `ALFRED_BACKUP_PRUNE` | bool | `1` | internal | Prune old cold backups after a successful run. |
 | `ALFRED_BACKUP_STAMP` | str |  | internal | Explicit timestamp stamp for a cold backup. |
 | `ALFRED_BACKUP_CONFIRM_CMD` | str |  | internal | Command run to confirm a cold backup completed. |
-
-## Proof telemetry
-
-| Variable | Type | Default | Scope | Description |
-| --- | --- | --- | --- | --- |
-| `ALFRED_TELEMETRY_ENABLED` | bool | `1` | operator | Emit proof telemetry; opt out with 0. |
-| `ALFRED_TELEMETRY_URL` | str |  | operator | Override the telemetry ingest URL. |
-| `ALFRED_DEFAULT_TELEMETRY_URL` | str |  | internal | Hosted default telemetry URL; set empty to disable the default. |
-| `ALFRED_TELEMETRY_TOKEN` | secret |  | internal | Optional shared ingest token for hosted telemetry. |
-| `ALFRED_TELEMETRY_TRUSTED_TOKEN` | secret |  | internal | Server-trust token proving a telemetry payload is first-party. |
 
 ## Per-agent caps, repos, engines
 

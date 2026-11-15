@@ -761,7 +761,7 @@ class LedgerBase:
         """Exact COUNT(*) of file_touches, unbounded by the list 500-row cap.
 
         ``list_file_touches`` clamps ``limit`` to 500, so callers that need a
-        true total (e.g. proof-telemetry's lifetime counts) must use this rather
+        true total must use this rather
         than ``len(list_...())``, which silently freezes at 500 on a busy brain.
         """
         return self.store.count_file_touches(
@@ -836,20 +836,20 @@ class LedgerBase:
         """Exact COUNT(*) of github_items, unbounded by the list 500-row cap.
 
         ``list_github_items`` clamps ``limit`` to 500, so any caller needing a
-        true total (proof-telemetry's lifetime PR counts) must use this. Counting
+        true total must use this. Counting
         by paginating ``list_github_items`` can never exceed 500 because the list
         method re-clamps every request.
 
         ``authored_only=True`` restricts the count to agent-authored PRs/issues:
         rows carrying the ``agent:authored`` provenance label or pushed from an
         agent branch prefix. The poller stores EVERY PR from ``gh pr list`` (not
-        just Alfred's), so proof-telemetry passes this to avoid claiming PRs the
+        just Alfred's), so pass this to avoid claiming PRs the
         fleet did not open. The filter is a SQL predicate on already-stored
         columns, so it stays an exact COUNT(*).
 
         ``agent_labeled_only=True`` restricts the count to rows with any
-        ``agent:*`` label. Proof telemetry uses this for issue counts, where the
-        public signal is the issue label rather than a branch name.
+        ``agent:*`` label, for issue counts where the signal is the issue label
+        rather than a branch name.
         """
         return self.store.count_github_items(
             repo=repo,
@@ -879,9 +879,8 @@ class LedgerBase:
     ) -> int:
         """Sum additions + deletions from cached GitHub PR rows.
 
-        Proof telemetry uses this with ``kind="pr"`` and
-        ``authored_only=True`` so the line-count metric is anchored to the same
-        Alfred-authored PR subset as the PR counters.
+        Pass ``kind="pr"`` and ``authored_only=True`` to anchor the line count to
+        the same Alfred-authored PR subset as the PR counters.
         """
         return self.store.sum_github_changed_lines(
             repo=repo,

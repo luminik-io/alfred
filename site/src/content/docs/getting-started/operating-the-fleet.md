@@ -15,8 +15,8 @@ If you wired up the Slack webhook, three posts on the configured channel are you
 
 | Post | When | What it carries |
 |---|---|---|
-| `fleet-recap (morning)` | 07:30 daily | Yesterday's PRs shipped, in-flight work, doctor status, anything red. |
-| `shipped-summary-daily` | end of day | Today's merged PRs, issues closed, LOC, model and config changes. |
+| `fleet-recap (morning)` | 07:45 daily | Yesterday's PRs shipped, in-flight work, doctor status, anything red. |
+| `shipped-summary-daily` | 07:35 daily | Merged PRs, issues closed, LOC, and model and config changes since local midnight. |
 | `fleet-recap (evening)` | 22:00 daily | Per-agent spend, firing count, success rate, anything that paused itself. |
 
 Plus the per-firing posts: shipped, blocked, partial. Quiet days are the goal. A morning post that says "yesterday: 6 PRs shipped, 0 blockers" is the steady state.
@@ -140,7 +140,7 @@ If every repo is paused, every consumer's `pick_*` helper returns nothing and ev
 ls $ALFRED_HOME/state/_paused/
 ```
 
-A self-pause writes a marker file here. Common causes: spend cap exceeded, eight consecutive failures, an explicit Slack-posted reason. `alfred status` summarizes this. `alfred resume <codename>` reverses it.
+A self-pause writes a marker file here. Common causes: a daily cap reached, five consecutive failures (`ALFRED_FAIL_STREAK_THRESHOLD`), or an explicit Slack-posted reason. `alfred status` summarizes this. `alfred resume <codename>` reverses it.
 
 ### 5. Schedule conflict or wrong unit
 

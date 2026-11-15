@@ -20,7 +20,6 @@ import importlib.util
 import os
 import subprocess
 import sys
-import urllib.parse
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -386,73 +385,10 @@ def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
     }
 
 
-def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
+def test_render_agents_conf_never_schedules_proof_telemetry(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
-    text = init_mod.render_agents_conf(state)
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600" in text
-
-
-def test_render_agents_conf_omits_telemetry_row_without_url(init_mod, tmp_path):
-    # Flag set but no URL: still no scheduler row (the reporter would no-op).
-    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
-    state.telemetry_enabled = True
-    state.telemetry_url = ""
     text = init_mod.render_agents_conf(state)
     assert "proof-telemetry" not in text
-
-
-def test_render_agents_conf_schedules_telemetry_when_opted_in(init_mod, tmp_path):
-    # Configuring a telemetry endpoint via alfred-init must actually schedule
-    # the proof-telemetry job, otherwise a reporting host never reports.
-    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
-    state.telemetry_enabled = True
-    state.telemetry_url = "https://worker.example.com/ingest"
-    text = init_mod.render_agents_conf(state)
-    assert (
-        "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
-        "alfred.proof-telemetry\tAnonymous usage totals" in text
-    )
-
-
-def test_render_agents_conf_telemetry_row_is_a_valid_schedule_record(init_mod, tmp_path):
-    # The scheduled row must be a well-formed agents.conf record deploy.sh can
-    # parse: 6 tab-separated fields with a recognised schedule token. This guards
-    # the Codex finding end to end (a row that deploy.sh cannot schedule is no
-    # better than no row).
-    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
-    state.telemetry_enabled = True
-    state.telemetry_url = "https://worker.example.com/ingest"
-    text = init_mod.render_agents_conf(state)
-    row = next(line for line in text.splitlines() if line.startswith("alfred.proof-telemetry\t"))
-    fields = row.split("\t")
-    assert len(fields) == 6, f"expected 6 tab-separated fields, got {len(fields)}: {fields!r}"
-    label, script, schedule, needs_java, log_stem, role = fields
-    assert label == "alfred.proof-telemetry"
-    assert script == "proof-telemetry.py"
-    # interval:<seconds> is the default cadence grammar deploy.sh understands.
-    assert schedule == "interval:3600"
-    assert needs_java == "no"
-    assert log_stem == "alfred.proof-telemetry"
-    assert role  # a non-empty operational descriptor
-
-
-def test_opt_in_produces_both_schedule_and_env(init_mod, tmp_path):
-    # Full reporting contract: after the operator configures an endpoint, the generated config must
-    # carry BOTH the launchd schedule row (so the job actually runs) AND the
-    # runtime env vars (so the running job is enabled and knows where to post).
-    # Either one alone is a silent no-op.
-    state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
-    state.telemetry_enabled = True
-    state.telemetry_url = "https://worker.example.com/ingest"
-    state.telemetry_token = "shared-secret"
-
-    conf = init_mod.render_agents_conf(state)
-    env = init_mod.env_assignments_for(state)
-
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600" in conf
-    assert env["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert env["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
-    assert env["ALFRED_TELEMETRY_TOKEN"] == "shared-secret"
 
 
 # ---------------------------------------------------------------------------
@@ -1127,240 +1063,10 @@ def test_env_assignments_uses_selected_env_file_stop_control(init_mod, tmp_path)
     assert out["ALFRED_AUTO_PROMOTE"] == "0"
 
 
-# ---------------------------------------------------------------------------
-# telemetry endpoint / opt-out behavior
-# ---------------------------------------------------------------------------
-
-
-def test_env_assignments_telemetry_on_by_default(init_mod, tmp_path):
+def test_env_assignments_never_write_proof_telemetry_keys(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path)
     out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert out["ALFRED_TELEMETRY_URL"] == init_mod.DEFAULT_TELEMETRY_URL
-
-
-def test_env_assignments_telemetry_needs_both_flag_and_url(init_mod, tmp_path):
-    # Opt-in flag set but no URL: still nothing written (reporter would no-op).
-    state = _state_with(init_mod, tmp_path)
-    state.telemetry_enabled = True
-    state.telemetry_url = ""
-    out = init_mod.env_assignments_for(state)
-    assert "ALFRED_TELEMETRY_ENABLED" not in out
-
-
-def test_env_assignments_telemetry_written_when_opted_in(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path)
-    state.telemetry_enabled = True
-    state.telemetry_url = "https://worker.example.com/ingest"
-    out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert out["ALFRED_TELEMETRY_URL"] == "https://worker.example.com/ingest"
-
-
-def test_telemetry_step_non_interactive_without_url_uses_default(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path)
-    state.telemetry_url = ""
-    init_mod.step_8b_telemetry(state, non_interactive=True)
-    assert state.telemetry_enabled is True
-    assert state.telemetry_url == init_mod.DEFAULT_TELEMETRY_URL
-
-
-def test_telemetry_step_non_interactive_default_prints_hosted_counter(init_mod, tmp_path, capsys):
-    state = _state_with(init_mod, tmp_path)
-    init_mod.step_8b_telemetry(state, non_interactive=True)
-    captured = capsys.readouterr()
-    out = captured.out + captured.err
-    assert "alfred-proof-telemetry.luminik.workers.dev" in out
-    assert "no report is scheduled" not in out
-
-
-def test_telemetry_step_non_interactive_config_optin_prints_on(init_mod, tmp_path, capsys):
-    # Regression: when --config configured telemetry (telemetry_enabled +
-    # telemetry_url already applied by apply_config_overrides), the non-interactive
-    # status line must say telemetry is ON, NOT "left OFF". The printed status must
-    # match what the generated config actually writes (ALFRED_TELEMETRY_ENABLED=1 +
-    # scheduled proof-telemetry).
-    state = _state_with(init_mod, tmp_path)
-    init_mod.apply_config_overrides(
-        state,
-        {"telemetry_enabled": True, "telemetry_url": "https://worker.example.com/ingest"},
-    )
-    init_mod.step_8b_telemetry(state, non_interactive=True)
-    out = capsys.readouterr().out
-    # Honest status: the status line names the endpoint host and never claims
-    # telemetry was opted out.
-    assert "Anonymous totals will use" in out
-    # The printed endpoint label is the exact, token-safe scheme://host/path. We
-    # assert the full label string (not a bare-host substring) and confirm its
-    # parsed host so the check is structural, never URL-substring sanitization.
-    expected_label = init_mod.telemetry_endpoint_label("https://worker.example.com/ingest")
-    assert expected_label == "https://worker.example.com/ingest"
-    assert expected_label in out
-    assert urllib.parse.urlsplit(expected_label).hostname == "worker.example.com"
-    assert "opted out" not in out
-    assert "no report is scheduled" not in out
-    # And the status is consistent with the generated config: enable var set and
-    # the proof-telemetry job is scheduled.
-    env = init_mod.env_assignments_for(state)
-    conf = init_mod.render_agents_conf(state)
-    assert env["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600" in conf
-
-
-def test_telemetry_step_non_interactive_status_never_leaks_token(init_mod, tmp_path, capsys):
-    # The printed endpoint label must not leak a shared ingest secret even if a
-    # tokenized URL is pasted into telemetry_url (query string or userinfo).
-    state = _state_with(init_mod, tmp_path)
-    init_mod.apply_config_overrides(
-        state,
-        {
-            "telemetry_enabled": True,
-            "telemetry_url": "https://user:s3cret@worker.example.com/ingest?token=topsecret",
-        },
-    )
-    init_mod.step_8b_telemetry(state, non_interactive=True)
-    out = capsys.readouterr().out
-    assert "Anonymous totals will use" in out
-    # The label must keep the host but strip every secret. Assert structurally on
-    # the parsed label (host present, no userinfo, empty query) rather than a
-    # bare-host substring check, and confirm the label appears verbatim in the
-    # status. Then assert the raw secrets are absent from the whole output.
-    label = init_mod.telemetry_endpoint_label(
-        "https://user:s3cret@worker.example.com/ingest?token=topsecret"
-    )
-    parsed = urllib.parse.urlsplit(label)
-    assert parsed.hostname == "worker.example.com"
-    assert parsed.username is None
-    assert parsed.password is None
-    assert parsed.query == ""
-    assert label == "https://worker.example.com/ingest"
-    assert label in out
-    assert "topsecret" not in out
-    assert "s3cret" not in out
-
-
-def test_telemetry_step_non_interactive_flag_without_url_uses_default(init_mod, tmp_path, capsys):
-    state = _state_with(init_mod, tmp_path)
-    state.telemetry_enabled = True
-    state.telemetry_url = ""
-    init_mod.step_8b_telemetry(state, non_interactive=True)
-    captured = capsys.readouterr()
-    combined = captured.out + captured.err
-    assert "alfred-proof-telemetry.luminik.workers.dev" in combined
-    assert "no report is scheduled" not in combined
-    env = init_mod.env_assignments_for(state)
-    assert env["ALFRED_TELEMETRY_URL"] == init_mod.DEFAULT_TELEMETRY_URL
-    assert "proof-telemetry" in init_mod.render_agents_conf(state)
-
-
-def test_telemetry_endpoint_label_strips_secrets(init_mod):
-    # Helper used for the status line keeps only scheme://host[:port]/path.
-    label = init_mod.telemetry_endpoint_label(
-        "https://user:s3cret@worker.example.com:8443/ingest?token=topsecret#frag"
-    )
-    assert label == "https://worker.example.com:8443/ingest"
-    assert "s3cret" not in label
-    assert "topsecret" not in label
-
-
-def test_telemetry_endpoint_label_handles_malformed_port(init_mod):
-    label = init_mod.telemetry_endpoint_label(
-        "https://worker.example.com:bad/ingest?token=topsecret"
-    )
-    assert label == "https://worker.example.com/ingest"
-    assert "topsecret" not in label
-
-
-def test_telemetry_endpoint_label_sanitizes_no_host_fallback(init_mod):
-    label = init_mod.telemetry_endpoint_label("https://user:secret@/ingest?token=top")
-    assert label == "https:///ingest"
-    assert "secret" not in label
-    assert "token" not in label
-    assert "?" not in label
-    assert "@" not in label
-
-
-def test_telemetry_endpoint_label_sanitizes_invalid_bracket_fallback(init_mod):
-    label = init_mod.telemetry_endpoint_label("https://user:secret@[bad/ingest?token=top")
-    assert label == "https://[bad/ingest"
-    assert "secret" not in label
-    assert "token" not in label
-    assert "?" not in label
-    assert "@" not in label
-
-
-def test_config_override_telemetry_opt_in(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path)
-    init_mod.apply_config_overrides(
-        state,
-        {"telemetry_enabled": True, "telemetry_url": "https://w.example.com/ingest"},
-    )
-    assert state.telemetry_enabled is True
-    assert state.telemetry_url == "https://w.example.com/ingest"
-
-
-def test_telemetry_step_interactive_uses_hosted_default(init_mod, tmp_path, monkeypatch):
-    state = _state_with(init_mod, tmp_path)
-    answers = iter(["y"])
-    monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
-    init_mod.step_8b_telemetry(state, non_interactive=False)
-    assert state.telemetry_enabled is True
-    assert state.telemetry_url == init_mod.DEFAULT_TELEMETRY_URL
-    out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
-    assert out["ALFRED_TELEMETRY_URL"] == init_mod.DEFAULT_TELEMETRY_URL
-
-
-def test_telemetry_step_interactive_opt_out(init_mod, tmp_path, monkeypatch):
-    state = _state_with(init_mod, tmp_path)
-    answers = iter(["n"])
-    monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers))
-    init_mod.step_8b_telemetry(state, non_interactive=False)
-    assert state.telemetry_enabled is False
-    assert state.telemetry_url == ""
-    out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_TELEMETRY_ENABLED"] == "0"
-
-
-def test_parse_consent_strict_truthy_only(init_mod):
-    # Explicit enabled: real bool True or a recognized truthy string.
-    for value in [True, "1", "true", "TRUE", "Yes", " on ", "yes"]:
-        assert init_mod.parse_consent(value) is True, f"{value!r} should opt in"
-
-
-def test_parse_consent_rejects_string_false_and_friends(init_mod):
-    # The bug class: bool("false") is True. parse_consent must keep these OFF.
-    for value in ["false", "False", "0", "no", "off", "", "  ", "maybe", "2"]:
-        assert init_mod.parse_consent(value) is False, f"{value!r} must stay OFF"
-
-
-def test_parse_consent_rejects_non_string_non_bool(init_mod):
-    for value in [0, 1, None, [], {}, 1.0]:
-        assert init_mod.parse_consent(value) is False, f"{value!r} must stay OFF"
-
-
-def test_config_override_telemetry_quoted_false_stays_off(init_mod, tmp_path):
-    # Regression for the Greptile CRITICAL: a quoted "false" in config (common
-    # copy-paste) must opt out.
-    state = _state_with(init_mod, tmp_path)
-    state.telemetry_enabled = False
-    init_mod.apply_config_overrides(state, {"telemetry_enabled": "false"})
-    assert state.telemetry_enabled is False
-    out = init_mod.env_assignments_for(state)
-    assert out["ALFRED_TELEMETRY_ENABLED"] == "0"
-
-
-def test_config_override_telemetry_string_true_opts_in(init_mod, tmp_path):
-    # A quoted "true" keeps telemetry enabled and normalizes to the wire "1".
-    state = _state_with(init_mod, tmp_path)
-    init_mod.apply_config_overrides(
-        state,
-        {"telemetry_enabled": "true", "telemetry_url": "https://w.example.com/ingest"},
-    )
-    assert state.telemetry_enabled is True
-    out = init_mod.env_assignments_for(state)
-    # The runtime switch is always the literal "1", regardless of config wording.
-    assert out["ALFRED_TELEMETRY_ENABLED"] == "1"
+    assert not [key for key in out if key.startswith("ALFRED_TELEMETRY_")]
 
 
 # ---------------------------------------------------------------------------
@@ -1626,18 +1332,18 @@ def test_upsert_env_file_quotes_shell_metacharacters(tmp_path, init_mod):
     init_mod.upsert_env_file(
         rc,
         {
-            "ALFRED_TELEMETRY_URL": url,
-            "ALFRED_TELEMETRY_TOKEN": token,
+            "SLACK_WEBHOOK_URL": url,
+            "EXAMPLE_TOKEN": token,
             "QUOTE_TOKEN": quote_token,
         },
     )
 
     text = rc.read_text()
-    assert f"ALFRED_TELEMETRY_URL={url}" not in text
-    assert f"ALFRED_TELEMETRY_TOKEN={token}" not in text
+    assert f"SLACK_WEBHOOK_URL={url}" not in text
+    assert f"EXAMPLE_TOKEN={token}" not in text
     parsed = init_mod.read_env_file(rc)
-    assert parsed["ALFRED_TELEMETRY_URL"] == url
-    assert parsed["ALFRED_TELEMETRY_TOKEN"] == token
+    assert parsed["SLACK_WEBHOOK_URL"] == url
+    assert parsed["EXAMPLE_TOKEN"] == token
     assert parsed["QUOTE_TOKEN"] == quote_token
 
     res = subprocess.run(
@@ -1647,7 +1353,7 @@ def test_upsert_env_file_quotes_shell_metacharacters(tmp_path, init_mod):
             (
                 'source "$1"; '
                 'printf "%s\\n%s\\n%s\\n" '
-                '"$ALFRED_TELEMETRY_URL" "$ALFRED_TELEMETRY_TOKEN" "$QUOTE_TOKEN"'
+                '"$SLACK_WEBHOOK_URL" "$EXAMPLE_TOKEN" "$QUOTE_TOKEN"'
             ),
             "bash",
             str(rc),
@@ -2250,8 +1956,7 @@ def test_seed_runtime_roster_preserves_current_managed_env_on_repair(
     assert "UNMANAGED_VALUE=keep\n" in env_text
     assert "GH_ORG=acme\n" in env_text
     assert "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token\n" in env_text
-    assert "ALFRED_TELEMETRY_ENABLED=1\n" in env_text
-    assert "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest\n" in env_text
+    assert "ALFRED_TELEMETRY_" not in env_text
     assert "ALFRED_SENIOR_DEV_REPOS=api\n" in env_text
     assert "ALFRED_SENIOR_DEV_AWS_PROFILE=senior-dev-profile\n" in env_text
     assert "ALFRED_PLANNER_REPOS=api\n" in env_text
@@ -2259,7 +1964,7 @@ def test_seed_runtime_roster_preserves_current_managed_env_on_repair(
 
     conf = (alfred_home / "launchd" / "agents.conf").read_text()
     assert "alfred.senior-dev\tsenior-dev.py" in conf
-    assert "alfred.proof-telemetry\tproof-telemetry.py" in conf
+    assert "proof-telemetry" not in conf
     assert (alfred_home / "prompts" / "senior-dev.md").exists()
 
 

@@ -163,9 +163,12 @@ Rules:
   has resolved them.
 - Planning memory may appear as advisory hints when memory is enabled, but the
   current Slack thread and readiness findings still win.
-- Chat intake never files issues, opens PRs, merges, or approves execution.
-- A draft can graduate into a GitHub issue only through an explicit action from
-  the configured approver outside the listener.
+- Chat intake never opens PRs, merges, or approves plan execution.
+- A draft becomes a GitHub issue only through the optional issue bridge, which
+  is off by default. With `ALFRED_BRIDGE_ENABLED=1`, the configured approver
+  files it by replying with an approval phrase (`ship it`, `create issue`,
+  `file issue`, or `/ship`) or reacting `:white_check_mark:` in the draft
+  thread. See [`SLACK_SETUP.md`](SLACK_SETUP.md#optional-slack-issue-bridge).
 
 ## Tone
 

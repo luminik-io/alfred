@@ -49,7 +49,7 @@ Worktree retained for inspection:
 
 ## Slack: shipped summary (daily, post-merge)
 
-When it appears: `bin/shipped-summary-daily.sh` runs (default 18:00 local).
+When it appears: `bin/shipped-summary-daily.sh` runs (default 07:35 local).
 It collects every merged `agent:authored` PR from the day and posts one
 roll-up.
 
@@ -89,74 +89,65 @@ Execution:    after approval, Architect files scoped child issues for senior-dev
 
 ## alfred doctor: clean run
 
-When it appears: `alfred doctor`. The script triggers a doctor-mode
-firing of every enabled agent (no LLM spend) and reports preflight status.
+When it appears: `alfred doctor`. The script checks engine readiness for the
+selected engines, checks that the runtime venv imports its base deps, then
+triggers a doctor-mode firing of every enabled agent (no LLM spend) and
+reports each agent's preflight status. The exit code is 0 only when nothing
+failed.
 
 ```
 $ alfred doctor
-[doctor] alfred-os doctor starting
-[doctor] ALFRED_HOME=~/.alfred
-[doctor] WORKSPACE_ROOT=~/code
-[doctor] GH_ORG=your-org
+doctor: checking configured agents
+        ALFRED_HOME=/Users/<you>/.alfred
+        WORKSPACE_ROOT=/Users/<you>/code
 
-[doctor] preflight ............................. ok
-[doctor]   gh ............................ ok (gh version 2.45.0)
-[doctor]   git ........................... ok (git 2.43.0)
-[doctor]   claude ........................ ok (Claude Code 1.2.4)
-[doctor]   codex ......................... ok (codex 0.3.1)
-[doctor]   gh auth ....................... ok (operator@example.com)
+doctor: checking configured engine readiness
+  hybrid   [architect, planner, reviewer, senior-dev] OK (ready)
+           Claude Code is compatible and signed in.
 
-[doctor] workspace repos ......................... ok
-[doctor]   ~/code/your-backend ........ ok (origin: your-org/your-backend)
-[doctor]   ~/code/your-frontend ....... ok (origin: your-org/your-frontend)
-[doctor]   ~/code/your-mobile ......... ok (origin: your-org/your-mobile)
+  alfred-venv base deps          ✅
 
-[doctor] agents (doctor-mode firings) ............ ok
-[doctor]   planner       [PLANNER-DOCTOR-OK]
-[doctor]   senior-dev    [SENIOR-DEV-DOCTOR-OK]
-[doctor]   reviewer      [REVIEWER-DOCTOR-OK]
-[doctor]   architect     [ARCHITECT-DOCTOR-OK]
-[doctor]   agent-cleanup [AGENT-CLEANUP-DOCTOR-OK]
+  agent-cleanup                  ✅ ok
+  architect                      ✅ ok
+  planner                        ✅ ok
+  reviewer                       ✅ ok
+  senior-dev                     ✅ ok
 
-[doctor] all green; fleet ready to run.
+doctor: 5 passed, 0 failed
 ```
 
 ## alfred doctor: one failure
 
-When it appears: same command, but one preflight step fails. Doctor exits
-non-zero. The fleet keeps running, but the failing agent will exit early on
-every firing until the cause is fixed.
+When it appears: same command, but one agent's preflight fails. Doctor prints
+the agent's `PREFLIGHT-FAILED` lines under its row and exits non-zero. The
+fleet keeps running, but the failing agent will exit early on every firing
+until the cause is fixed.
 
 ```
 $ alfred doctor
-[doctor] alfred-os doctor starting
-[doctor] ALFRED_HOME=~/.alfred
-[doctor] WORKSPACE_ROOT=~/code
-[doctor] GH_ORG=your-org
+doctor: checking configured agents
+        ALFRED_HOME=/Users/<you>/.alfred
+        WORKSPACE_ROOT=/Users/<you>/code
 
-[doctor] preflight ............................. ok
-[doctor]   gh ............................ ok
-[doctor]   git ........................... ok
-[doctor]   claude ........................ ok
-[doctor]   codex ......................... ok
-[doctor]   gh auth ....................... ok
+doctor: checking configured engine readiness
+  hybrid   [architect, planner, reviewer, senior-dev] OK (ready)
+           Claude Code is compatible and signed in.
 
-[doctor] workspace repos ......................... FAIL
-[doctor]   ~/code/your-backend ........ ok
-[doctor]   ~/code/your-frontend ....... ok
-[doctor]   ~/code/your-mobile ......... MISSING
-[doctor]     expected: ~/code/your-mobile
-[doctor]     hint: git clone https://github.com/your-org/your-mobile
+  alfred-venv base deps          ✅
 
-[doctor] agents (doctor-mode firings) ............ partial
-[doctor]   planner       [PLANNER-DOCTOR-OK]
-[doctor]   senior-dev    [SENIOR-DEV-PREFLIGHT-FAILED] missing checkout: your-mobile
-[doctor]   reviewer      [REVIEWER-DOCTOR-OK]
-[doctor]   architect     [ARCHITECT-DOCTOR-OK]
+  agent-cleanup                  ✅ ok
+  architect                      ✅ ok
+  planner                        ✅ ok
+  reviewer                       ✅ ok
+  senior-dev                     ❌ preflight failed
+      [SENIOR-DEV-PREFLIGHT-FAILED] 1 issue(s):
+        - checkout `/Users/<you>/code/your-mobile` missing or not a git repo
 
-[doctor] 1 failure. Fix the workspace, re-run doctor, then deploy.
-exit 1
+doctor: 4 passed, 1 failed
 ```
+
+Pass `--dev` to report config gaps as warnings (`⚠️  config gap`) instead of
+failures.
 
 ## A well-written `agent:implement` issue (Drake output)
 
@@ -247,49 +238,46 @@ existing call site changes.
 Authored by Lucius (Alfred). Engine: hybrid (claude). Turns: 17. Cost: $0.21.
 ```
 
-## Terminal: `alfred run echo --force`
+## Terminal: `alfred run echo`
 
-When it appears: the operator runs a single firing of the Echo example agent
-manually, bypassing the schedule. `--force` overrides the paused-agent check.
+When it appears: the operator starts a single firing of the Echo example
+agent manually, outside the schedule. `alfred run` asks the host scheduler to
+start the agent's unit now and returns at once; the firing's own output goes
+to the agent's log files. `--force` skips the pause-marker check, but pausing
+also unloads the agent's scheduler job, so a paused agent needs
+`alfred resume` before `alfred run` can start it.
 
 ```
-$ alfred run echo --force
-[alfred] firing echo (override: --force)
-[alfred] env: ALFRED_HOME=~/.alfred AGENT_CODENAME=echo
-[echo] preflight ok
-[echo] hello from echo at 2026-06-01T15:04:11Z
-[echo] firing complete, exit 0
-[alfred] done in 0.12s
+$ alfred run echo
+  kicked echo
+$ tail -n 1 /tmp/alfred.echo.stdout
+[ECHO-IDLE] no agent:summarise issues
 ```
 
 ## State JSON: shape under `$ALFRED_HOME/state/`
 
 When it appears: every firing reads and writes per-agent state under
-`$ALFRED_HOME/state/`. One example is the spend ledger at
-`$ALFRED_HOME/state/spend/<codename>.json`:
+`$ALFRED_HOME/state/`. One example is the per-day spend ledger at
+`$ALFRED_HOME/state/<codename>/spend-YYYY-MM-DD.json`:
 
 ```json
 {
-  "codename": "senior-dev",
-  "date": "2026-06-01",
   "firings_today": 14,
-  "successes_today": 9,
-  "failures_today": 2,
-  "noops_today": 3,
   "turns_today": 348,
   "cost_usd_today": 4.27,
-  "consecutive_failures": 0,
-  "last_firing_id": "20260601-191211-3f",
-  "last_firing_outcome": "ok",
-  "last_firing_pr": "your-backend#412",
-  "blocked_until": null
+  "successes_today": 9,
+  "failures_today": 2,
+  "blocked_until": null,
+  "last_session_id_per_target": {},
+  "consecutive_failures": 0
 }
 ```
 
-Other state files in the same directory follow the same shape principles
-(JSON object, one file per concern, no nested state machines): `code-map.json`
-for the indexer output, `global-blocked-until.json` for the fleet-wide rate
-limit signal, and `claims/<repo>-<issue>.json` for issue claim records.
+Other state files follow the same shape principles (JSON object, one file per
+concern, no nested state machines): `code-map.json` for the indexer output and
+`global-blocked-until.json` for the fleet-wide rate limit signal. Issue claims
+are not local files; they live on GitHub as labels and structured comments
+(see [`STATE_MACHINE.md`](STATE_MACHINE.md)).
 
 ## See also
 

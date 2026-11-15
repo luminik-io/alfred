@@ -250,9 +250,11 @@ __marimo__/
 .streamlit/secrets.toml
 uv.lock
 
-# Claude Code local state (worktrees, launch configs)
-.claude/
-**/.claude/
+# Claude Code local state; only the shared project settings are tracked.
+.claude/*
+!.claude/settings.json
+*/.claude/
+*/**/.claude/
 screenshots/
 .deepsec/
 .astro/

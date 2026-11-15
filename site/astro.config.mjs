@@ -423,7 +423,6 @@ export default defineConfig({
           items: [
             { label: "agent_runner API", slug: "reference/agent-runner" },
             { label: "Alfred CLI", slug: "reference/cli" },
-            { label: "Telemetry", slug: "reference/telemetry" },
             { label: "launchd plist template", slug: "reference/launchd" },
             { label: "Environment variables", slug: "reference/env" },
             { label: "Output samples", slug: "reference/output-samples" },

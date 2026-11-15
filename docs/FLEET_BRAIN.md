@@ -8,8 +8,7 @@ makes those lessons trustworthy.
 FleetBrain is a single SQLite file in your `$ALFRED_HOME`. Raw prompts, paths,
 candidate text, and firing history stay on your machine. The normal outbound
 surface is the prompt context Alfred prepends to a firing, which goes to Claude
-Code or Codex on your existing CLI auth. Anonymous aggregate usage counts are on
-by default; opt out with `alfred telemetry off`.
+Code or Codex on your existing CLI auth.
 
 ## Why it exists
 
@@ -376,13 +375,22 @@ opt-in weekly row; scheduling it while disarmed is safe.
 ## Read-only MCP bridge
 
 `alfred mcp serve` exposes a small JSON-RPC stdio surface for local MCP clients
-that want to read Alfred memory without mutating it. The exposed tools are:
+that want to read Alfred memory without mutating it. It exposes 14 tools, all
+read-only (the `TOOLS` tuple in `bin/alfred-mcp.py`):
 
 - `alfred_brain_status`
 - `alfred_memory_recall`
 - `alfred_memory_candidates`
 - `alfred_recent_file_touches`
 - `alfred_failure_patterns`
+- `alfred_who_owns`
+- `alfred_recent_changes_near`
+- `alfred_prs_touching`
+- `alfred_code_graph_summary`
+- `alfred_code_impact`
+- `alfred_code_blast_radius`
+- `alfred_code_skeleton`
+- `alfred_read_delta`
 - `alfred_memory_doctor`
 
 The bridge returns allowlisted summaries only: no raw prompts, transcripts,

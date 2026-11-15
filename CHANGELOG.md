@@ -6,6 +6,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Alfred is archived and no longer maintained. See the README status section.
+
+### Archive
+
+- Removed proof telemetry: the reporter, the `alfred telemetry` command, the
+  setup-wizard step, the `ALFRED_TELEMETRY_*` settings and the bundled
+  Cloudflare Worker collector. The hosted collector has been shut down.
+  `bin/proof-telemetry.py` remains as a stub that exits cleanly, so existing
+  `alfred.proof-telemetry` scheduler rows do not fail; delete the row from
+  `agents.conf` and redeploy.
+- Added `CLAUDE.md` and shared `.claude/settings.json`, and rewrote `AGENTS.md`
+  for the archived repository.
+- Removed the Dependabot configuration.
+- Corrected the documentation errors found in an accuracy audit, including the
+  tutorial's `claude_invoke` call, the slop detector command, the Homebrew
+  version, AWS and Slack variable names, engine defaults, MCP tool counts and
+  role schedules.
+
 ### Added
 
 - Added a permanent Tools section in Desktop Settings for the same curated battery choices used during onboarding.

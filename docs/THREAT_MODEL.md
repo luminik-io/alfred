@@ -58,23 +58,14 @@ Alfred itself can contact:
 - the selected model provider through Claude Code, Codex, or OpenCode;
 - GitHub;
 - Slack, when configured;
-- Alfred's aggregate telemetry endpoint, when enabled;
 - package and download endpoints used by installation or optional batteries.
 
 Coding CLIs, skills, MCP servers, and project commands can add other network
 destinations. Alfred does not enforce an outbound network allowlist. Use host,
 container, or network policy controls when egress must be restricted.
 
-Disable Alfred telemetry with:
-
-```sh
-alfred telemetry off
-alfred telemetry status
-```
-
-The telemetry payload excludes code, prompts, paths, repository names, branch
-names, and hostnames. See [`TELEMETRY.md`](TELEMETRY.md) for the payload and
-endpoint contract.
+Alfred sends no usage telemetry. The anonymous proof-telemetry reporter and
+its hosted collector were removed.
 
 ## Credentials and merge authority
 
@@ -118,8 +109,7 @@ Run Alfred in a test account or isolated host and inspect:
 - `alfred doctor` and engine readiness output;
 - process and network activity during a firing;
 - GitHub and Slack token scopes;
-- optional battery binaries and checksums;
-- telemetry state and payloads.
+- optional battery binaries and checksums.
 
 Open a public audit issue for a safe-to-disclose mismatch. Use the private
 security process for an exploitable vulnerability.

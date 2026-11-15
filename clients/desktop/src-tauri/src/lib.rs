@@ -624,8 +624,7 @@ fn setup_managed_runtime_static_key(key: &str) -> bool {
             | "ALFRED_OPS_WATCH_ECS_CLUSTER"
             | "ALFRED_OPS_WATCH_SENTRY_ORG"
             | "ALFRED_OPS_WATCH_AWS_PROFILE"
-    ) || key.starts_with("ALFRED_TELEMETRY_")
-        || built_in_role_aws_profile_key(key)
+    ) || built_in_role_aws_profile_key(key)
 }
 
 fn built_in_role_aws_profile_key(key: &str) -> bool {
@@ -749,9 +748,6 @@ fn preserves_stop_control(key: &str, value: &str) -> bool {
         }
         "ALFRED_AUTO_PROMOTE_KILL" => {
             !matches!(token.as_str(), "0" | "false" | "no" | "off" | "disabled")
-        }
-        "ALFRED_TELEMETRY_ENABLED" => {
-            !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled")
         }
         _ => false,
     }
@@ -4778,73 +4774,6 @@ done"#;
         restore_var("ALFRED_CODE_MAP_CLIENT_REPOS", prev_clients);
         restore_var("ALFRED_CODE_MAP_BACKEND_REPO", prev_backend);
         restore_var("ALFRED_CODE_MAP_MAX_FILES", prev_max);
-    }
-
-    #[test]
-    fn native_subprocess_env_preserves_process_telemetry_opt_out() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_home = std::env::var("HOME").ok();
-        let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_telemetry_enabled = std::env::var("ALFRED_TELEMETRY_ENABLED").ok();
-        let prev_telemetry_url = std::env::var("ALFRED_TELEMETRY_URL").ok();
-
-        let root = temp_root("alfred-telemetry-opt-out");
-        let home = root.join("home");
-        let runtime = root.join("runtime");
-        fs::create_dir_all(&home).expect("create temp home");
-        fs::create_dir_all(&runtime).expect("create temp runtime");
-        std::fs::write(
-            runtime.join(".env"),
-            "ALFRED_TELEMETRY_ENABLED=1\n\
-             ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
-        )
-        .expect("write temp env");
-
-        std::env::set_var("HOME", &home);
-        std::env::set_var("ALFRED_HOME", &runtime);
-        std::env::set_var("ALFRED_TELEMETRY_ENABLED", "0");
-        std::env::remove_var("ALFRED_TELEMETRY_URL");
-
-        let env = merged_alfred_env();
-        assert_eq!(env.get("ALFRED_TELEMETRY_ENABLED"), Some(&"0".to_string()));
-        assert_eq!(
-            env.get("ALFRED_TELEMETRY_URL"),
-            Some(&"https://telemetry.example.com/ingest".to_string())
-        );
-
-        let _ = std::fs::remove_dir_all(&root);
-        restore_var("HOME", prev_home);
-        restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("ALFRED_TELEMETRY_ENABLED", prev_telemetry_enabled);
-        restore_var("ALFRED_TELEMETRY_URL", prev_telemetry_url);
-    }
-
-    #[test]
-    fn native_subprocess_env_file_telemetry_opt_out_overrides_process_enable() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let prev_home = std::env::var("HOME").ok();
-        let prev_alfred = std::env::var("ALFRED_HOME").ok();
-        let prev_telemetry_enabled = std::env::var("ALFRED_TELEMETRY_ENABLED").ok();
-
-        let root = temp_root("alfred-file-telemetry-opt-out");
-        let home = root.join("home");
-        let runtime = root.join("runtime");
-        fs::create_dir_all(&home).expect("create temp home");
-        fs::create_dir_all(&runtime).expect("create temp runtime");
-        std::fs::write(runtime.join(".env"), "ALFRED_TELEMETRY_ENABLED=0\n")
-            .expect("write temp env");
-
-        std::env::set_var("HOME", &home);
-        std::env::set_var("ALFRED_HOME", &runtime);
-        std::env::set_var("ALFRED_TELEMETRY_ENABLED", "1");
-
-        let env = merged_alfred_env();
-        assert_eq!(env.get("ALFRED_TELEMETRY_ENABLED"), Some(&"0".to_string()));
-
-        let _ = std::fs::remove_dir_all(&root);
-        restore_var("HOME", prev_home);
-        restore_var("ALFRED_HOME", prev_alfred);
-        restore_var("ALFRED_TELEMETRY_ENABLED", prev_telemetry_enabled);
     }
 
     #[test]

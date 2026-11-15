@@ -83,16 +83,21 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_HOME_CHANNEL=alfred
 ```
 
-Or store the token in AWS Secrets Manager at `alfred/slack-bot-token` and leave
-`SLACK_BOT_TOKEN` unset. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
+Or store the token in AWS Secrets Manager at `alfred/slack-bot-token`, leave
+`SLACK_BOT_TOKEN` unset, and set `ALFRED_SECRETS_BACKEND=aws`. Override the
+secret with `ALFRED_SLACK_BOT_TOKEN_SECRET_ID` and
+`ALFRED_SLACK_BOT_TOKEN_SECRET_REGION` if needed. See [Slack setup → Optional: bot token](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md#optional-bot-token-xoxb-).
 
 ## Optional: Slack planning listener
 
 Required only for Socket Mode planning intake. Trusted users can DM or mention
 Alfred with rough work, and Alfred saves a local draft plus readiness questions.
 Registered plan/report threads can also capture trusted replies as context for
-the next pass. Chat text never approves execution; the reaction gate remains
-the only approval signal. In channels, mention Alfred on the first message;
+the next pass. Chat text never approves plan execution; that needs the
+configured approver's reaction. The exception is the optional
+[issue bridge](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md#optional-slack-issue-bridge), off by default: with `ALFRED_BRIDGE_ENABLED=1`, the
+configured approver can reply `ship it` (or another approval phrase) in a draft
+thread, and Alfred files one labeled GitHub issue. In channels, mention Alfred on the first message;
 trusted replies in that thread can continue without another mention.
 
 ```sh
@@ -118,8 +123,8 @@ See [Slack setup → Optional: Slack planning listener](https://github.com/lumin
 If you want every architect plan approved in Slack (instead of
 the file-polling fallback), wire up `lib/slack_surface/approval.py`. It reuses the
 bot token resolved above, posts the plan, and polls reactions on that one
-message until the configured approver reacts with `:white_check_mark:` (or
-`:x:` to reject).
+message until the configured approver reacts with `:white_check_mark:`,
+`:thumbsup:`, or `:+1:` (or `:x:`, `:thumbsdown:`, or `:-1:` to reject).
 
 The plan thread is also the amendment surface. The configured approver, plus
 any trusted feedback users, can reply in plain English before approval

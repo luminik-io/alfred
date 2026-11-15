@@ -56,7 +56,6 @@ CATEGORY_TITLES: dict[str, str] = {
     "slack": "Slack transport, converse, and bridge",
     "server": "Serve API and status cache",
     "scheduler": "Scheduler, cleanup, disk guardian, backup",
-    "telemetry": "Proof telemetry",
     "agents": "Per-agent caps, repos, engines",
     "ops": "Ops integrations (E2E, ops-watch, scrub)",
     "onboarding": "Onboarding and theming",

@@ -96,7 +96,6 @@ RESERVED_CODENAMES = frozenset(
         "fleet-recap-morning",
         "memory-auto-promote",
         "memory-harvest",
-        "proof-telemetry",
         "custom-agent",
         "shipped-summary",
         "shipped-summary-daily",

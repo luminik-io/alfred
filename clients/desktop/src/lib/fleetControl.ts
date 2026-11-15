@@ -45,7 +45,6 @@ const AGENT_ORDER: Record<string, number> = {
   "fleet-recap-evening": 171,
   "shipped-summary-daily": 180,
   "shipped-summary-weekly": 181,
-  "proof-telemetry": 190,
 };
 
 /**

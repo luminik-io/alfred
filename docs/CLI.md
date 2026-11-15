@@ -1,16 +1,68 @@
-# Alfred analytics CLIs
+# Alfred CLI: inspection commands and subcommand index
+
+This page is not a full CLI reference. It lists every `bin/alfred` subcommand
+in one line, then documents a few of them in detail: `alfred status`,
+`alfred agent`, `alfred slack-listener`, `alfred metrics`, `alfred usage`,
+the engine and model controls, `alfred logs`, and `alfred evidence`. For any
+other subcommand, run `alfred <command> --help`.
 
 `alfred metrics` and `alfred logs` are read-only tools for inspecting what
 the fleet wrote to disk. They never mutate state; they read
 `$ALFRED_STATE_DIR` (default `$ALFRED_HOME/state`, default `~/.alfred/state`)
-and print the result.
+and print the result. Both are thin wrappers around `bin/alfred-metrics.py`
+and `bin/alfred-logs.py`, which call library functions in `lib/metrics.py` and
+`lib/transcripts.py`.
 
-Both commands are thin argparse wrappers around library functions in
-`lib/metrics.py` and `lib/transcripts.py`. Tests inject a fake `--state-dir`
-to verify behaviour without touching the live tree.
+## All subcommands
 
-This page also documents `alfred slack-listener`, the optional Socket Mode
-listener for Slack-native planning intake and registered thread feedback.
+Generated from `python3 bin/alfred --help`:
+
+- `agents`: list configured agents.
+- `enable`: list an agent in the runner gate file.
+- `disable`: remove an agent from the runner gate file.
+- `enabled-agents`: print the list of enabled codenames.
+- `agent`: manage operator-defined runtime agents.
+- `skills`: manage curated skill packs.
+- `pause`: stop scheduled firings for an agent.
+- `resume`: reverse a pause.
+- `run`: kick a single agent now (one-shot).
+- `dry-run`: simulate one agent firing without scheduler or external side effects.
+- `clear-lock`: diagnose and clear stale agent locks.
+- `status`: show local fleet health.
+- `doctor`: run host preflight checks for the configured fleet.
+- `labels`: bootstrap GitHub labels on fleet repos.
+- `pr`: run the GitHub-native merge gate on a pull request.
+- `engine` (alias `provider`): manage per-agent engines.
+- `model`: manage per-agent model overrides.
+- `claude`: manage Claude Code account routing.
+- `codex`: inspect Codex CLI availability/auth.
+- `opencode`: inspect OpenCode CLI availability/auth.
+- `setup-token`: mint a long-lived Claude OAuth token for scheduled firings.
+- `setup-architect`: configure architect parent-repo and approval-gate settings.
+- `architect`: manage architect cross-repo coordination.
+- `auth`: inspect Claude Code, Codex, and OpenCode readiness.
+- `metrics`: weekly fleet rollup of firings/cost/turns.
+- `benchmark`: reproducible self-benchmark from existing telemetry (throughput/quality/etc.).
+- `usage`: local Claude Code + Codex subscription usage and remaining limits.
+- `logs`: inspect stream-JSON transcripts for one agent.
+- `evidence`: manage saved evidence for one local run.
+- `brain`: inspect and seed local fleet-brain memory.
+- `memory`: inspect Alfred's unified memory plane.
+- `code-memory`: inspect, index, or serve code-structure memory.
+- `code-map`: build, export, or query Alfred's local JSON code graph.
+- `capabilities`: inspect local code graph, token, and skill capabilities.
+- `batteries`: list or toggle Alfred's opt-in enhancements (memory, compression, code graph).
+- `github-poll`: poll GitHub issues/PRs into fleet-brain.
+- `mcp`: serve read-only Alfred MCP tools.
+- `demo`: watch the team plan, build, catch a bug, and ship with a supported engine.
+- `serve`: open the read-only localhost dashboard.
+- `schedule`: inspect or edit configured agent cadences.
+- `assign`: route an existing issue to the right agent lane.
+- `spec`: create and lint specs for agent work.
+- `goal`: manage the durable goal ledger.
+- `slack-listener` (alias `slack`): run or test the Slack planning listener.
+- `slack-thread-sync`: post fleet progress (claimed/PR/CI/merged) to issue-filing Slack threads.
+- `shipped`: summarize shipped GitHub activity.
 
 ## Configuration
 
@@ -19,35 +71,38 @@ listener for Slack-native planning intake and registered thread feedback.
 | `ALFRED_STATE_DIR` | Explicit state-root override | unset |
 | `ALFRED_HOME` | Runtime root containing `state/` | `~/.alfred` |
 
-Both commands also accept `--state-dir PATH` to override at the call site.
+`alfred metrics` and `alfred logs` do not accept `--state-dir`; set
+`ALFRED_STATE_DIR` instead. The underlying scripts, `bin/alfred-metrics.py`
+and `bin/alfred-logs.py`, accept `--state-dir PATH` when you run them
+directly.
 
 ## `alfred status`
 
 `alfred status` is the one-screen fleet health view. It prints a `global:` block
-of sentinels (rate-limit block, Slack webhook cache, AWS profiles, engine auth)
-followed by one row per agent: last fired, today's fires/ok/fail, current fail
-streak, turns, spend, and state (`ok`, `paused`, in-flight, locked, or held for
-approval).
+(host scheduler, global rate-limit block, Slack webhook cache age) followed by
+one row per agent: scheduler load state (`yes`, `no`, `pause`, or `off`),
+engine, last fired, today's fires/ok/fail, current fail streak, turns, and
+state (`ok`, paused, in-flight, stale lock, awaiting approval, blocked, or
+`stderr fresh`). Rows use the display name from the active theme. Pass
+`--json` for machine-readable output or `--slack` for a Slack summary.
 
 ```text
 alfred-status @ 2026-06-25 18:35:01
-alfred_home=~/.alfred
+alfred_home=/Users/<you>/.alfred
 
 global:
-  ✅ no global rate-limit block
-  ✅ slack webhook cache: fresh
-  ✅ AWS dedicated profiles: 3/3 usable
-  ✅ engine auth: claude ok, codex ok
+  scheduler: launchd
+  global block: none
+  slack webhook cache: 3.2h old
 
-agent          load  eng     fired  fires  ok  fail  streak  turns  cost    state
---------------------------------------------------------------------------------
-planner        ✅    hybrid  12m    8      7   1     0       52     $0.96   ok
-senior-dev     ✅    hybrid  3m     12     9   3     0       78     $1.42   ok
-reviewer       ✅    hybrid  never  9      9   0     0       123    $2.30   ok
-test-engineer  ✅    hybrid  never  1      1   0     0       49     $0.80   ok
-architect      ✅    hybrid  never  10     0   0     0       0      $0.00   ok
-fixer          ✅    hybrid  never  20     0   0     0       0      $0.00   ok
-e2e-runner     ⏸     -       never  0      0   0     0       0      $0.00   ⏸️ paused
+agent                  load  eng    fired    fires ok  fail streak turns  state
+-------------------------------------------------------------------------------
+Drake                  yes   hybrid 12m      8     7   1    0      52     ok
+Lucius                 yes   hybrid 3m       12    9   3    0      78     in-flight
+Ra's al Ghul           yes   hybrid 1h05m    9     9   0    0      123    ok
+Bane                   yes   hybrid never    0     0   0    0      0      ok
+Batman                 off   hybrid never    0     0   0    0      0      ok
+Huntress               pause -      never    0     0   0    0      0      paused
 ```
 
 The numbers above are illustrative. Your own output shows your configured
@@ -136,13 +191,13 @@ alfred metrics --json                   # machine-readable
 ```
 alfred-metrics - last 7 days @ 2026-05-23 12:17 UTC
 
-codename     firings  ok    fail  turns   codex  ctok   cost     tools  top tool       skills
---------------------------------------------------------------------------------------------------
-senior-dev   12       9     3     78      2      4500   $1.42    34     Bashx14        review x3
-planner      8        7     1     52      0      0      $0.96    21     Readx9         -
-your-agent   3        2     1     14      0      0      $0.42    2      Readx1         -
---------------------------------------------------------------------------------------------------
-TOTAL        23       18    5     144     2      4500   $2.80    57
+codename               firings  ok    fail  turns   codex  ctok     cost     tools   edits  reads  top tool               skills
+--------------------------------------------------------------------------------------------------------------------------------
+senior-dev             12       9     3     78      2      4500     $1.42    34      6      11     Bashx14                review x3
+planner                8        7     1     52      0      0        $0.96    21      0      9      Readx9                 -
+your-agent             3        2     1     14      0      0        $0.42    2       0      1      Readx1                 -
+--------------------------------------------------------------------------------------------------------------------------------
+TOTAL                  23       18    5     144     2      4500     $2.80    57      6      21
 
 fleet success rate: 78.3%  (over 23 completed firings; 0 no-ops not counted)
 ```
@@ -151,9 +206,9 @@ fleet success rate: 78.3%  (over 23 completed firings; 0 no-ops not counted)
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Success |
-| 1 | User error (bad `--since`, unknown codename) |
-| 2 | System error (state directory missing) |
+| 0 | Success. An unparseable `--since` prints a warning, falls back to 7 days, and still exits 0. |
+| 1 | `--codename` names an agent with no state, while other agents do have state |
+| 2 | State directory missing, or an argparse usage error |
 
 ## `alfred usage`
 
@@ -252,7 +307,7 @@ skill invocations:
 ### Firing dump
 
 `--firing-id ID` pretty-prints a single transcript: system/user/assistant
-events one per line, with tool-use blocks summarised inline.
+events one per line, with tool-use blocks summarized inline.
 
 ```
 [system] init
@@ -262,6 +317,14 @@ events one per line, with tool-use blocks summarised inline.
 [tool_use Skill] /review
 [result] subtype=success turns=4 cost=$0.1400 stop_reason=end_turn
 ```
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Success. An unknown codename also exits 0 with `no transcripts under ...` when no agent has transcripts yet. |
+| 1 | `--firing-id` not found, or an unknown codename while other agents do have transcripts |
+| 2 | State directory missing, or an argparse usage error |
 
 ## `alfred evidence`
 
@@ -299,13 +362,12 @@ different transcript can be attached to the run.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Success |
-| 1 | User error (unknown codename, missing firing id) |
-| 2 | System error (state directory missing) |
+| 0 | Success, including "already imported" and "no managed transcript found" |
+| 2 | Any error: missing run or repository mismatch, missing source file, import conflict, or an argparse usage error |
 
 ## State directory layout
 
-Both commands assume:
+`alfred metrics`, `alfred logs`, and `alfred evidence` assume:
 
 ```
 $ALFRED_HOME/state/
@@ -323,17 +385,22 @@ $ALFRED_HOME/state/
         <firing-id>.last.md
   imports/
     <codename>/
-      <firing-id>/
+      <run-id>/
         manifest.json
-        stdout.txt
+        transcript.jsonl   # Claude imports
+        stdout.txt         # Codex imports
+        events.jsonl       # OpenCode imports
 ```
 
-The `claude_invoke_streaming()` helper in `lib/agent_runner/` writes
-transcripts here automatically. The SpendState helper writes spend files
-on each firing. Hosts that have not run any agent yet will have an empty
-or missing state directory; both CLIs degrade gracefully (exit 2 with a
-clear message when `--state-dir` is absent, or render `(no firings or
-transcripts in window)` when present but empty).
+Each import directory holds `manifest.json` plus one transcript file, named
+for the engine passed to `--engine`.
+
+The Claude invocation helpers in `lib/agent_runner/` write transcripts
+here. The SpendState helper writes spend files on each firing. Hosts that
+have not run any agent yet will have an empty or missing state directory.
+`alfred metrics` and `alfred logs` exit 2 with a clear message when the state
+directory is missing. When it exists but is empty, `alfred metrics` prints
+`(no firings or transcripts in window)`.
 
 ## Library reuse
 

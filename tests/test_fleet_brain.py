@@ -1581,8 +1581,7 @@ def test_sum_github_changed_lines_skips_historical_unknown_line_metrics(
 def test_count_github_items_counts_past_the_500_list_cap(brain: FleetBrain) -> None:
     # list_github_items clamps limit to 500, so len(list(...)) freezes at 500 on
     # a busy brain. count_github_items does an exact SQL COUNT(*) and must report
-    # the true total. Regression guard for the proof-telemetry under-count
-    # (finding #4): seed >500 PRs and assert the count exceeds the list cap.
+    # the true total. Seed >500 PRs and assert the count exceeds the list cap.
     total = 612
     merged = 400
     for n in range(1, total + 1):

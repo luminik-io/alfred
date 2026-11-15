@@ -28,7 +28,7 @@ What it reaches, and why:
   using the auth those tools already stored. It never reads your provider
   password and never asks for an API key.
 - **Outbound network** to the selected model provider, GitHub, optional Slack,
-  Alfred telemetry when enabled, and package or battery download endpoints.
+  and package or battery download endpoints.
   Coding CLIs, skills, MCP servers, and project commands can add other
   destinations. Alfred does not enforce an outbound allowlist. See the
   [threat model](THREAT_MODEL.md).

@@ -153,7 +153,6 @@ const ROLE_KEYWORDS: ReadonlyArray<[WorkflowRole, readonly string[]]> = [
       "brief",
       "recap",
       "summary",
-      "telemetry",
       "infra",
       "uptime",
     ],

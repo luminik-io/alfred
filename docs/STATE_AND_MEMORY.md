@@ -169,13 +169,13 @@ the memory provider chain, with embedded SQLite first by default.
 
 Alfred stores run state, transcripts, lessons, and local ledgers under
 `$ALFRED_HOME`. The selected coding CLI sends prompt context to its model provider.
-Alfred can also contact GitHub, optional Slack, telemetry when enabled, and
+Alfred can also contact GitHub, optional Slack, and
 package or battery download endpoints. Coding CLIs, skills, MCP servers, and
 project commands can add other destinations.
 
 Deleting `$ALFRED_HOME/` removes Alfred's local state. It does not remove data
 already sent to an external provider or service. See the
-[threat model](./THREAT_MODEL.md) and [telemetry contract](./TELEMETRY.md).
+[threat model](./THREAT_MODEL.md).
 
 ## See also
 

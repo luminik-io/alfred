@@ -7,11 +7,10 @@
 Alfred ships a fleet of autonomous agents, and a lot of the prose around
 them starts as an LLM draft. The slop detector is the quality gate that
 catches "seamlessly transform your workflow" before it lands on the site.
-Alfred scans its own marketing copy for LLM tells before it ships.
 
 ## What it does
 
-`alfred slop-detect` walks a directory, reads every file matching the
+`python3 bin/slop-detector.py` walks a directory, reads every file matching the
 rule pack's include globs (`*.md`, `*.mdx`, `*.astro`, `*.html`, etc.),
 and reports every match against the configured rule pack. Code fences,
 inline backticks, HTML comments, and JSX comments are stripped before
@@ -35,16 +34,18 @@ Buyers learn to spot LLM-authored copy fast. "Unlock", "leverage",
 "seamless", "transform", "your stack", "the part I did not see coming",
 and the "X. Y. The Z." three-beat rhythm are tells. Once a prospect
 clocks the copy as AI-drafted, the trust budget for the rest of the page
-drops. This tool runs in CI on every PR that touches public copy and
-exits 1 if it finds slop. The opinionated default pack is enough on day
+drops. Run it in CI on every PR that touches public copy; with
+`--fail-on-match` it exits 1 if it finds slop. It is a standalone script,
+not an `alfred` subcommand. The opinionated default pack is enough on day
 one; teams customize as their voice matures.
 
 ## CLI
 
 ```sh
-alfred slop-detect [--path <dir>] [--rules <json>] \
-                   [--report md|json] [--fail-on-match] \
-                   [--min-severity <name>] [--max-findings <n>]
+python3 bin/slop-detector.py [--path <dir>] [--rules <json>] \
+                             [--report md|json] [--fail-on-match] \
+                             [--min-severity <name>] [--max-findings <n>] \
+                             [--quiet]
 ```
 
 | Flag | Default | Purpose |
@@ -143,9 +144,10 @@ A first draft from an LLM:
 > the full power of your stack. The part I did not see coming: how
 > quickly the team dove in.
 
-The detector emits four CAUTION findings (`seamlessly`, `transform`,
-`your stack`, `dive in`) and one DRIFT finding
-(`the part I did not see coming`). After a rewrite:
+The detector emits three CAUTION findings (`seamlessly`, `unlock`,
+`your stack`) and one DRIFT finding (`the part I did not see coming`).
+`transforms` and `dove in` do not match: `word` rules do not expand
+inflections, so add those forms as separate rules if you want them. After a rewrite:
 
 > The integration writes attendee data into your CRM during the event
 > and reconciles it against your meeting list at the close. The team

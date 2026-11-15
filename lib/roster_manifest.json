@@ -327,19 +327,6 @@
         "mathematicians": "Shakuntala",
         "philosophers": "Locke"
       }
-    },
-    {
-      "codename": "proof-telemetry",
-      "role": "ops",
-      "names": {
-        "batman": "Telemetry",
-        "transformers": "Blaster",
-        "justice-league": "Firestorm",
-        "programmers": "Sutherland",
-        "scientists": "Rutherford",
-        "mathematicians": "Kolmogorov",
-        "philosophers": "Voltaire"
-      }
     }
   ]
 }

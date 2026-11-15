@@ -54,7 +54,7 @@ const labels = [
   { label: "agent:in-flight", body: "Lucius adds this when it takes the task. Other agents see it and skip the task." },
   { label: "agent:pr-open", body: "Added when the agent opens a pull request. Ra's al Ghul watches for this label to start a review." },
   { label: "agent:done", body: "Added when the pull request merges. The task is finished and drops out of the active list." },
-  { label: "agent:needs-changes", body: "Ra's al Ghul adds this when a review asks for changes. senior-dev picks it back up on its next run." },
+  { label: "do-not-pickup", body: "You add this to keep every agent off a task. It can sit alongside any of the labels above. When a review asks for changes, Nightwing works from the review comments on the pull request; there is no separate label for that." },
 ];
 ---
 

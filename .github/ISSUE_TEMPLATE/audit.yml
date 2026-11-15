@@ -27,7 +27,6 @@ body:
         - Privacy claim does not match the code
         - Containment boundary can be bypassed
         - macOS permission not explained
-        - Telemetry behaving differently than documented
         - Other trust / privacy concern
     validations:
       required: true
@@ -36,7 +35,7 @@ body:
     id: claim
     attributes:
       label: The claim you tested
-      description: Quote the exact sentence from the README, threat model, permissions doc, or telemetry doc that you are checking.
+      description: Quote the exact sentence from the README, threat model, or permissions doc that you are checking.
     validations:
       required: true
 

@@ -112,7 +112,6 @@ Subcommands today:
   alfred shipped              Summarize merged PRs, issues, LOC, and
                               model/config changes. ``--self-proof`` reports the
                               share of merged PRs shipped by Alfred agents.
-  alfred telemetry ...        Inspect or change anonymous usage totals.
   alfred skills ...           Manage curated skill packs (`list`,
                               `install <pack>`, `installed`). Vendored packs
                               copy in offline; reference-install packs fetch
@@ -147,7 +146,6 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 # Resolve lib/ relative to the script regardless of how it was invoked.
 # In the fleet layout the script lives in ``$ALFRED_HOME/bin/`` and the
@@ -236,32 +234,6 @@ def _home_child(name: str) -> Path:
 
 PRIMARY_CLAUDE_DIR = _home_child(".claude")
 SECONDARY_CLAUDE_DIR = _home_child(".claude-secondary")
-TELEMETRY_LABEL = "alfred.proof-telemetry"
-TELEMETRY_ROW = (
-    f"{TELEMETRY_LABEL}\tproof-telemetry.py\tinterval:3600\tno\t"
-    "alfred.proof-telemetry\tAnonymous usage totals"
-)
-TELEMETRY_ENV_KEYS = (
-    "ALFRED_TELEMETRY_ENABLED",
-    "ALFRED_TELEMETRY_URL",
-    "ALFRED_TELEMETRY_TOKEN",
-)
-TELEMETRY_TRUSTED_TOKEN_ENV = "ALFRED_TELEMETRY_TRUSTED_TOKEN"
-DEFAULT_TELEMETRY_URL_ENV = "ALFRED_DEFAULT_TELEMETRY_URL"
-TELEMETRY_ENV_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
-TELEMETRY_ENV_BANNER_RE = re.compile(
-    r"(?:\n{0,2})# alfred telemetry, generated below this line\. Safe to re-run\.\n"
-    r"(?:ALFRED_TELEMETRY_(?:ENABLED|URL|TOKEN)=.*(?:\n|$))*",
-    re.MULTILINE,
-)
-TELEMETRY_SOURCE_MARKER = "source-repo.txt"
-TELEMETRY_DISABLED_VALUES = {"0", "false", "no", "off", "disabled"}
-DEFAULT_TELEMETRY_URL = "https://alfred-proof-telemetry.luminik.workers.dev/ingest"
-TELEMETRY_TOKEN_FILENAME = "telemetry-token"
-TELEMETRY_TOKEN_ENDPOINT_FILENAME = "telemetry-token-endpoint"
-SUPPORT_SCHEDULER_LABELS = {TELEMETRY_LABEL}
-SUPPORT_SCHEDULER_CODENAMES = {"proof-telemetry"}
-SUPPORT_SCHEDULER_SCRIPTS = {"proof-telemetry.py"}
 _SCHEDULER_COMMAND_TIMEOUT_S = 15
 _NATIVE_DRY_RUN_TIMEOUT_S = 300
 _DELEGATED_COMMAND_TIMEOUT_S = 600
@@ -272,9 +244,6 @@ _INTERACTIVE_COMMAND_TIMEOUT_S = 3600
 # Non-engine budget after the demo's four steps: bounded test run (120s),
 # planted-bug check (30s), 30s-per-step git helpers, and setup time.
 _DEMO_VERIFICATION_BUDGET_S = 420
-ALFRED_INIT_BANNER_RE = re.compile(
-    r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
-)
 ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 # Forwarded flags whose values are secrets (setup-token forwards --token,
@@ -351,14 +320,6 @@ def _terminate_process_group(process: subprocess.Popen[Any]) -> None:
     with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
     process.wait()
-
-
-def _switch_value(raw: str) -> str:
-    value = raw.strip()
-    comment_at = value.find("#")
-    if comment_at > 0 and value[comment_at - 1].isspace():
-        value = value[:comment_at].strip()
-    return value.lower()
 
 
 DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
@@ -920,157 +881,6 @@ def _hydrate_cli_env_from_runtime_env() -> None:
         os.environ["WORKSPACE_ROOT"] = str(_home_child("code"))
 
 
-def _telemetry_values() -> dict[str, str]:
-    values = _read_env_values(_runtime_env_path())
-    for key in (
-        *TELEMETRY_ENV_KEYS,
-        TELEMETRY_TRUSTED_TOKEN_ENV,
-        DEFAULT_TELEMETRY_URL_ENV,
-    ):
-        if key in os.environ:
-            values[key] = os.environ[key]
-    return values
-
-
-def _telemetry_enabled(values: dict[str, str]) -> bool:
-    raw = values.get("ALFRED_TELEMETRY_ENABLED")
-    if raw is None:
-        return True
-    return _switch_value(raw) not in TELEMETRY_DISABLED_VALUES
-
-
-def _default_telemetry_url(values: dict[str, str] | None = None) -> str:
-    source = values or {}
-    override = source.get(DEFAULT_TELEMETRY_URL_ENV)
-    if override is not None:
-        return override.strip()
-    return DEFAULT_TELEMETRY_URL
-
-
-def _telemetry_effective_url(values: dict[str, str]) -> str:
-    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
-    return configured or _default_telemetry_url(values)
-
-
-def _telemetry_previous_clear_url(values: dict[str, str]) -> str:
-    try:
-        token_endpoint = _telemetry_state_token_endpoint_path().read_text(encoding="utf-8").strip()
-    except OSError:
-        token_endpoint = ""
-    if token_endpoint and _telemetry_state_token_exists():
-        return token_endpoint
-    configured = values.get("ALFRED_TELEMETRY_URL", "").strip()
-    if configured:
-        return configured
-    return token_endpoint or _default_telemetry_url(values)
-
-
-def _telemetry_state_token_path() -> Path:
-    return agent_runner.STATE_ROOT / TELEMETRY_TOKEN_FILENAME
-
-
-def _telemetry_state_token_endpoint_path() -> Path:
-    return agent_runner.STATE_ROOT / TELEMETRY_TOKEN_ENDPOINT_FILENAME
-
-
-def _telemetry_state_install_id_path() -> Path:
-    return agent_runner.STATE_ROOT / "telemetry-install-id"
-
-
-def _telemetry_state_token_exists() -> bool:
-    try:
-        return bool(_telemetry_state_token_path().read_text(encoding="utf-8").strip())
-    except OSError:
-        return False
-
-
-def _read_telemetry_state_token() -> str:
-    try:
-        return _telemetry_state_token_path().read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
-
-
-def _delete_telemetry_state_token() -> bool:
-    removed = False
-    try:
-        _telemetry_state_token_path().unlink()
-        removed = True
-    except FileNotFoundError:
-        pass
-    except OSError:
-        pass
-    try:
-        _telemetry_state_token_endpoint_path().unlink()
-        removed = True
-    except FileNotFoundError:
-        pass
-    except OSError:
-        pass
-    return removed
-
-
-def _delete_telemetry_install_id() -> bool:
-    try:
-        _telemetry_state_install_id_path().unlink()
-        return True
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return False
-
-
-def _quote_env_value(value: str) -> str:
-    if "\x00" in value or "\n" in value or "\r" in value:
-        raise ValueError("telemetry values must be single-line strings")
-    return shlex.quote(value)
-
-
-def _write_telemetry_env_block(path: Path, values: dict[str, str]) -> None:
-    existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    existing = TELEMETRY_ENV_BANNER_RE.sub("", existing).strip()
-    existing = _strip_telemetry_env_lines(existing).strip()
-    block = [TELEMETRY_ENV_BANNER]
-    for key in TELEMETRY_ENV_KEYS:
-        if key in values and values[key] != "":
-            block.append(f"{key}={_quote_env_value(values[key])}")
-    block_text = "\n".join(block)
-
-    init_match = ALFRED_INIT_BANNER_RE.search(existing)
-    if init_match:
-        prefix = existing[: init_match.start()].rstrip()
-        suffix = existing[init_match.start() :].lstrip()
-        parts = [part for part in (prefix, block_text, suffix) if part]
-        new_text = "\n\n".join(parts) + "\n"
-    else:
-        parts = [part for part in (existing, block_text) if part]
-        new_text = "\n\n".join(parts) + "\n"
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.tmp")
-    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, new_text.encode("utf-8"))
-    finally:
-        os.close(fd)
-    os.replace(tmp, path)
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
-
-
-def _strip_telemetry_env_lines(text: str) -> str:
-    kept: list[str] = []
-    for raw in text.splitlines():
-        line = raw.strip()
-        if line.startswith("export "):
-            line = line[len("export ") :].lstrip()
-        key = line.partition("=")[0].strip()
-        if key in TELEMETRY_ENV_KEYS:
-            continue
-        kept.append(raw)
-    return "\n".join(kept)
-
-
 def _alfred_home_path() -> Path:
     configured = os.environ.get("ALFRED_HOME")
     if configured:
@@ -1140,328 +950,6 @@ def _ensure_requested_home_scaffolding() -> None:
         (_alfred_home_path() / "state").mkdir(parents=True, exist_ok=True)
 
 
-def _source_agents_conf_for_root(root: Path) -> Path | None:
-    if not (root / "deploy.sh").exists():
-        return None
-    launchd_dir = root / "launchd"
-    if not launchd_dir.exists():
-        return None
-    return launchd_dir / "agents.conf"
-
-
-def _telemetry_source_agents_conf_path(alfred_home: Path) -> Path | None:
-    """Return the deploy-source ``agents.conf`` when it can be identified."""
-    candidates: list[str] = []
-    for env_name in ("ALFRED_REPO", "ALFRED_SOURCE_DIR"):
-        raw = os.environ.get(env_name, "").strip()
-        if raw:
-            candidates.append(raw)
-
-    source_marker = alfred_home / "launchd" / TELEMETRY_SOURCE_MARKER
-    with contextlib.suppress(OSError):
-        raw_marker = source_marker.read_text(encoding="utf-8").strip()
-        if raw_marker:
-            candidates.append(raw_marker)
-
-    candidates.append(str(_HERE.parent))
-    seen: set[str] = set()
-    for raw in candidates:
-        expanded = os.path.expandvars(raw).strip()
-        if not expanded:
-            continue
-        root = Path(expanded).expanduser()
-        try:
-            key = str(root.resolve())
-        except OSError:
-            key = str(root)
-        if key in seen:
-            continue
-        seen.add(key)
-        conf = _source_agents_conf_for_root(root)
-        if conf is not None:
-            return conf
-    return None
-
-
-def _telemetry_agents_conf_path(raw: str | None = None) -> Path:
-    if raw:
-        return Path(raw).expanduser()
-    alfred_home = _alfred_home_path()
-    source = _telemetry_source_agents_conf_path(alfred_home)
-    if source is not None:
-        return source
-    runtime = alfred_home / "launchd" / "agents.conf"
-    if runtime.exists():
-        return runtime
-    checkout = _HERE.parent / "launchd" / "agents.conf"
-    if checkout.exists():
-        return checkout
-    return runtime
-
-
-def _telemetry_row_state(path: Path) -> str:
-    if not path.exists():
-        return "missing"
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        stripped = raw.lstrip()
-        if stripped.startswith("#"):
-            candidate = stripped.lstrip("#").lstrip()
-            if candidate.startswith(f"{TELEMETRY_LABEL}\t"):
-                return "commented"
-        elif stripped.startswith(f"{TELEMETRY_LABEL}\t"):
-            return "present"
-    return "absent"
-
-
-def _ensure_telemetry_scheduler_row(path: Path, schedule: str) -> bool:
-    row = TELEMETRY_ROW
-    if schedule != "interval:3600":
-        row = row.replace("\tinterval:3600\t", f"\t{schedule}\t", 1)
-    existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines: list[str] = []
-    inserted = False
-    changed = not path.exists()
-    for raw in existing.splitlines():
-        candidate = raw.lstrip().lstrip("#").lstrip()
-        if candidate.startswith(f"{TELEMETRY_LABEL}\t"):
-            if not inserted:
-                lines.append(row)
-                inserted = True
-            changed = True
-            continue
-        lines.append(raw)
-    if not inserted:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(row)
-        changed = True
-    if changed:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return changed
-
-
-def _remove_telemetry_scheduler_row(path: Path) -> bool:
-    if not path.exists():
-        return False
-    lines = path.read_text(encoding="utf-8").splitlines()
-    kept = [
-        raw
-        for raw in lines
-        if not raw.lstrip().lstrip("#").lstrip().startswith(f"{TELEMETRY_LABEL}\t")
-    ]
-    if kept == lines:
-        return False
-    path.write_text("\n".join(kept).rstrip() + "\n", encoding="utf-8")
-    return True
-
-
-def _telemetry_deploy_hint(conf: Path) -> str:
-    deploy_sh = conf.parent.parent / "deploy.sh"
-    if deploy_sh.exists():
-        return f"alfred: run `bash {deploy_sh}` to install the scheduler change"
-    return "alfred: run `bash deploy.sh` from the source checkout to install the scheduler change"
-
-
-def _telemetry_url_error(raw_url: str) -> str | None:
-    parsed = urlparse(raw_url)
-    if parsed.scheme == "https" and parsed.netloc:
-        return None
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme == "http" and host in {"localhost", "127.0.0.1", "::1"}:
-        return None
-    return "telemetry endpoint must be HTTPS; localhost HTTP is allowed for local worker tests"
-
-
-def _telemetry_schedule_error(schedule: str) -> str | None:
-    if not schedule:
-        return "schedule must not be empty"
-    if any(ch in schedule for ch in "\t\r\n"):
-        return "schedule must not contain tabs or newlines"
-    if schedule.startswith("interval:"):
-        raw_seconds = schedule.removeprefix("interval:")
-        if raw_seconds.isdigit() and int(raw_seconds) > 0:
-            return None
-        return "interval schedule must look like interval:1200"
-    if schedule.startswith("cron:"):
-        raw_parts = schedule.removeprefix("cron:").split(":")
-        if len(raw_parts) == 2:
-            raw_hour, raw_minute = raw_parts
-        elif len(raw_parts) == 3:
-            raw_weekday, raw_hour, raw_minute = raw_parts
-            if not raw_weekday.isdigit() or not 0 <= int(raw_weekday) <= 6:
-                return "weekly cron schedule must use weekday 0-6"
-        else:
-            return "schedule must look like interval:3600, cron:9:10, or cron:0:22:00"
-        if not raw_hour.isdigit() or not 0 <= int(raw_hour) <= 23:
-            return "cron schedule hour must be 0-23"
-        if not raw_minute.isdigit() or not 0 <= int(raw_minute) <= 59:
-            return "cron schedule minute must be 0-59"
-        return None
-    return "schedule must start with interval: or cron:"
-
-
-def cmd_telemetry_status(args: argparse.Namespace) -> int:
-    env_file = _runtime_env_path()
-    conf = _telemetry_agents_conf_path(args.agents_conf)
-    values = _telemetry_values()
-    enabled = _telemetry_enabled(values)
-    url = _telemetry_effective_url(values)
-    token = values.get("ALFRED_TELEMETRY_TOKEN", "").strip()
-    trusted_token = (
-        values.get(TELEMETRY_TRUSTED_TOKEN_ENV, "")
-        or os.environ.get(TELEMETRY_TRUSTED_TOKEN_ENV, "")
-    ).strip()
-    install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
-    payload = {
-        "enabled": enabled,
-        "endpoint": url,
-        "token_configured": bool(token) or _telemetry_state_token_exists(),
-        "trusted_token_configured": bool(trusted_token),
-        "env_file": str(env_file),
-        "agents_conf": str(conf),
-        "scheduler_row": _telemetry_row_state(conf),
-        "install_id_path": str(install_id_path),
-        "install_id_exists": install_id_path.exists(),
-        "token_path": str(_telemetry_state_token_path()),
-        "impact_page": "https://alfred.luminik.io/impact/",
-    }
-    if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0
-    print(f"telemetry: {'on' if enabled else 'off'}")
-    print(f"endpoint: {url or '(unset)'}")
-    print(f"token: {'set' if payload['token_configured'] else 'unset'}")
-    print(f"trusted token: {'set' if payload['trusted_token_configured'] else 'unset'}")
-    print(f"scheduler row: {payload['scheduler_row']} ({conf})")
-    print(
-        f"install id: {'present' if install_id_path.exists() else 'not created'} ({install_id_path})"
-    )
-    print("public page: https://alfred.luminik.io/impact/")
-    if enabled and payload["scheduler_row"] != "present":
-        print(
-            "warning: usage totals are not scheduled; run `alfred telemetry on`",
-            file=sys.stderr,
-        )
-    return 0
-
-
-def cmd_telemetry_on(args: argparse.Namespace) -> int:
-    env_file = _runtime_env_path()
-    conf = _telemetry_agents_conf_path(args.agents_conf)
-    current = _telemetry_values()
-    url = (
-        args.url or current.get("ALFRED_TELEMETRY_URL") or _default_telemetry_url(current)
-    ).strip()
-    if not url:
-        print("alfred telemetry on: no telemetry collector configured", file=sys.stderr)
-        return 2
-    url_error = _telemetry_url_error(url)
-    if url_error:
-        print(f"alfred telemetry on: {url_error}", file=sys.stderr)
-        return 2
-    schedule_error = _telemetry_schedule_error(args.schedule)
-    if schedule_error:
-        print(f"alfred telemetry on: {schedule_error}", file=sys.stderr)
-        return 2
-    values = {
-        "ALFRED_TELEMETRY_ENABLED": "1",
-        "ALFRED_TELEMETRY_URL": url,
-    }
-    replacement_token = (args.token or "").strip()
-    current_token = (current.get("ALFRED_TELEMETRY_TOKEN") or "").strip()
-    token = (replacement_token or current_token).strip()
-    if token and (not args.clear_token or replacement_token):
-        values["ALFRED_TELEMETRY_TOKEN"] = token
-    if args.clear_token:
-        clear_values = dict(current)
-        if not clear_values.get("ALFRED_TELEMETRY_URL"):
-            clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
-        clear_result = _clear_previous_telemetry_report(clear_values)
-        clear_status = str(clear_result.get("status") or "")
-        clear_done = clear_status in {"sent", "no_url", "no_install_id"}
-        if clear_done:
-            _delete_telemetry_state_token()
-            _delete_telemetry_install_id()
-        else:
-            retry_token = current_token or _read_telemetry_state_token()
-            if retry_token:
-                values["ALFRED_TELEMETRY_TOKEN"] = retry_token
-                retry_url = str(clear_values.get("ALFRED_TELEMETRY_URL") or "").strip()
-                if retry_url:
-                    values["ALFRED_TELEMETRY_URL"] = retry_url
-            print(
-                "warning: kept install id and token so previous usage totals can be cleared later",
-                file=sys.stderr,
-            )
-    _write_telemetry_env_block(env_file, values)
-    _ensure_telemetry_scheduler_row(conf, args.schedule)
-    print("alfred: telemetry enabled")
-    print(f"alfred: wrote {env_file}")
-    print(f"alfred: scheduled {TELEMETRY_LABEL} in {conf}")
-    print(_telemetry_deploy_hint(conf))
-    return 0
-
-
-def _clear_previous_telemetry_report(values: dict[str, str]) -> dict[str, object]:
-    try:
-        import proof_telemetry
-    except Exception as exc:
-        return {"status": "error", "sent": False, "error": str(exc)}
-    return proof_telemetry.clear_report(env=values)
-
-
-def cmd_telemetry_off(args: argparse.Namespace) -> int:
-    env_file = _runtime_env_path()
-    conf = _telemetry_agents_conf_path(args.agents_conf)
-    current = _telemetry_values()
-    clear_values = dict(current)
-    if not clear_values.get("ALFRED_TELEMETRY_URL"):
-        clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
-    clear_result = _clear_previous_telemetry_report(clear_values)
-    clear_status = str(clear_result.get("status") or "")
-    clear_done = clear_status in {"sent", "no_url", "no_install_id"}
-    values = {"ALFRED_TELEMETRY_ENABLED": "0"}
-    keeps_endpoint = not args.forget_endpoint and bool(current.get("ALFRED_TELEMETRY_URL"))
-    if not args.forget_endpoint and current.get("ALFRED_TELEMETRY_URL"):
-        values["ALFRED_TELEMETRY_URL"] = current["ALFRED_TELEMETRY_URL"]
-    if (args.keep_token or (not clear_done and keeps_endpoint)) and current.get(
-        "ALFRED_TELEMETRY_TOKEN"
-    ):
-        values["ALFRED_TELEMETRY_TOKEN"] = current["ALFRED_TELEMETRY_TOKEN"]
-    _write_telemetry_env_block(env_file, values)
-    removed = _remove_telemetry_scheduler_row(conf)
-    if clear_status in {"sent", "no_install_id"}:
-        _delete_telemetry_state_token()
-    install_id_path = agent_runner.STATE_ROOT / "telemetry-install-id"
-    install_id_action = "none"
-    if args.delete_install_id and install_id_path.exists():
-        if clear_done:
-            install_id_path.unlink()
-            install_id_action = "removed"
-        else:
-            install_id_action = "kept"
-    print("alfred: telemetry disabled")
-    if clear_status == "sent":
-        print("alfred: cleared previous usage totals")
-    elif not clear_done:
-        print("warning: could not clear previous usage totals", file=sys.stderr)
-    if install_id_action == "kept":
-        print(
-            "warning: kept install id so previous usage totals can be cleared later",
-            file=sys.stderr,
-        )
-    print(f"alfred: wrote {env_file}")
-    print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")
-    print(_telemetry_deploy_hint(conf))
-    if args.delete_install_id:
-        if install_id_action == "none":
-            print(f"alfred: no install id at {install_id_path}")
-        else:
-            print(f"alfred: {install_id_action} install id at {install_id_path}")
-    return 0
-
-
 # ----- scheduler-backed pause / resume / run -----
 #
 # alfred-os labels are operator-defined (``my.fleet.senior-dev``,
@@ -1489,19 +977,10 @@ def _record_map() -> dict[str, dict[str, str]]:
     aliases that the operator deliberately did not install. Commented agent
     rows still count: a disabled-only ``agents.conf`` is an intentional
     empty/paused installed roster, not a request to revive fallback defaults.
-    Scheduler support rows, such as proof telemetry, do not count as fleet
-    agents and cannot suppress the development fallback by themselves.
     """
     out: dict[str, dict[str, str]] = {}
     for record in _parse_agents_conf(_agents_conf_path()):
         codename = _codename_from_label(record["label"])
-        script_name = Path(record["script"]).name
-        if (
-            record["label"] in SUPPORT_SCHEDULER_LABELS
-            or codename in SUPPORT_SCHEDULER_CODENAMES
-            or script_name in SUPPORT_SCHEDULER_SCRIPTS
-        ):
-            continue
         if codename:
             out.setdefault(codename, record)
     if out:
@@ -1806,6 +1285,8 @@ def _engine_behavior(mode: str) -> str:
         return "Claude Code only"
     if resolved == "codex":
         return "Codex only"
+    if resolved == "opencode":
+        return "OpenCode only"
     return "Claude Code first, Codex fallback only on capability gaps"
 
 
@@ -4337,46 +3818,6 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="report the proposals without writing any draft"
     )
     p_skills_evolve.set_defaults(func=cmd_skills)
-
-    p_telemetry = sub.add_parser("telemetry", help="manage anonymous usage totals")
-    telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
-    p_telemetry_status = telemetry_sub.add_parser("status", help="show usage total reporting state")
-    p_telemetry_status.add_argument("--json", action="store_true")
-    p_telemetry_status.add_argument("--agents-conf", help=argparse.SUPPRESS)
-    p_telemetry_status.set_defaults(func=cmd_telemetry_status)
-    p_telemetry_on = telemetry_sub.add_parser("on", help="enable anonymous usage totals")
-    p_telemetry_on.add_argument("--url", help="custom HTTPS collector /ingest URL")
-    p_telemetry_on.add_argument("--token", help="optional collector ingest token")
-    p_telemetry_on.add_argument(
-        "--clear-token",
-        action="store_true",
-        help="reset the persisted telemetry token and install id when enabling",
-    )
-    p_telemetry_on.add_argument(
-        "--schedule",
-        default="interval:3600",
-        help="agents.conf cadence for the usage total reporter (default: interval:3600)",
-    )
-    p_telemetry_on.add_argument("--agents-conf", help=argparse.SUPPRESS)
-    p_telemetry_on.set_defaults(func=cmd_telemetry_on)
-    p_telemetry_off = telemetry_sub.add_parser("off", help="disable anonymous usage totals")
-    p_telemetry_off.add_argument(
-        "--forget-endpoint",
-        action="store_true",
-        help="remove the telemetry endpoint from the managed .env block",
-    )
-    p_telemetry_off.add_argument(
-        "--keep-token",
-        action="store_true",
-        help="keep the existing ingest token in .env",
-    )
-    p_telemetry_off.add_argument(
-        "--delete-install-id",
-        action="store_true",
-        help="delete $ALFRED_HOME/state/telemetry-install-id",
-    )
-    p_telemetry_off.add_argument("--agents-conf", help=argparse.SUPPRESS)
-    p_telemetry_off.set_defaults(func=cmd_telemetry_off)
 
     p_pause = sub.add_parser("pause", help="stop scheduled firings for an agent")
     p_pause.add_argument("codename", help="agent codename, or 'all'")
