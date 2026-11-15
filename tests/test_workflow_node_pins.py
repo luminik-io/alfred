@@ -59,3 +59,11 @@ def test_node_pin_meets_each_package_engine_floor() -> None:
 def test_node_pin_is_new_enough_for_current_astro_packages() -> None:
     # @astrojs/telemetry 3.4.2 requires Node 22.23.4 or newer.
     assert _version(str(next(iter(_workflow_pins().values())))) >= (22, 23, 4)
+
+
+def test_site_engine_floor_matches_astro_requirement() -> None:
+    # site/.npmrc sets engine-strict, so the declared floor must cover the locked Astro packages.
+    package = json.loads((ROOT / "site/package.json").read_text())
+    lock = json.loads((ROOT / "site/package-lock.json").read_text())
+    assert _version(package["engines"]["node"][2:]) >= (22, 23, 4)
+    assert lock["packages"][""]["engines"] == package["engines"]
