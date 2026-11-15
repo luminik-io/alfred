@@ -14,10 +14,10 @@ Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred/blob/ma
 Your admin SSO may have broad AWS access. If a scheduled agent inherited that, a runaway prompt could in principle trigger any AWS action. Per-agent IAM caps blast radius:
 
 - `<your-codename>-cron`: read-only on the agent's specific secrets (test creds, webhooks, etc.).
-- `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token.
+- `ops-watch-cron` (Gordon under the default theme): read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token.
 - `acme-host`: read-only on `alfred/*` secrets.
 
-Agent runners that touch AWS read role-specific variables such as `ALFRED_HUNTRESS_AWS_PROFILE` or `ALFRED_GORDON_AWS_PROFILE` from `$ALFRED_HOME/.env`, then strip ambient `AWS_*` credentials and set `AWS_PROFILE` only for the AWS subprocess they own.
+Agent runners that touch AWS read role-specific variables such as `ALFRED_E2E_RUNNER_AWS_PROFILE` or `ALFRED_OPS_WATCH_AWS_PROFILE` from `$ALFRED_HOME/.env`, then strip ambient `AWS_*` credentials and set `AWS_PROFILE` only for the AWS subprocess they own.
 
 ## Create a scoped IAM user
 
@@ -60,8 +60,8 @@ Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [
 | Path | What it holds |
 |---|---|
 | `alfred/slack-webhook` | Slack incoming webhook URL |
-| `alfred/slack-bot-token` | Slack `xoxb-` token (when ready) |
-| `alfred/slack-app-token` | Slack `xapp-1-` token for Socket Mode |
+| `alfred/slack-bot-token` | Slack `xoxb-` token, read only when `ALFRED_SECRETS_BACKEND=aws` |
+| `alfred/slack-app-token` | Optional backup of the Slack `xapp-1-` Socket Mode token. Alfred does not read it; the listener reads `SLACK_APP_TOKEN` from the environment. |
 | `alfred/sentry-dsn-agents` | Sentry DSN agent runners post events to |
 | `alfred/sentry-api-token` | Sentry API token for query operations |
 

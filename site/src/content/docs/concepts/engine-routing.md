@@ -19,7 +19,7 @@ the engine contract. Full doc at [`docs/ENGINE_ROUTING.md`](https://github.com/l
 | `opencode` | Use OpenCode only. No fallback. |
 | `hybrid` | Use Claude Code first. Retry transient failures on the same engine, and fall back to Codex only when Claude ran but produced no useful result. Default for most codenames. |
 
-`hybrid` is the default for builder agents because it gives them a second shot when Claude ran but produced no usable result, without hiding quota, auth, or transport faults behind another provider. Reviewer agents that are happy with either engine often run pure `codex` so they preserve Claude quota for builders.
+`hybrid` is the default for builder agents because it gives them a second shot when Claude ran but produced no usable result, without hiding quota, auth, or transport faults behind another provider. Every engine-aware runner, including the reviewer, defaults to `hybrid`. You can set the reviewer to pure `codex` to preserve Claude quota for builders.
 
 ## Per-agent overrides
 
@@ -72,19 +72,19 @@ All shipped agents check the global block before dispatch today, regardless of e
 
 ## Default routing matrix
 
-The shipped fleet has the following defaults. Override per codename when your account economics or quality posture call for it.
+Every engine-aware runner defaults to `hybrid` (each runner calls `agent_engine(..., default="hybrid")`). `alfred engine set` accepts only the engine-aware roles: architect, fixer, planner, reviewer, senior-dev, test-engineer, and triage. Override per role when your account economics or quality posture call for it.
 
 | Codename | Default mode | Why |
 |---|---|---|
 | **architect** | `hybrid` | Cross-repo execution. Long-context planning prefers Claude; Codex fallback gives the architect lane a second model when Claude produced no useful plan. |
 | **senior-dev** | `hybrid` | Builder. Wants Claude for first-class code generation, with Codex available only for capability gaps. |
-| **planner** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
+| **planner** | `hybrid` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration, with Codex as the fallback. |
 | **test-engineer** | `hybrid` | Test-coverage builder. Same posture as senior-dev; tests are valuable enough to fall back rather than skip. |
-| **reviewer** | `codex` | Independent reviewer on a different model surfaces blind spots the builder model shares. Also preserves Claude quota for builders. |
+| **reviewer** | `hybrid` | Set it to `codex` if you want an independent reviewer on a different model, which surfaces blind spots the builder model shares and preserves Claude quota for builders. |
 | **fixer** | `hybrid` | Review-fix builder. Needs Claude for the same reasons as senior-dev. |
 | **triage** | `hybrid` | Bug triage. Light-touch; either engine works. |
-| **e2e-runner** | `claude` | Post-deploy smoke. Lower volume; Claude is fine. |
-| **ops-watch** | `claude` | Deploy-health. Read-only; quiet on healthy days. |
+| **e2e-runner** | n/a | Post-deploy smoke. No engine call; `alfred engine set` refuses it. |
+| **ops-watch** | n/a | Deploy-health. Read-only, no engine call; `alfred engine set` refuses it. |
 | **automerge** | n/a | No engine call. |
 | **agent-cleanup** | n/a | No engine call. |
 

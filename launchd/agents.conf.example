@@ -85,12 +85,6 @@
 #   my.fleet.agent-cleanup	agent-cleanup.py	cron:3:00	no		Daily cleanup + reclaim
 #   my.fleet.agent-cleanup-noon	agent-cleanup.py	cron:13:00	no	my.fleet.agent-cleanup	Midday disk reclaim
 
-# Anonymous usage totals. This line stays commented until an install configures
-# an endpoint. The script sends only aggregate counts to ALFRED_TELEMETRY_URL,
-# and ALFRED_TELEMETRY_ENABLED=0 opts out. No repo names, code, prompts, titles,
-# branches, people, or hostnames are sent.
-#   my.fleet.proof-telemetry	proof-telemetry.py	interval:3600	no		Anonymous usage totals
-
 # Opt-in: weekly dependency updater. Applies safe-band npm bumps and opens one
 # PR per repo, plus advisory-only gradle/pip reports. A no-op until you set
 # ALFRED_NIGHTLY_NPM_REPOS (and/or ALFRED_NIGHTLY_ADVISORY_REPOS), so scheduling

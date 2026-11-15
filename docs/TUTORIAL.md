@@ -129,7 +129,7 @@ Reply with ONLY the one-line summary, no preamble.
 
     result = claude_invoke(
         prompt, workdir=os.path.expanduser("~"),
-        allowed_tools="", agent=AGENT, max_turns=5, timeout=120,
+        allowed_tools="", max_turns=5, timeout=120,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns,
                     cost_usd_today=result.cost_usd)
@@ -137,7 +137,7 @@ Reply with ONLY the one-line summary, no preamble.
     if result.subtype != "success":
         release_issue(REPO_SLUG, issue_num, codename=AGENT,
                       firing_id=events.firing_id, outcome="failure")
-        slack_post(f"❌ Echo failed on #{issue_num}: {result.subtype}",
+        slack_post(f"Echo failed on #{issue_num}: {result.subtype}",
                    severity="warn")
         spend.increment(failures_today=1)
         return 0
@@ -150,7 +150,7 @@ Reply with ONLY the one-line summary, no preamble.
                   transition_to="agent:done")
 
     spend.increment(successes_today=1)
-    slack_post(f"✅ Echo summarised {REPO_SLUG}#{issue_num}: _{summary[:120]}_")
+    slack_post(f"Echo summarised {REPO_SLUG}#{issue_num}: _{summary[:120]}_")
     return 0
 
 
@@ -187,29 +187,27 @@ doctor: 1 passed, 0 failed
 
 ## Step 6: fire once on demand
 
-Don't wait 30 minutes. Force a firing:
+Don't wait 30 minutes. Start a firing now:
 
 ```sh
-alfred run echo --force
+alfred run echo
 tail -f /tmp/alfred.echo.stdout /tmp/alfred.echo.stderr
 ```
 
-Within ~10 seconds you should see:
+`alfred run` prints `kicked echo` and returns. The agent prints to the log files only when it skips work (for example `[ECHO-IDLE]`). Within about 10 seconds, your Slack channel shows:
 
 ```
-✅ Echo summarised myorg/sandbox-repo#42: _<the one-line summary>_
+Echo summarised myorg/sandbox-repo#42: _<the one-line summary>_
 ```
 
 Look at the issue in GitHub: there's a new comment from your gh user, the `agent:in-flight` label was added then replaced with `agent:done`, and three structured comments are visible in the issue: claim, release, and the actual summary.
 
-Look at your configured fleet channel in Slack: there's the success message.
-
 ## Step 7: confirm dedup works
 
-Force a second firing immediately:
+Start a second firing immediately:
 
 ```sh
-alfred run echo --force
+alfred run echo
 ```
 
 Output:
@@ -220,7 +218,7 @@ Output:
 
 The first firing transitioned the issue to `agent:done`. Removing the `agent:summarise` label is up to your prompt, but `claim_issue` would have refused either way because `agent:done` blocks claiming.
 
-Create another test issue with the `agent:summarise` label and force-fire again. Echo picks it up, summarises, transitions, done.
+Create another test issue with the `agent:summarise` label and run `alfred run echo` again. Echo picks it up, summarizes it, transitions it, and is done.
 
 ## Step 8: pause + resume
 
@@ -262,6 +260,8 @@ For richer agents (write code, open PRs, multi-step prompts, max-turns resume), 
 
 **Slack post returns `True` but you don't see the message.** Webhook cache may be stale. `rm $ALFRED_HOME/state/slack-webhook.cache` and retry.
 
-**`alfred run echo --force` says the scheduler unit is missing.** The scheduler unit isn't loaded. `bash deploy.sh` again. The deploy step is idempotent.
+**`alfred run echo` says `echo: not loaded`.** The scheduler unit isn't loaded. Run `bash deploy.sh` again (it is idempotent) or `alfred resume echo`.
+
+**`alfred run echo` says `echo: paused`.** You paused it. Run `alfred resume echo`, or pass `--force` to run it once while it stays paused. `--force` only overrides a pause.
 
 **Doctor passes but the agent fails on real firing.** Doctor only verifies preflight. Real firings can fail for runtime reasons (rate limit, gh API timeout, claude error). Check `/tmp/alfred.echo.stderr`.

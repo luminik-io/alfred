@@ -99,7 +99,6 @@ _SETUP_MANAGED_RUNTIME_ENV_KEYS = (
     _REPO_SCOPE_ENV_KEYS
     | {
         "ALFRED_MORNING_BRIEF_AGENTS",
-        "ALFRED_TELEMETRY_*",
     }
     | _SETUP_SPECIAL_PROMPT_ENV_KEYS
     | _BUILT_IN_ROLE_AWS_PROFILE_ENV_KEYS
@@ -409,8 +408,6 @@ def _runtime_stop_control_active(key: str, value: str) -> bool:
         return token not in TRUTHY_VALUES
     if key == "ALFRED_AUTO_PROMOTE_KILL":
         return token not in FALSY_VALUES
-    if key == "ALFRED_TELEMETRY_ENABLED":
-        return token not in TRUTHY_VALUES
     return False
 
 

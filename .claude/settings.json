@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git grep:*)",
+      "Bash(uv run --extra dev pytest:*)",
+      "Bash(bash bin/scrub-check.sh)",
+      "Bash(shellcheck:*)",
+      "Bash(npm ci)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)",
+      "Bash(npm run test)",
+      "Bash(npm run build)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo test:*)"
+    ],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(npm install:*)",
+      "Bash(uv add:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(**/.env)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.tfstate)",
+      "Read(**/*.tfstate.*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(bash deploy.sh:*)",
+      "Bash(./deploy.sh:*)",
+      "Bash(bash install.sh:*)",
+      "Bash(./install.sh:*)",
+      "Bash(bash get.sh:*)",
+      "Bash(launchctl:*)",
+      "Bash(systemctl --user:*)",
+      "Bash(bin/agent-launch:*)"
+    ]
+  }
+}

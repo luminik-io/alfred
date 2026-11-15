@@ -25,6 +25,8 @@ the full walkthrough. Then come back here to point Alfred at your own code.
 
 **Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, seeds the full built-in runtime roster, deploys the local CLI/agents into `~/.alfred`, installs starter engineering skills, attempts the pinned code-memory doctor, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos, and lets you choose a roster theme or custom display names. Repo-scoped agents stay idle until onboarding saves repositories. The architect role is included from the start and appears as Batman under the default theme, but it stays idle until you configure `ARCHITECT_PARENT_REPO`. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.
 
+**Package versions.** The desktop packages (DMG, AppImage, .deb), the Homebrew formula, and the Homebrew cask all install v0.6.0, the last published release. Code newer than v0.6.0, including version 0.8.0 on `main`, is source-only. Features added after v0.6.0 need the source checkout path.
+
 **Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal without the GUI. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime; the desktop app remains the recommended local onboarding and control surface.
 
 Alfred core is the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The desktop `client` tier is recommended for local setup and day-two operations; Slack `slack` layers on top for team collaboration. See [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
@@ -53,10 +55,12 @@ claude auth login                 # Claude Code auth
 alfred-init                       # choose agents, repos, Slack, and schedules
 ```
 
-The Homebrew formula installs the latest tagged release and puts the operator
-commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
-`alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
-want to work from `main`, edit the framework, or install on Linux.
+The Homebrew formula installs v0.6.0, the last published release, not the
+code on `main`. It puts these commands on your PATH: `alfred`, `alfred-init`,
+`alfred-install`, `alfred-deploy`, and `alfred-label-state`. Run `alfred doctor`
+to check the install. Newer code is source-only: use the source checkout path
+when you want features added after v0.6.0, want to edit the framework, or
+install on Linux.
 
 Full fleet for one repo or an explicit comma-separated repo list, suitable
 for an AI coding tool to run end to end:

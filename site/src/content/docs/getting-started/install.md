@@ -14,6 +14,8 @@ runtime. It is the full local installer and control surface over the same
 Alfred core used by the CLI.
 
 1. Download the signed Mac package or Linux build from [Download](/download/).
+   These packages are v0.6.0, the last published release. Newer code is
+   source-only.
 2. Open Alfred Desktop and choose **Install or repair** in Setup.
 3. Setup bootstraps dependencies, seeds the full built-in fleet, deploys the
    local CLI/agents into `~/.alfred`, installs first-party starter skills,
@@ -65,10 +67,11 @@ claude auth login                 # Claude Code auth
 alfred-init                       # choose agents, repos, schedule, and Slack
 ```
 
-The Homebrew formula installs the latest tagged release and puts the Alfred
-commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
-`alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
-want `main`, framework edits, or Linux.
+The Homebrew formula installs v0.6.0, the last published release, not the
+code on `main`. It puts these commands on your PATH: `alfred`, `alfred-init`,
+`alfred-install`, `alfred-deploy`, and `alfred-label-state`. Run `alfred doctor`
+to check the install. Newer code is source-only: use the source checkout path
+when you want features added after v0.6.0, framework edits, or Linux.
 
 Full fleet for one repo or an explicit comma-separated repo list:
 

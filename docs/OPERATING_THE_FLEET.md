@@ -12,8 +12,8 @@ If you wired up the Slack webhook, three posts on the configured channel are you
 
 | Post | When | What it carries |
 |---|---|---|
-| `fleet-recap (morning)` | 07:30 daily | Yesterday's PRs shipped, in-flight work, doctor status, anything red. |
-| `shipped-summary-daily` | end of day | Today's merged PRs, issues closed, LOC, model and config changes. |
+| `fleet-recap (morning)` | 07:45 daily | Yesterday's PRs shipped, in-flight work, doctor status, anything red. |
+| `shipped-summary-daily` | 07:35 daily | Merged PRs, issues closed, LOC, and model and config changes since local midnight. |
 | `fleet-recap (evening)` | 22:00 daily | Per-agent spend, firing count, success rate, anything that paused itself. |
 
 Plus the per-firing posts: shipped, blocked, partial. Quiet days are the goal. A morning post that says "yesterday: 6 PRs shipped, 0 blockers" is the steady state.

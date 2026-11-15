@@ -585,10 +585,9 @@ def test_resolve_agent_codename_uses_manifest_only_theme_names(
     tmp_path: Path,
 ) -> None:
     _save_roster_theme(monkeypatch, tmp_path, theme="transformers")
-    assert resolve_agent_codename("dry-run Blaster") == "proof-telemetry"
     assert resolve_agent_codename("pause Chromia") == "memory-auto-promote"
     assert resolve_agent_codename("run Prowl") == "agent-morning-brief"
-    assert resolve_agent_codename("dry-run proof-telemetry") == "proof-telemetry"
+    assert resolve_agent_codename("dry-run memory-auto-promote") == "memory-auto-promote"
 
 
 def test_resolve_agent_codename_uses_custom_theme_names(

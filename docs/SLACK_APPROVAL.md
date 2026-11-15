@@ -4,7 +4,8 @@ Alfred agents can pause in plan mode and wait for an explicit go/no-go from
 the configured approver before writing any code. The gate lives in
 [`lib/slack_surface/approval.py`](../lib/slack_surface/approval.py). It posts the plan to a
 Slack channel, polls reactions on that one message, and resolves only when
-the configured approver reacts with an approve or reject emoji.
+the configured approver reacts with an approve emoji (`white_check_mark`,
+`thumbsup`, or `+1`) or a reject emoji (`x`, `thumbsdown`, or `-1`).
 
 This guide walks through the full setup. If you already have a Slack bot
 token wired up via [`docs/SLACK_SETUP.md`](SLACK_SETUP.md), skip to
@@ -97,8 +98,12 @@ settings:
 `socket_mode_enabled: false` is fine for approval-only installs because the
 gate polls reactions through the Web API. Set it to `true` only when you also
 run the always-on planning listener from [`SLACK_SETUP.md`](SLACK_SETUP.md).
-The listener captures trusted thread replies and Slack intake drafts; it does
-not make chat text an approval signal.
+The listener captures trusted thread replies and Slack intake drafts. Chat
+text does not approve plan execution. The exception is the optional issue
+bridge, off by default: with `ALFRED_BRIDGE_ENABLED=1`, the configured
+approver's approval phrase (such as `ship it`) in a draft thread files one
+labeled GitHub issue. See
+[`SLACK_SETUP.md`](SLACK_SETUP.md#optional-slack-issue-bridge).
 
 Install the app to the workspace and copy the **Bot User OAuth Token**
 (begins with `xoxb-`).

@@ -240,15 +240,6 @@ _PROFILE_DISPLAY: dict[str, _ProfileDisplay] = {
         theme_accent="#22C55E",
         order=181,
     ),
-    "proof-telemetry": _ProfileDisplay(
-        display_name="Proof Telemetry",
-        role_title="Impact Reporter",
-        purpose="Sends anonymous aggregate usage totals when configured.",
-        theme="impact",
-        theme_label="Impact",
-        theme_accent="#00E5C7",
-        order=190,
-    ),
 }
 
 

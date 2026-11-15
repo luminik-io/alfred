@@ -139,20 +139,8 @@ memory_auto_promote_stop_control_active() {
   return 1
 }
 
-telemetry_stop_control_active() {
-  local key="$1" token
-  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
-  [ "$key" = "ALFRED_TELEMETRY_ENABLED" ] || return 1
-  [ -n "$token" ] || return 1
-  case "$token" in
-    1|true|yes|on|enabled) return 1 ;;
-    *) return 0 ;;
-  esac
-}
-
 runtime_stop_control_active() {
-  memory_auto_promote_stop_control_active "$1" "$2" ||
-    telemetry_stop_control_active "$1" "$2"
+  memory_auto_promote_stop_control_active "$1" "$2"
 }
 
 expand_user_path() {
@@ -197,7 +185,7 @@ setup_runtime_role_profile_key() {
 setup_runtime_static_config_key() {
   setup_runtime_role_profile_key "$1" && return 0
   case "$1" in
-    ARCHITECT_ROLLOUT_ORDER|ARCHITECT_PARENT_REPO|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_E2E_RUNNER_TARGET_URL|ALFRED_E2E_RUNNER_AWS_PROFILE|ALFRED_OPS_WATCH_ECS_CLUSTER|ALFRED_OPS_WATCH_SENTRY_ORG|ALFRED_OPS_WATCH_AWS_PROFILE|ALFRED_TELEMETRY_*)
+    ARCHITECT_ROLLOUT_ORDER|ARCHITECT_PARENT_REPO|ALFRED_QUEUE_REPOS|ALFRED_SHIPPED_REPOS|ALFRED_BRIDGE_REPOS|ALFRED_SENIOR_DEV_REPOS|ALFRED_PLANNER_REPOS|ALFRED_SPEC_PLANNER_REPOS|ALFRED_TEST_ENGINEER_REPOS|ALFRED_REVIEWER_REPOS|ALFRED_FIXER_REPOS|ALFRED_TRIAGE_REPOS|ALFRED_CLAIM_SWEEP_REPOS|ALFRED_AUTOMERGE_REPOS|ALFRED_CODE_MAP_REPOS|ALFRED_CODE_MEMORY_REPOS|ALFRED_MORNING_BRIEF_REPOS|ALFRED_SHIPPED_SUMMARY_DAILY_REPOS|ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS|ALFRED_MORNING_BRIEF_AGENTS|ALFRED_E2E_RUNNER_TARGET_URL|ALFRED_E2E_RUNNER_AWS_PROFILE|ALFRED_OPS_WATCH_ECS_CLUSTER|ALFRED_OPS_WATCH_SENTRY_ORG|ALFRED_OPS_WATCH_AWS_PROFILE)
       return 0
       ;;
     *)
@@ -676,11 +664,6 @@ while IFS=$'\t' read -r label script_name; do
     # Scope-gated or manually-disabled agent that is not currently enabled.
     # Disabled agents don't run, so a missing preflight is by design.
     printf "⚪ disabled\n"
-    pass=$((pass + 1))
-  elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-NO-URL\]"; then
-    # Optional reporter is scheduled, but no ingest endpoint is configured.
-    # This is a clean no-op state, not an agent crash.
-    printf "⚪ no URL\n"
     pass=$((pass + 1))
   elif echo "$output" | grep -qE "\[[A-Za-z0-9_-]+-PAUSED\]"; then
     # Operator-paused agents are intentionally quiet. Count them as healthy so

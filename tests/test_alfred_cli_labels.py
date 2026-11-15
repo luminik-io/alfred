@@ -228,11 +228,11 @@ def test_runtime_env_file_does_not_clobber_process_overrides(
     home = Path(os.environ["ALFRED_HOME"])
     home.mkdir(parents=True)
     (home / ".env").write_text(
-        "GH_ORG=acme\nALFRED_SENIOR_DEV_REPOS=api,web\nALFRED_TELEMETRY_ENABLED=1\n",
+        "GH_ORG=acme\nALFRED_SENIOR_DEV_REPOS=api,web\nALFRED_CODE_MAP_MAX_FILES=50\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_SENIOR_DEV_REPOS", "manual/repo")
-    monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "0")
+    monkeypatch.setenv("ALFRED_CODE_MAP_MAX_FILES", "77")
     repos: list[str] = []
     monkeypatch.setattr(
         cli_module,
@@ -242,7 +242,7 @@ def test_runtime_env_file_does_not_clobber_process_overrides(
 
     assert cli_module.main(["labels", "check", "--all"]) == 0
     assert repos == ["manual/repo"]
-    assert os.environ["ALFRED_TELEMETRY_ENABLED"] == "0"
+    assert os.environ["ALFRED_CODE_MAP_MAX_FILES"] == "77"
 
 
 def test_capabilities_command_does_not_import_agent_runner(tmp_path: Path) -> None:

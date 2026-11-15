@@ -165,13 +165,21 @@ loop. A per-run cap, a judge-call budget, and the conflict check bound each run.
 MCP clients. It returns allowlisted summaries only: no raw prompts, transcripts,
 stdout, stderr, webhook URLs, or result blobs.
 
-Available tools include:
+It exposes 14 read-only tools:
 
 - `alfred_brain_status`
 - `alfred_memory_recall`
 - `alfred_memory_candidates`
 - `alfred_recent_file_touches`
 - `alfred_failure_patterns`
+- `alfred_who_owns`
+- `alfred_recent_changes_near`
+- `alfred_prs_touching`
+- `alfred_code_graph_summary`
+- `alfred_code_impact`
+- `alfred_code_blast_radius`
+- `alfred_code_skeleton`
+- `alfred_read_delta`
 - `alfred_memory_doctor`
 
 ## Privacy model

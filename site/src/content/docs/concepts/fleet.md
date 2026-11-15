@@ -92,7 +92,7 @@ cluster exists.
 |---|---|---|---|
 | `architect` | Batman | every 1 h, approval-gated | Leads multi-repo features. Drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/ARCHITECT.md](https://github.com/luminik-io/alfred/blob/main/docs/ARCHITECT.md). |
 | `senior-dev` | Lucius | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
-| `planner` | Drake | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
+| `planner` | Drake | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing and 200 in a rolling 24 h by default (`ALFRED_PLANNER_DAILY_ISSUE_CAP`, minimum 20). |
 | `spec-planner` | Damian | daily 09:00, scope-idle | Walks `ALFRED_SPEC_PLANNER_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. The full fleet enables it, but it no-ops until repo and spec scope exist. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to the planner. |
 | `test-engineer` | Bane | every 4 h | Picks the lowest-coverage actively-changed file, writes tests, opens a PR. Never touches non-test files. |
 | `reviewer` | Ra's al Ghul | every 30 min | Multi-axis review (correctness, security, performance, maintainability) on every fresh PR. Posts as a comment. |
@@ -111,8 +111,8 @@ These ship with plain-English names because they are fleet infrastructure, not r
 | **agent-cleanup** | housekeeping | daily 03:00 | Sweeps stale debug dirs, abandoned worktrees, expired spend files and transcripts, stuck locks (>4 h), and stale `agent:in-flight` claims (>4 h via `force_release_stale_claim`). |
 | **code-map-refresh** | indexing | every 6 h | Scans configured repos and writes `$ALFRED_HOME/state/code-map.json` with source files, symbols, imports, API calls, server routes, and contract drift. Drake, Batman, and code-map-aware review prompts can read it for cross-repo context. |
 | **agent-morning-brief** | reporting | daily 07:00 | Slack post: yesterday's shipped PRs, in-flight work, doctor status, anything red. |
-| **fleet-recap** | reporting | 07:30 + 22:00 | Aggregates per-agent spend, firings, and success rate. Posts to Slack. |
-| **curator** | content-quality | weekly | Opt-in. Fires the [slop detector](https://github.com/luminik-io/alfred/blob/main/docs/SLOP_DETECTOR.md) against `ALFRED_SLOP_TARGET_PATH`, posts findings to Slack. Read-only. Standalone CLI also available as `alfred slop-detect`. |
+| **fleet-recap** | reporting | 07:45 + 22:00 | Aggregates per-agent spend, firings, and success rate. Posts to Slack. |
+| **curator** | content-quality | weekly | Opt-in. Fires the [slop detector](https://github.com/luminik-io/alfred/blob/main/docs/SLOP_DETECTOR.md) against `ALFRED_SLOP_TARGET_PATH`, posts findings to Slack. Read-only. Standalone CLI: `python3 bin/slop-detector.py`. |
 
 ## Adding a custom runtime agent
 

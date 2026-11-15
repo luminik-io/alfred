@@ -9,8 +9,7 @@ FleetBrain keeps the local operational ledger and review queue. Dense recall is
 optional. Operators can also select Redis Agent Memory Server with
 `ALFRED_MEMORY_PROVIDERS=redis,fleet`.
 
-Nothing is sent to a hosted memory service. Anonymous aggregate usage counts
-are on by default; opt out with `alfred telemetry off`.
+Nothing is sent to a hosted memory service.
 
 ## The zero-daemon default: SQLite hybrid recall
 

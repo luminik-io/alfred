@@ -66,8 +66,12 @@ open questions: none
 
 Only the configured approver and trusted users can create drafts. If none are
 configured, the listener ignores every event. The listener writes local draft
-JSON and feedback files; it never files issues, opens PRs, merges, or approves
-execution.
+JSON and feedback files; it never opens PRs, merges, or approves plan
+execution. It files a GitHub issue only through the optional
+[issue bridge](https://github.com/luminik-io/alfred/blob/main/docs/SLACK_SETUP.md#optional-slack-issue-bridge), which is off by default: with
+`ALFRED_BRIDGE_ENABLED=1`, the configured approver's approval phrase (such as
+`ship it`) or `:white_check_mark:` reaction in the draft thread files one
+labeled issue.
 
 ## Reply after a PR or report
 

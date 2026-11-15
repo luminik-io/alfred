@@ -45,7 +45,7 @@ one shows in the default `batman` theme.
 | `ops-watch` | Watches deploy health and reports drift. | Gordon |
 
 The utility jobs (auto-merge, cleanup, code-map refresh, briefs, recaps, memory
-harvest, telemetry) also have roles and themed names, but most people leave them
+harvest) also have roles and themed names, but most people leave them
 with their plain-English labels.
 
 ## Themes

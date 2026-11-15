@@ -12,19 +12,27 @@ Operations Room. The site looks like a watch desk for scheduled local work. Stat
 
 ## Color tokens
 
+The marketing pages define these tokens in `site/src/styles/marketing.css`.
+The values below are the dark theme (`[data-theme="dark"]`, also the
+fallback); `[data-theme="light"]` in the same file redefines every token for
+light mode. The Starlight docs pages do not use them: `site/src/styles/custom.css`
+sets Starlight's `--sl-color-*` tokens plus `--alfred-info`, `--alfred-warn`,
+`--alfred-alert`, and `--alfred-ok` for status colors.
+
 ```css
---alfred-black:           #0A0E14;  /* warm near-black canvas */
+--alfred-black:           #070A11;  /* near-black canvas */
 --alfred-surface:         #11161F;  /* card / panel surface */
 --alfred-surface-2:       #161D2A;  /* hover / focused panel */
 --alfred-border:          #1F2937;  /* subtle separation */
 --alfred-border-strong:   #2A3548;  /* card outlines */
---alfred-mute:            #6B7A8F;  /* muted body, metadata */
+--alfred-mute:            #8896AD;  /* muted body, metadata */
 --alfred-text:            #C5D0E0;  /* default body */
 --alfred-text-bright:     #F2F6FF;  /* primary headings */
 
 /* Accents: status palette */
 --alfred-accent:          #00E5C7;  /* primary; healthy / live / go */
 --alfred-accent-soft:     #1B3A37;  /* tinted background for accent badges */
+--alfred-accent-ink:      #06231F;  /* button text on accent fill */
 --alfred-warn:            #F4B43E;  /* amber; status warning, also exists in logo */
 --alfred-error:           #FF5A6B;  /* red; status alert */
 

@@ -101,12 +101,12 @@ path, so no per-tool restriction is needed even under `bypassPermissions`.
 | `alfred_code_skeleton` | Structure-only file skeleton (signatures, docstring, elided bodies) from the code map | `repo` and `path` (both required) | yes |
 | `alfred_read_delta` | Delta-aware file read: full on first read, unified diff on re-read this firing | `repo` and `path` (both required) | yes |
 
-All twelve tools above are registered on the server (the `TOOLS` tuple in
-`bin/alfred-mcp.py`), so attaching the server exposes all twelve to the run.
+All fourteen tools above are registered on the server (the `TOOLS` tuple in
+`bin/alfred-mcp.py`), so attaching the server exposes all fourteen to the run.
 Being exposed is not the same as being callable by the agent: a firing can only
 call the tools whose names are in the `--allowedTools` allowlist. **One
 registered tool, `alfred_memory_doctor`, is not in that allowlist**: the
-`_MEMORY_RECALL_TOOLS` constant in `process.py` names the other eleven, so the
+`_MEMORY_RECALL_TOOLS` constant in `process.py` names the other thirteen, so the
 agent cannot call `alfred_memory_doctor` even though the server exposes it.
 `alfred_brain_status` covers the same read-only doctor output and is in the
 allowlist, so an agent does not lose that capability. The exposed-but-not-
@@ -218,8 +218,8 @@ Scoping happens in `lib/agent_runner/process.py`, only on the Claude path
 
 Because exposure and the allowlist are populated independently, the exposed and
 callable sets are not guaranteed identical. In practice the code-memory sets
-match, while `alfred_memory` exposes twelve server tools and `_MEMORY_RECALL_TOOLS`
-allowlists eleven (`alfred_memory_doctor` is the one it omits, so the agent cannot
+match, while `alfred_memory` exposes fourteen server tools and `_MEMORY_RECALL_TOOLS`
+allowlists thirteen (`alfred_memory_doctor` is the one it omits, so the agent cannot
 call it; `alfred_brain_status` gives an agent the same doctor output). The
 allowlist is the tighter, load-bearing gate.
 

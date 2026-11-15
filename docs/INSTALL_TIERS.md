@@ -60,19 +60,19 @@ collaboration surface once the fleet is running.
 
 It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. Headless installs can run Alfred entirely without it.
 
-There are two ways to install it. Pick the signed release for a normal setup; build from source only when you are working on the client itself.
+There are two ways to install it: the signed v0.6.0 release, or a source build. The signed packages and the Homebrew cask install v0.6.0, the last published release. Code newer than v0.6.0 is source-only, so build from source when you want the current client or are working on the client itself.
 
-Signed release (recommended):
+Signed v0.6.0 release:
 
 ```sh
-brew install --cask alfred-os               # macOS 11+, signed and notarized
+brew install --cask alfred-os               # v0.6.0; macOS 11+, signed and notarized
 # or download Alfred.dmg / Alfred.AppImage / Alfred.deb from
 # https://alfred.luminik.io/download/
 ```
 
 The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppImage/.deb packages include bundled Alfred core resources. On first launch with no runtime running, the app opens into the guided setup wizard, where **Install or repair** bootstraps core, seeds the full built-in runtime roster, deploys the CLI/agents into `~/.alfred`, starts `alfred serve`, and continues the setup flow. Repo-scoped agents stay idle until the setup flow saves repositories, and Batman stays idle until `ARCHITECT_PARENT_REPO` is configured.
 
-Build from source (client development):
+Build from source (current code, client development):
 
 ```sh
 alfred serve --port 7010 --no-browser       # or let first-run onboarding start it

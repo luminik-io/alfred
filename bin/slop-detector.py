@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""alfred slop-detect: scan a directory for AI-slop vocabulary.
+"""bin/slop-detector.py: scan a directory for AI-slop vocabulary.
 
 A lightweight, standalone CLI. No scheduler, no Slack, no state files,
 no AWS. Reads a JSON rule pack, walks a path, prints findings as
@@ -16,9 +16,9 @@ The scheduled wrapper that posts to Slack lives in ``bin/curator.py``.
 
 Usage::
 
-    alfred slop-detect [--path <dir>] [--rules <json>]
-                       [--report md|json] [--fail-on-match]
-                       [--min-severity <name>] [--max-findings <n>]
+    python3 bin/slop-detector.py [--path <dir>] [--rules <json>]
+                                 [--report md|json] [--fail-on-match]
+                                 [--min-severity <name>] [--max-findings <n>]
 
 Environment::
 
@@ -54,7 +54,7 @@ from slop_detector import (  # noqa: E402
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="alfred slop-detect",
+        prog="python3 bin/slop-detector.py",
         description=(
             "Scan a directory tree for AI-slop vocabulary, phrases, and "
             "patterns. Exits non-zero with --fail-on-match for CI use."

@@ -292,48 +292,6 @@ def test_alfred_dry_run_all_uses_agents_conf_as_complete_roster(tmp_path):
     assert "code-memory-refresh" not in res.stdout
 
 
-def test_alfred_dry_run_telemetry_only_conf_uses_default_fleet(tmp_path):
-    home = tmp_path / "home"
-    alfred_home = tmp_path / "alfred"
-    home.mkdir()
-    alfred_home.mkdir()
-    _seed_conf(
-        alfred_home,
-        "my.fleet.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
-        "my.fleet.proof-telemetry\tAnonymous usage totals\n",
-    )
-
-    res = _run_alfred(
-        ["dry-run", "senior-dev", "--simulate", "--json"], home=home, alfred_home=alfred_home
-    )
-
-    assert res.returncode == 0, res.stdout + res.stderr
-    payload = json.loads(res.stdout)
-    assert payload["codename"] == "senior-dev"
-
-
-def test_alfred_dry_run_all_omits_telemetry_support_row(tmp_path):
-    home = tmp_path / "home"
-    alfred_home = tmp_path / "alfred"
-    home.mkdir()
-    alfred_home.mkdir()
-    _seed_conf(
-        alfred_home,
-        "my.fleet.proof-telemetry\tproof-telemetry.py\tinterval:3600\tno\t"
-        "my.fleet.proof-telemetry\tAnonymous usage totals\n"
-        "my.fleet.senior-dev\tsenior-dev.py\tinterval:600\tno\t\tFeature dev\n",
-    )
-
-    res = _run_alfred(
-        ["dry-run", "all", "--simulate", "--json"], home=home, alfred_home=alfred_home
-    )
-
-    assert res.returncode == 0, res.stdout + res.stderr
-    payload = json.loads(res.stdout)
-    assert [item["codename"] for item in payload] == ["senior-dev"]
-    assert "proof-telemetry" not in res.stdout
-
-
 def test_alfred_dry_run_rejects_removed_legacy_aliases_when_conf_exists(tmp_path):
     home = tmp_path / "home"
     alfred_home = tmp_path / "alfred"

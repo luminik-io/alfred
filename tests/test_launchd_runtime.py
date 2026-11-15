@@ -37,14 +37,14 @@ def test_agent_launch_loads_runtime_env_without_shell_eval(tmp_path):
     bin_dir.mkdir(parents=True)
     capture = tmp_path / "capture.json"
     marker = tmp_path / "command-substitution-ran"
-    telemetry_token = f"tok$(touch {marker})&still"
+    shell_token = f"tok$(touch {marker})&still"
     (alfred / ".env").write_text(
         "\n".join(
             [
                 "WORKSPACE_ROOT=$HOME/work space",
                 "OPERATOR_NAME=Example Operator",
                 "export GH_ORG=acme",
-                f"ALFRED_TELEMETRY_TOKEN='{telemetry_token}'",
+                f"EXAMPLE_TOKEN='{shell_token}'",
                 "QUOTE_TOKEN='can'\"'\"'quote'",
                 "HOME_LITERAL='abc$HOMEdef-${HOME}'",
                 "",
@@ -59,7 +59,7 @@ def test_agent_launch_loads_runtime_env_without_shell_eval(tmp_path):
         "  'workspace': os.environ.get('WORKSPACE_ROOT'),\n"
         "  'operator': os.environ.get('OPERATOR_NAME'),\n"
         "  'gh_org': os.environ.get('GH_ORG'),\n"
-        "  'telemetry_token': os.environ.get('ALFRED_TELEMETRY_TOKEN'),\n"
+        "  'shell_token': os.environ.get('EXAMPLE_TOKEN'),\n"
         "  'quote_token': os.environ.get('QUOTE_TOKEN'),\n"
         "  'home_literal': os.environ.get('HOME_LITERAL'),\n"
         "  'alfredrc': os.environ.get('ALFREDRC'),\n"
@@ -84,7 +84,7 @@ def test_agent_launch_loads_runtime_env_without_shell_eval(tmp_path):
         "workspace": f"{home}/work space",
         "operator": "Example Operator",
         "gh_org": "acme",
-        "telemetry_token": telemetry_token,
+        "shell_token": shell_token,
         "quote_token": "can'quote",
         "home_literal": "abc$HOMEdef-${HOME}",
         "alfredrc": None,
@@ -147,8 +147,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "ALFRED_AUTO_PROMOTE=0\n"
         "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES=0\n"
         "ALFRED_AUTO_PROMOTE_KILL=1\n"
-        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n"
-        "ALFRED_TELEMETRY_ENABLED=1\n\n"
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "ARCHITECT_PARENT_REPO=org/plans\n"
         "ALFRED_E2E_RUNNER_TARGET_URL=https://new.example.test\n"
@@ -180,7 +179,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'auto_promote_behavior_changes': os.environ.get('ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES'),\n"
         "  'auto_promote_kill': os.environ.get('ALFRED_AUTO_PROMOTE_KILL'),\n"
         "  'auto_promote_judge': os.environ.get('ALFRED_AUTO_PROMOTE_LLM_JUDGE'),\n"
-        "  'telemetry_enabled': os.environ.get('ALFRED_TELEMETRY_ENABLED'),\n"
         "  'token': os.environ.get('CLAUDE_CODE_OAUTH_TOKEN'),\n"
         "  'backup_profile': os.environ.get('ALFRED_BACKUP_AWS_PROFILE'),\n"
         "  'architect_parent': os.environ.get('ARCHITECT_PARENT_REPO'),\n"
@@ -210,7 +208,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
             "ALFRED_AUTO_PROMOTE_BEHAVIOR_CHANGES": "1",
             "ALFRED_AUTO_PROMOTE_KILL": "0",
             "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "1",
-            "ALFRED_TELEMETRY_ENABLED": "0",
             "CLAUDE_CODE_OAUTH_TOKEN": "process-token",
             "ALFRED_BACKUP_AWS_PROFILE": "backup-profile",
             "ARCHITECT_PARENT_REPO": "org/stale-plans",
@@ -241,7 +238,6 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "auto_promote_behavior_changes": "0",
         "auto_promote_kill": "1",
         "auto_promote_judge": "treu",
-        "telemetry_enabled": "0",
         "token": "process-token",
         "backup_profile": "backup-profile",
         "architect_parent": "org/plans",
@@ -252,7 +248,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     }
 
 
-def test_doctor_accepts_no_url_telemetry_sentinel(tmp_path):
+def test_doctor_counts_removed_proof_telemetry_stub_as_disabled(tmp_path):
     home = tmp_path / "home"
     alfred = tmp_path / "alfred"
     bin_dir = alfred / "bin"
@@ -268,34 +264,23 @@ def test_doctor_accepts_no_url_telemetry_sentinel(tmp_path):
         '#!/usr/bin/env bash\nset -euo pipefail\npython3 "$ALFRED_HOME/bin/$1"\n'
     )
     (bin_dir / "agent-launch").chmod(0o755)
-    probe = bin_dir / "proof-telemetry.py"
-    probe.write_text(
-        "#!/usr/bin/env python3\n"
-        "import os\n"
-        "assert os.environ.get('ALFRED_DOCTOR') == '1'\n"
-        "print('[PROOF-TELEMETRY-NO-URL] (doctor: enabled but no collector URL available)')\n"
-    )
-    probe.chmod(0o755)
-
-    env = {
-        **os.environ,
-        "HOME": str(home),
-        "ALFRED_HOME": str(alfred),
-        "WORKSPACE_ROOT": str(tmp_path / "code"),
-    }
-    env.pop("ALFRED_TELEMETRY_URL", None)
-    env.pop("ALFRED_TELEMETRY_ENABLED", None)
+    shutil.copy2(REPO / "bin" / "proof-telemetry.py", bin_dir / "proof-telemetry.py")
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "doctor.sh")],
-        env=env,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+        },
         capture_output=True,
         text=True,
         timeout=20,
     )
     assert res.returncode == 0, res.stdout + res.stderr
     assert "proof-telemetry" in res.stdout
-    assert "no URL" in res.stdout
+    assert "disabled" in res.stdout
     assert "unexpected output" not in res.stdout
 
 

@@ -82,7 +82,6 @@ describe("deriveAgentRole", () => {
       "fleet-recap-evening": "ops",
       "shipped-summary-daily": "ship",
       "shipped-summary-weekly": "ship",
-      "proof-telemetry": "ops",
     };
     for (const [codename, lane] of Object.entries(CANONICAL_LANES)) {
       expect(deriveAgentRole({ codename })).toBe(lane);

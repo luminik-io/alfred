@@ -5,7 +5,8 @@
  * Links and tracking only. Deliberately shows no download count or numbers:
  * low or zero counts at launch read as weak proof, so we never render them.
  *
- * Release links point at stable assets on the latest GitHub Release.
+ * Release links point at stable assets on the latest GitHub Release, which is
+ * v0.6.0. Code newer than v0.6.0 is source-only.
  * Each package button carries data-download-os and data-download-source so the
  * inline tracker below can send one GA4 "download" event per real asset click,
  * gated on the same cookie-consent decision the rest of the site uses.
@@ -28,13 +29,13 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
 
 <MarketingLayout
   title="Download Alfred Desktop | macOS, Linux, or install Alfred core"
-  description="Download Alfred Desktop for macOS or Linux. The native app bundles Alfred core resources and can install, repair, start, and operate the local engineering fleet."
+  description="Download Alfred Desktop v0.6.0 for macOS or Linux. The native app bundles Alfred core resources and can install, repair, start, and operate the local engineering fleet."
   path="/download/"
 >
   <Hero
     eyebrow="DOWNLOAD"
     headline="Download Alfred Desktop."
-    sub="Alfred Desktop is the recommended full local install. It bundles Alfred core resources, installs or repairs the CLI and full built-in agent roster on first launch, starts `alfred serve`, and then guides fleet setup, including roster themes and custom display names."
+    sub="These packages are v0.6.0, the last published release. Code newer than v0.6.0 is source-only. Alfred Desktop bundles Alfred core resources, installs or repairs the CLI and full built-in agent roster on first launch, starts `alfred serve`, and then guides fleet setup, including roster themes and custom display names."
     headlineSize="lg"
     primaryCta={{
       label: "Download Desktop for macOS",
@@ -54,7 +55,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
       <SectionHeader
         eyebrow="PICK YOUR BUILD"
         title="Desktop app builds with core runtime bundled."
-        lede="Alfred Desktop includes guided setup and local controls for plans, agents, setup checks, and logs. The open-source runtime also runs through the CLI and host scheduler."
+        lede="Each build is v0.6.0, the last published release. Alfred Desktop includes guided setup and local controls for plans, agents, setup checks, and logs. The open-source runtime also runs through the CLI and host scheduler."
       />
 
       <div class="dl-grid">
@@ -92,7 +93,8 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           </div>
           <p class="dl-card__note m-mute">
             Prefer Homebrew? <span class="m-mono">brew install --cask alfred-os</span>{" "}
-            installs the same signed app and pulls in the CLI formula. The DMG
+            installs the same signed v0.6.0 app and pulls in the v0.6.0 CLI
+            formula. The DMG
             is the normal direct-download path, and the app zip is available
             for automation and verification.
           </p>
@@ -145,7 +147,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
       <SectionHeader
         eyebrow="FROM SOURCE"
         title="Install Alfred core from the code."
-        lede="This is the runtime path: Alfred CLI, local state, scheduler files, labels, and agents. Clone the repo and run the installer, or use the Homebrew tap on macOS."
+        lede="This is the runtime path: Alfred CLI, local state, scheduler files, labels, and agents. Clone the repo and run the installer for the current code, or use the Homebrew tap on macOS for v0.6.0."
       />
 
       <div class="dl-source">
@@ -165,15 +167,16 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           />
           <p class="dl-source__after">
             Use this path when you want the latest <span class="m-mono">main</span>,
-            core runtime, framework edits, or Linux.
+            core runtime, framework edits, or Linux. Code newer than v0.6.0
+            is available only this way.
           </p>
         </div>
 
         <div class="dl-source__col">
           <h3 class="m-h3">Install Alfred core with Homebrew</h3>
           <p class="dl-source__lede">
-            For macOS, if you prefer a package-manager install of the latest
-            tagged release.
+            For macOS, if you prefer a package-manager install of v0.6.0, the
+            last published release.
           </p>
           <CodeBlock
             title="install with homebrew"
@@ -184,7 +187,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
             ]}
           />
           <p class="dl-source__after">
-            Puts <span class="m-mono">alfred</span>,
+            Puts the v0.6.0 <span class="m-mono">alfred</span>,
             <span class="m-mono">alfred-init</span>, and the rest of the Alfred
             commands on your PATH.
           </p>
@@ -198,7 +201,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
       <SectionHeader
         eyebrow="WHAT YOU GET"
         title="Desktop setup. Full engineering team."
-        lede="Alfred Desktop is the recommended local installer and control surface. The open-source runtime schedules the engineering team, works in isolated repo copies, opens pull requests, routes review, and reports results through the app, Slack, and GitHub."
+        lede="This list describes the current source code. Features added after v0.6.0 are not in the v0.6.0 packages; install from source to get them. The open-source runtime schedules the engineering team, works in isolated repo copies, opens pull requests, routes review, and reports results through the app, Slack, and GitHub."
       />
       <div class="dl-reqs">
         <article class="m-card">

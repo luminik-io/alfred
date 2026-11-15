@@ -161,9 +161,10 @@ Wire the token through env or AWS:
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_HOME_CHANNEL=alfred
 
-# AWS path used when SLACK_BOT_TOKEN is unset
-SLACK_BOT_TOKEN_SECRET_ID=alfred/slack-bot-token
-SLACK_BOT_TOKEN_SECRET_REGION=us-east-1
+# AWS path, used only when SLACK_BOT_TOKEN is unset and the AWS backend is on
+ALFRED_SECRETS_BACKEND=aws
+ALFRED_SLACK_BOT_TOKEN_SECRET_ID=alfred/slack-bot-token    # default
+ALFRED_SLACK_BOT_TOKEN_SECRET_REGION=us-east-1             # default
 ```
 
 `SLACK_HOME_CHANNEL` can be a channel name or ID. If posting by name fails in
@@ -219,7 +220,9 @@ mention.
 2. Scroll to **App-Level Tokens** → **Generate Token and Scopes**.
 3. Name it (e.g. `socket-mode`), add scope `connections:write`.
 4. Copy the token (starts with `xapp-1-`).
-5. Store at `alfred/slack-app-token` in AWS the same way as above.
+5. Put it in `$ALFRED_HOME/.env` as `SLACK_APP_TOKEN` (or `ALFRED_SLACK_APP_TOKEN`).
+   The listener reads the app token from the environment only; it does not
+   read AWS Secrets Manager.
 
 Then enable Socket Mode and events:
 
@@ -278,7 +281,9 @@ Safety model:
 - Alfred only treats a thread as actionable after it registered the root
   message in `$ALFRED_HOME/state/slack-threads/`.
 - Direct Slack intake writes local draft JSON under
-  `$ALFRED_HOME/state/planning-drafts/`; it does not file GitHub issues.
+  `$ALFRED_HOME/state/planning-drafts/`. It files a GitHub issue only when the
+  optional issue bridge below is enabled and the configured approver approves
+  the draft.
 - Replies in the draft thread revise that same JSON draft, issue body, spec
   body, readiness score, and revision history.
 - Thread feedback is stored under
