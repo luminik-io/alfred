@@ -65,6 +65,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The documented local test command now installs the `dev` extra, so it passes
   with current Starlette. CI uses the same command, and the documented ruff and
   mypy versions match CI.
+- Editing a pull request's title or body no longer restarts the full CI
+  matrix. Only the public metadata check reruns, from its own workflow. The
+  Desktop build is skipped on pull requests that change only the site, docs or
+  Markdown files.
 
 ## [0.8.0] - Unreleased
 
