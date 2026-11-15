@@ -26,7 +26,6 @@ import FleetStatus from "../components/marketing/FleetStatus.astro";
 import SpecsDrivenFlow from "../components/marketing/SpecsDrivenFlow.astro";
 import ArchitectFanOut from "../components/marketing/ArchitectFanOut.astro";
 import NativeClientShowcase from "../components/marketing/NativeClientShowcase.astro";
-import DownloadTracker from "../components/marketing/DownloadTracker.astro";
 
 // Assets under public/ must carry the configured base path
 // (ALFRED_OS_SITE_BASE) so a prefixed deploy still resolves them.
@@ -129,14 +128,14 @@ const why = [
 ---
 
 <MarketingLayout
-  title="Alfred | Autonomous coding agents for lean engineering teams"
-  description="Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team that plans, builds, tests, reviews, and opens pull requests while you are away."
+  title="Alfred | Scheduled coding agents that open reviewed pull requests"
+  description="Alfred runs Claude Code, Codex or OpenCode on a schedule and turns GitHub issues into reviewed pull requests. Archived."
   path="/"
 >
   <Hero
-    eyebrow="LOCAL ENGINEERING TEAM"
-    headline="An autonomous engineering team that ships while you're away."
-    sub="Alfred turns Claude Code, Codex, or OpenCode into a spec-driven engineering team. Named agents plan the work, write code, test it, review each other, and open pull requests. Alfred keeps working without you at the keyboard. You approve risky actions and decide what merges."
+    eyebrow="ARCHIVED PROJECT"
+    headline="Turns GitHub issues into reviewed pull requests."
+    sub="Alfred runs Claude Code, Codex or OpenCode on a schedule. Each change gets its own git worktree, a separate review and a pull request. You approve plans and decide what merges. The project is archived; the code stays available as a reference."
     headlineSize="lg"
     headlineWrap="default"
     compactCtas
@@ -380,7 +379,6 @@ const why = [
     </div>
   </section>
 
-  <DownloadTracker />
 </MarketingLayout>
 
 <style>
