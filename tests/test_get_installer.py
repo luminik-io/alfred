@@ -136,7 +136,9 @@ def test_missing_coding_cli_fails_with_guidance(tmp_path):
     result = _run(home, stub_bin, checkout)
     assert result.returncode != 0
     assert "No coding CLI found" in result.stderr
-    assert "@anthropic-ai/claude-code" in result.stderr
+    assert "claude.ai/install.sh" in result.stderr
+    assert "@openai/codex" in result.stderr
+    assert "opencode-ai" in result.stderr
     # It must stop before cloning.
     assert not (checkout / ".git").exists()
 
@@ -178,7 +180,7 @@ def test_non_alfred_checkout_is_refused(tmp_path):
     assert "not an Alfred checkout" in result.stderr
 
 
-def test_codex_only_succeeds_with_claude_guidance(tmp_path):
+def test_codex_only_succeeds_and_runs_demo_on_hybrid(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     stub_bin = _make_stub_bin(tmp_path / "bin", claude=False)
@@ -187,11 +189,25 @@ def test_codex_only_succeeds_with_claude_guidance(tmp_path):
 
     result = _run(home, stub_bin, checkout)
     assert result.returncode == 0, result.stderr
-    # codex is a valid fleet engine, so the install proceeds...
     assert (checkout / ".git").is_dir()
-    # ...but the operator is told plainly that the demo needs Claude Code.
-    assert "'alfred demo' needs Claude Code" in result.stderr
-    assert "@anthropic-ai/claude-code" in result.stderr
+    assert "codex CLI on PATH" in result.stdout
+    # The demo's default hybrid route already falls back to Codex.
+    assert "needs Claude Code" not in result.stderr
+    assert "./bin/alfred demo\n" in result.stdout
+
+
+def test_opencode_only_succeeds_and_points_demo_at_opencode(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    stub_bin = _make_stub_bin(tmp_path / "bin", claude=False)
+    _write_stub(stub_bin, "opencode", "exit 0\n")
+    checkout = tmp_path / "alfred"
+
+    result = _run(home, stub_bin, checkout)
+    assert result.returncode == 0, result.stderr
+    assert (checkout / ".git").is_dir()
+    assert "opencode CLI on PATH" in result.stdout
+    assert "./bin/alfred demo --engine opencode" in result.stdout
 
 
 def test_unrelated_git_checkout_is_refused(tmp_path):
