@@ -43,10 +43,13 @@ The parts most worth reading:
 - [`lib/merge_gate.py`](lib/merge_gate.py): the merge decision, which refuses
   whenever any input is missing or unclear
 - [`lib/agent_runner/state.py`](lib/agent_runner/state.py): locks, the daily
-  spend ledger and the pause after 5 failures in a row
+  spend ledger behind the per-role caps, and the pause after 5 failures in a
+  row
 - [`lib/agent_runner/engine_registry.py`](lib/agent_runner/engine_registry.py):
   checks each CLI's flags and login before any work starts
-- [`lib/labels.py`](lib/labels.py): the issue label state machine
+- [`lib/labels.py`](lib/labels.py): the issue label state machine, including
+  the `agent:plan-pending-approval` label that holds work until a person
+  approves it
 
 Known issues at the time of archiving:
 
