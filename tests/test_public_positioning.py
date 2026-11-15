@@ -49,7 +49,7 @@ def test_supporting_copy_pairs_autonomy_with_human_control() -> None:
 def test_readme_opens_with_what_alfred_runs_and_produces() -> None:
     readme = (ROOT / "README.md").read_text()
     opening = " ".join(readme.split("## Who it is for")[0].split())
-    assert "Claude Code, Codex, or OpenCode on a schedule" in opening
+    assert "Claude Code, Codex or OpenCode on a schedule" in opening
     assert "reviewed pull requests" in opening
     assert "decides what merges" in opening
     assert POSITIONING not in readme

@@ -6,11 +6,8 @@
 
 [![CI](https://github.com/luminik-io/alfred/actions/workflows/ci.yml/badge.svg)](https://github.com/luminik-io/alfred/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![macOS](https://img.shields.io/badge/macOS-11%2B-black?logo=apple)
-![Linux](https://img.shields.io/badge/Linux-Debian%2FUbuntu-A81D33?logo=debian&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 
-Alfred runs Claude Code, Codex, or OpenCode on a schedule against your GitHub
+Alfred runs Claude Code, Codex or OpenCode on a schedule against your GitHub
 repositories and turns well-scoped issues into reviewed pull requests.
 
 Each role (planner, developer, reviewer, test engineer, fixer) is a short-lived
@@ -21,6 +18,8 @@ on repeated failure. A person approves gated plans and decides what merges.
 
 Alfred uses the coding CLIs and subscriptions you already have. There is no
 model gateway, hosted service or long-running coordinator to operate.
+It runs on macOS 11 or newer and on Debian or Ubuntu Linux, with Python 3.11
+or newer.
 
 ## Who it is for
 
@@ -33,8 +32,8 @@ interactively and has a backlog of work that is clear enough to hand off:
 - dependency bumps
 - a change that has to land across several repositories in order
 
-The work keeps moving between check-ins, on one machine you control, and the
-model spend stays inside the plan you already pay for.
+Alfred works through that backlog on a schedule, on one machine you control.
+Model usage comes out of the plans you already pay for.
 
 It is a poor fit if you need a multi-tenant service, a sandbox for untrusted
 code, or agents that merge without any human review. See [limits](#limits).
@@ -125,14 +124,12 @@ every step, unattended setup, and the [Linux](docs/LINUX.md) differences.
 
 ## Budgets, approvals and merge control
 
-These controls run before and after every model call. All of them are
-environment settings in `~/.alfred/.env`, listed in the
-[configuration reference](docs/CONFIG.md).
+Each control below is an environment setting in `~/.alfred/.env`. The
+[configuration reference](docs/CONFIG.md) lists them all.
 
 ### Budgets
 
-Caps are counted in turns and actions, because subscription plans limit usage
-that way:
+Caps count turns and actions per role per day:
 
 | Control | Default | Effect |
 |---|---|---|
@@ -171,17 +168,17 @@ what ran, what passed and what was skipped. See
 
 ### Merge
 
-Alfred merges nothing unless the `automerge` role is enabled, and the full
-roster from `alfred-init --agents all` enables it. Leave it out of `--agents`
-to merge every pull request by hand. When it runs, it only touches
-`agent:authored` pull requests and merges one only when all of these hold:
+Alfred merges a pull request only when the `automerge` role is enabled.
+`alfred-init --agents all` enables it, so leave it out of `--agents` if you
+want to merge every pull request by hand. The role only touches
+`agent:authored` pull requests, and merges one only when all of these hold:
 
 - at least 1 approval on the exact head commit (`ALFRED_MERGE_MIN_APPROVALS`;
   setting `ALFRED_MERGE_REQUIRE_APPROVAL=false` drops this requirement)
 - zero unresolved review threads
 - GitHub reports the merge state as clean
 - no failing checks
-- the base branch requires thread resolution, so GitHub enforces the gate too
+- the base branch requires resolved threads, so GitHub enforces this too
 
 Any API error or unrecognised value counts as "not mergeable". See the
 [merge gate](docs/MERGE_GATE.md).
@@ -191,7 +188,8 @@ Any API error or unrecognised value counts as "not mergeable". See the
 Lessons from past runs (a failing command, a repository convention, a review
 finding that recurred) are stored locally and recalled into later prompts.
 
-- The default store is embedded SQLite with full-text search. No daemon.
+- The default store is embedded SQLite with full-text search. It needs no
+  extra service.
 - Redis, and Postgres with pgvector, are optional backends for larger
   installs. See [memory providers](docs/MEMORY_PROVIDERS.md).
 - A new lesson passes structural checks and a confidence review before it can
@@ -223,14 +221,16 @@ locks, failed runs and auth problems.
 
 - **No sandbox.** Roles run with your user account's permissions, including
   network access. Repository scope limits what Alfred schedules. An agent can
-  still reach anything your account can. Use a dedicated OS user, VM or container when you need a
-  harder boundary. Read the [threat model](docs/THREAT_MODEL.md).
+  still reach anything your account can. Use a dedicated OS user, VM or
+  container when you need a harder boundary. Read the
+  [threat model](docs/THREAT_MODEL.md).
 - **One host.** One trusted machine and one config. There is no multi-host
   scheduling or multi-tenant mode.
 - **GitHub only.** Issues, labels and pull requests are the work queue.
-- **Output depends on the issue.** A vague issue produces a vague pull request.
-  The planner helps, and the [spec-driven workflow](docs/SPECS_DRIVEN_DEVELOPMENT.md)
-  helps more.
+- **Results depend on the issue.** A loosely written issue tends to come back
+  as a loosely scoped pull request. The planner tightens scope, and the
+  [spec-driven workflow](docs/SPECS_DRIVEN_DEVELOPMENT.md) gives agents more
+  structure.
 - **Telemetry is on by default.** It sends anonymous aggregate counts with no
   code, prompts, paths or repository names. Turn it off with
   `alfred telemetry off`. See [telemetry](docs/TELEMETRY.md).
