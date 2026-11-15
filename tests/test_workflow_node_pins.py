@@ -14,22 +14,42 @@ def _version(text: str) -> tuple[int, ...]:
     return tuple(int(part) for part in text.split("."))
 
 
-def _workflow_pins() -> dict[str, str]:
-    pins: dict[str, str] = {}
+def _workflow_pins() -> dict[str, str | None]:
+    """Map each actions/setup-node step to its node-version pin, or None if it has none."""
+    pins: dict[str, str | None] = {}
     for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
-        for match in re.finditer(r'node-version:\s*"([^"]+)"', workflow.read_text()):
-            pins[f"{workflow.name}:{match.start()}"] = match.group(1)
+        lines = workflow.read_text().splitlines()
+        for index, line in enumerate(lines):
+            if not re.search(r"uses:\s*actions/setup-node@", line):
+                continue
+            step_indent = len(line) - len(line.lstrip(" -"))
+            pin = None
+            for following in lines[index + 1 :]:
+                stripped = following.strip()
+                indent = len(following) - len(following.lstrip(" "))
+                if stripped.startswith("- ") and indent < step_indent:
+                    break
+                match = re.match(r"node-version:\s*['\"]?([^'\"\s#]+)", stripped)
+                if match:
+                    pin = match.group(1)
+                    break
+            pins[f"{workflow.name}:{index + 1}"] = pin
     return pins
+
+
+def test_every_setup_node_step_has_a_pin() -> None:
+    pins = _workflow_pins()
+    assert pins
+    assert all(pins.values()), pins
 
 
 def test_every_workflow_pins_the_same_node_version() -> None:
     pins = _workflow_pins()
-    assert pins
     assert len(set(pins.values())) == 1, pins
 
 
 def test_node_pin_meets_each_package_engine_floor() -> None:
-    pinned = _version(next(iter(_workflow_pins().values())))
+    pinned = _version(str(next(iter(_workflow_pins().values()))))
     for package in PACKAGES:
         floor = json.loads(package.read_text())["engines"]["node"]
         assert floor.startswith(">="), package
@@ -38,4 +58,4 @@ def test_node_pin_meets_each_package_engine_floor() -> None:
 
 def test_node_pin_is_new_enough_for_current_astro_packages() -> None:
     # @astrojs/telemetry 3.4.2 requires Node 22.23.4 or newer.
-    assert _version(next(iter(_workflow_pins().values()))) >= (22, 23, 4)
+    assert _version(str(next(iter(_workflow_pins().values())))) >= (22, 23, 4)
