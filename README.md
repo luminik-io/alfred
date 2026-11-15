@@ -101,21 +101,27 @@ Install the runtime, sign in, then choose repositories and roles:
 ```sh
 bash install.sh               # packages, Python env, ~/.alfred, Claude Code if missing
 gh auth login
-claude auth login             # or: codex login, opencode auth login
-./bin/alfred-init.py          # repos, roles, schedules, approval rules
+claude auth login
+codex login                   # optional, for roles routed to Codex
+./bin/alfred-init.py          # repos, roles, schedules, approval rules, then deploy
 ```
 
-`install.sh` does not load anything into the scheduler. Check the setup first:
+`alfred-init` needs Claude Code installed and signed in, even when some roles
+run on Codex or OpenCode. It ends by running `deploy.sh`, which loads the
+chosen roles into the scheduler, so they can start firing right away. To check
+each role before it runs on its own, pause everything and resume one role at a
+time:
 
 ```sh
+./bin/alfred pause all
 ./bin/alfred auth status      # which engines are ready
 ./bin/alfred doctor           # host preflight checks
 ./bin/alfred dry-run senior-dev
+./bin/alfred resume senior-dev
 ```
 
 A dry run resolves the role and walks its lifecycle without calling a model or
-touching GitHub, Slack, git or the scheduler. When the dry run looks right,
-`bash deploy.sh` renders and loads the scheduler units.
+touching GitHub, Slack, git or the scheduler.
 
 Start with `--agents starter` on one repository. It enables the planner,
 developer and reviewer plus cleanup and memory upkeep.
@@ -133,7 +139,7 @@ Caps count turns and actions per role per day:
 
 | Control | Default | Effect |
 |---|---|---|
-| Daily turn cap per role | developer 5000, reviewer 800, fixer 600, triage 600 | The role skips its firing for the rest of the day |
+| Daily turn cap per role | developer 5000, reviewer 800, fixer 600, triage 600 | Triage skips the rest of the day. On macOS the developer, reviewer and fixer unload their scheduler job and stay stopped until you run `alfred resume` |
 | Daily action cap per role | reviewer 30 reviews, triage 50 actions | Same |
 | Per-firing timeout and max turns | per role, for example 900 s per review | The run stops and is recorded as failed |
 | Failure streak | 5 consecutive failures | The role pauses itself until you run `alfred resume` |
