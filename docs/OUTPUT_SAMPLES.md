@@ -243,8 +243,9 @@ Authored by Lucius (Alfred). Engine: hybrid (claude). Turns: 17. Cost: $0.21.
 When it appears: the operator starts a single firing of the Echo example
 agent manually, outside the schedule. `alfred run` asks the host scheduler to
 start the agent's unit now and returns at once; the firing's own output goes
-to the agent's log files. `--force` only matters when the agent is paused: it
-runs the agent once anyway.
+to the agent's log files. `--force` skips the pause-marker check, but pausing
+also unloads the agent's scheduler job, so a paused agent needs
+`alfred resume` before `alfred run` can start it.
 
 ```
 $ alfred run echo

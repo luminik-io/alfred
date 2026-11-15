@@ -262,6 +262,6 @@ For richer agents (write code, open PRs, multi-step prompts, max-turns resume), 
 
 **`alfred run echo` says `echo: not loaded`.** The scheduler unit isn't loaded. Run `bash deploy.sh` again (it is idempotent) or `alfred resume echo`.
 
-**`alfred run echo` says `echo: paused`.** You paused it. Run `alfred resume echo`, or pass `--force` to run it once while it stays paused. `--force` only overrides a pause.
+**`alfred run echo` says `echo: paused`.** You paused it. Run `alfred resume echo` first. Pausing unloads the scheduler job, so `--force` alone cannot start it.
 
 **Doctor passes but the agent fails on real firing.** Doctor only verifies preflight. Real firings can fail for runtime reasons (rate limit, gh API timeout, claude error). Check `/tmp/alfred.echo.stderr`.
