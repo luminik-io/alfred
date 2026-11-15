@@ -14,14 +14,14 @@
 #   1. Detects the host OS/arch (macOS arm64/x86_64, Linux) and prints an
 #      honest note about what each target supports.
 #   2. Checks the prerequisites the fast demo path needs (git, python3.11+,
-#      a `claude` or `codex` CLI) and the ones the full fleet needs (gh),
+#      a `claude`, `codex`, or `opencode` CLI) and the ones the full fleet needs (gh),
 #      with plain-language guidance for anything missing.
 #   3. Clones the repo to ~/alfred (override with ALFRED_CHECKOUT). A re-run
 #      updates the existing checkout instead of cloning again.
 #   4. Ends by printing exactly what to run next, `alfred demo` first.
 #
 # The demo on-ramp needs none of the heavy install: a cloned repo plus an
-# authenticated `claude` CLI is enough. Running the full package install is
+# authenticated coding CLI is enough. Running the full package install is
 # opt-in, set ALFRED_RUN_INSTALL=1 to have this script run install.sh
 # non-interactively after the clone.
 #
@@ -98,7 +98,7 @@ esac
 # 2. Prerequisites
 # --------------------------------------------------------------------------
 # The demo path needs git (to clone), python3.11+ (bin/alfred is a
-# dependency-free python3 script), and a coding CLI (claude or codex) to make
+# dependency-free python3 script), and a coding CLI (claude, codex, or opencode) to make
 # the model calls. gh is only needed once you wire up real repos, so a missing
 # gh warns rather than stops.
 step "Checking prerequisites"
@@ -150,18 +150,21 @@ else
   die "Alfred needs Python 3.11+, but no supported interpreter is installed. macOS: 'brew install python@3.11'. Debian/Ubuntu: 'sudo apt-get install -y python3.11' (or 'uv python install 3.11'). Then re-run."
 fi
 
-# claude or codex: at least one coding CLI is required. The demo runs on
-# claude specifically, so a codex-only host still installs (codex is a valid
-# fleet engine) but is told plainly that 'alfred demo' needs Claude Code.
+# At least one coding CLI is required. The demo runs on whichever is present:
+# the default hybrid route covers claude and codex, opencode needs --engine.
+demo_engine_flag=""
 if have claude; then
   ok "claude CLI on PATH"
 elif have codex; then
-  warn "codex CLI found, but no claude. The fleet can run on codex, but 'alfred demo' needs Claude Code. Install it: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
+  ok "codex CLI on PATH (the demo's hybrid route falls back to it)"
+elif have opencode; then
+  ok "opencode CLI on PATH"
+  demo_engine_flag=" --engine opencode"
 else
   if [ "$RUN_FULL_INSTALL" = "1" ]; then
     warn "No coding CLI found yet; install.sh will install Claude Code."
   else
-    die "No coding CLI found. Alfred drives 'claude' (recommended) or 'codex'. Install Claude Code: 'npm install -g @anthropic-ai/claude-code', then run 'claude' once to sign in."
+    die "No coding CLI found. Alfred drives Claude Code, Codex, or OpenCode. Install one, sign in once, then re-run. Claude Code: 'curl -fsSL https://claude.ai/install.sh | bash' (or 'npm install -g @anthropic-ai/claude-code'). Codex: 'npm install -g @openai/codex'. OpenCode: 'npm install -g opencode-ai'."
   fi
 fi
 
@@ -244,8 +247,11 @@ if [ "$RUN_FULL_INSTALL" = "1" ]; then
     ok "claude CLI available after install"
   elif have codex; then
     ok "codex CLI available after install"
+  elif have opencode; then
+    ok "opencode CLI available after install"
+    demo_engine_flag=" --engine opencode"
   else
-    die "install.sh completed but neither claude nor codex is available on PATH."
+    die "install.sh completed but no claude, codex, or opencode CLI is available on PATH."
   fi
 fi
 
@@ -256,11 +262,11 @@ cat <<EOF
 
 ${C_GREEN}===> Alfred is on your machine.${C_OFF}
 
-Start with the two-minute demo. It needs nothing but an authenticated
-'claude' CLI, no GitHub, no Slack, no tokens:
+Start with the demo. It needs one signed-in coding CLI (claude, codex, or
+opencode). It does not need GitHub, Slack, or API keys:
 
   ${C_BLUE}cd $(printf '%s' "$CHECKOUT")${C_OFF}
-  ${C_BLUE}$python_bin ./bin/alfred demo${C_OFF}
+  ${C_BLUE}$python_bin ./bin/alfred demo${demo_engine_flag}${C_OFF}
 
 When you are ready to wire up the full fleet (packages, scheduler, repos):
 
