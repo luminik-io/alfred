@@ -4,8 +4,8 @@ ROOT = Path(__file__).resolve().parents[1]
 POSITIONING = "An autonomous engineering team that ships while you're away."
 AUTONOMY_COPY = "Alfred keeps working without you at the keyboard."
 CONTROL_COPY = "You approve risky actions and decide what merges."
+# The README is the engineering description; the tagline lives on marketing pages.
 POSITIONING_ENTRYPOINTS = [
-    ROOT / "README.md",
     ROOT / "site/src/pages/index.astro",
     ROOT / "site/src/content/docs/docs.mdx",
     ROOT / "site/src/pages/llms.txt.ts",
@@ -14,6 +14,7 @@ POSITIONING_ENTRYPOINTS = [
     ROOT / "site/scripts/generate-og.mjs",
 ]
 PUBLIC_COPY = [
+    ROOT / "README.md",
     *POSITIONING_ENTRYPOINTS,
     ROOT / "AGENTS.md",
     ROOT / "PRODUCT.md",
@@ -25,7 +26,6 @@ PUBLIC_COPY = [
     ROOT / "clients/desktop/src/components/layout/AppShell.tsx",
 ]
 AUTONOMY_ENTRYPOINTS = [
-    ROOT / "README.md",
     ROOT / "site/src/pages/index.astro",
     ROOT / "site/src/content/docs/docs.mdx",
     ROOT / "site/scripts/generate-og.mjs",
@@ -44,6 +44,15 @@ def test_supporting_copy_pairs_autonomy_with_human_control() -> None:
         content = " ".join(path.read_text().split())
         assert AUTONOMY_COPY in content, path
         assert CONTROL_COPY in content, path
+
+
+def test_readme_opens_with_what_alfred_runs_and_produces() -> None:
+    readme = (ROOT / "README.md").read_text()
+    opening = " ".join(readme.split("## Who it is for")[0].split())
+    assert "Claude Code, Codex, or OpenCode on a schedule" in opening
+    assert "reviewed pull requests" in opening
+    assert "decides what merges" in opening
+    assert POSITIONING not in readme
 
 
 def test_public_entrypoints_do_not_use_the_infrastructure_led_tagline() -> None:
